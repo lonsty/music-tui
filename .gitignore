@@ -1,0 +1,10 @@
+# Binaries
+bin/
+music-tui
+playtest
+
+# macOS
+.DS_Store
+
+# Go test cache
+*.test
