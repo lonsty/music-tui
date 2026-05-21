@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/charmbracelet/lipgloss"
+	"github.com/charmbracelet/x/ansi"
 
 	"github.com/eilianxiao/music-tui/internal/audio"
 )
@@ -288,40 +289,36 @@ func (a *App) renderTrackList() string {
 			icon = "󰎆 "
 		}
 
-		// Right column: right-aligned, fixed display width.
+		// Right column: fixed display width, right-aligned.
 		const rightColW = 10
 		rightText := t.Format() + " " + formatDuration(t.Duration)
+		rightPadded := padLeft(rightText, rightColW)
 
-		// Left column: truncated to leave room for right col + 1 separator.
-		leftAvail := innerW - rightColW - 1
+		// Left column: truncate to exact available display width, then pad.
+		leftAvail := innerW - rightColW - 1 // 1 space separator
 		leftText := truncate(icon+t.DisplayArtist()+" — "+t.DisplayTitle(), leftAvail)
+		leftPadded := padRight(leftText, leftAvail)
 
-		// Pad left to leftAvail so right column always sits at the same position.
-		// Use rune count (ASCII-only right col, so this is accurate for that part).
-		leftText += strings.Repeat(" ", max(0, leftAvail-len([]rune(leftText))))
+		// Flat string with exact display width = innerW.
+		// No lipgloss Width — we measured correctly via strWidth.
+		// Background highlight is applied by the style below.
+		line := leftPadded + " " + rightPadded
 
-		// Right-pad rightText to rightColW for consistent alignment.
-		rightText = strings.Repeat(" ", max(0, rightColW-len([]rune(rightText)))) + rightText
-
-		line := leftText + " " + rightText
-
-		// Apply colour + Width in a single Render so lipgloss pads any remaining
-		// space with the background colour — no manual space-counting needed.
 		var style lipgloss.Style
 		switch {
 		case isPlaying && isSelected:
-			style = lipgloss.NewStyle().Width(innerW).
+			style = lipgloss.NewStyle().
 				Background(lipgloss.Color(surface0)).
 				Foreground(lipgloss.Color(blue)).Bold(true)
 		case isPlaying:
-			style = lipgloss.NewStyle().Width(innerW).
+			style = lipgloss.NewStyle().
 				Foreground(lipgloss.Color(blue)).Bold(true)
 		case isSelected:
-			style = lipgloss.NewStyle().Width(innerW).
+			style = lipgloss.NewStyle().
 				Background(lipgloss.Color(surface0)).
 				Foreground(lipgloss.Color(text)).Bold(true)
 		default:
-			style = lipgloss.NewStyle().Width(innerW).
+			style = lipgloss.NewStyle().
 				Foreground(lipgloss.Color(subtext0))
 		}
 
@@ -662,16 +659,48 @@ func (a *App) renderInfoOverlay() string {
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-// truncate shortens s to at most n runes, appending "…".
-func truncate(s string, n int) string {
-	r := []rune(s)
-	if len(r) <= n {
+// strWidth returns the terminal display width of s (handles CJK, Nerd Font, etc.)
+// using the same wcwidth table that lipgloss uses internally.
+func strWidth(s string) int {
+	return ansi.StringWidth(s)
+}
+
+// truncate shortens s so its display width ≤ maxW, appending "…" if cut.
+func truncate(s string, maxW int) string {
+	if strWidth(s) <= maxW {
 		return s
 	}
-	if n <= 1 {
+	if maxW <= 1 {
 		return "…"
 	}
-	return string(r[:n-1]) + "…"
+	// Walk runes and accumulate display width until we exceed maxW-1 (reserve 1 for "…").
+	w := 0
+	for i, r := range s {
+		rw := ansi.StringWidth(string(r))
+		if w+rw > maxW-1 {
+			return s[:i] + "…"
+		}
+		w += rw
+	}
+	return s
+}
+
+// padRight pads s with spaces on the right until its display width equals targetW.
+func padRight(s string, targetW int) string {
+	w := strWidth(s)
+	if w >= targetW {
+		return s
+	}
+	return s + strings.Repeat(" ", targetW-w)
+}
+
+// padLeft pads s with spaces on the left until its display width equals targetW.
+func padLeft(s string, targetW int) string {
+	w := strWidth(s)
+	if w >= targetW {
+		return s
+	}
+	return strings.Repeat(" ", targetW-w) + s
 }
 
 // formatDuration converts a duration to mm:ss.
@@ -713,20 +742,6 @@ func visibleWindow(cursor, total, maxRows int) (start, end int) {
 		}
 	}
 	return start, end
-}
-
-// displayWidth approximates the terminal display width of a string by
-// counting runes (works for ASCII + CJK estimate; good enough for truncation).
-func displayWidth(s string) int {
-	w := 0
-	for _, r := range s {
-		if r > 0x2E7F {
-			w += 2 // CJK and wide chars
-		} else {
-			w++
-		}
-	}
-	return w
 }
 
 // stylePlayerMuted returns a centred, muted style (used for idle hint text).
