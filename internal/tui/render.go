@@ -279,52 +279,47 @@ func (a *App) renderTrackList() string {
 		isSelected := i == a.cursor
 		isPlaying := a.currentTrack != nil && a.currentTrack.ID == t.ID
 
-		// Playing icon (2 runes wide)
+		// Playing icon (2 display columns wide)
 		icon := "  "
 		if isPlaying {
 			icon = "󰎆 "
 		}
 
-		// Right column: "MP3 04:58" — fixed width, right-aligned.
+		// Right column fixed width — "FLAC 00:00" = 9 cols, pad to 10.
+		const rightColW = 10
 		rightText := t.Format() + " " + formatDuration(t.Duration)
-		const rightColW = 11 // "FLAC 00:00" = 9, pad to 11
+		// Pad rightText to rightColW (right-align with spaces on the left).
+		rightPadded := strings.Repeat(" ", max(0, rightColW-displayWidth(rightText))) + rightText
 
-		// Left column: fills the rest.
-		leftAvail := innerW - rightColW - 1 // -1 for separator space
+		// Left column: fill remaining width.
+		leftAvail := innerW - rightColW - 1 // 1 space separator
 		leftText := icon + t.DisplayArtist() + " — " + t.DisplayTitle()
 		leftText = truncate(leftText, leftAvail)
+		// Pad to leftAvail so total line = innerW.
+		leftPadded := leftText + strings.Repeat(" ", max(0, leftAvail-displayWidth(leftText)))
 
-		// Base style shared by all rows — Width ensures background fills the line.
-		base := lipgloss.NewStyle().Width(innerW)
+		// Single flat string — one Render call, background fills the whole line.
+		line := leftPadded + " " + rightPadded
+
+		var style lipgloss.Style
 		switch {
 		case isPlaying && isSelected:
-			base = base.Background(lipgloss.Color(surface0)).
+			style = lipgloss.NewStyle().
+				Background(lipgloss.Color(surface0)).
 				Foreground(lipgloss.Color(blue)).Bold(true)
 		case isPlaying:
-			base = base.Foreground(lipgloss.Color(blue)).Bold(true)
+			style = lipgloss.NewStyle().
+				Foreground(lipgloss.Color(blue)).Bold(true)
 		case isSelected:
-			base = base.Background(lipgloss.Color(surface0)).
+			style = lipgloss.NewStyle().
+				Background(lipgloss.Color(surface0)).
 				Foreground(lipgloss.Color(text)).Bold(true)
 		default:
-			base = base.Foreground(lipgloss.Color(subtext0))
+			style = lipgloss.NewStyle().
+				Foreground(lipgloss.Color(subtext0))
 		}
 
-		// Inline-render: left text padded to leftAvail, then space, then right.
-		// We build the full line as a single string and let base.Width do the
-		// background fill — no manual space-padding needed.
-		leftPart := lipgloss.NewStyle().
-			Width(leftAvail).
-			Inherit(base).
-			MaxWidth(leftAvail).
-			Render(leftText)
-		rightPart := lipgloss.NewStyle().
-			Width(rightColW).
-			Align(lipgloss.Right).
-			Inherit(base).
-			Render(rightText)
-		rendered := base.Render(leftPart + " " + rightPart)
-
-		sb.WriteString(rendered + "\n")
+		sb.WriteString(style.Render(line) + "\n")
 	}
 
 	// TrimRight removes the trailing newline that would cause lipgloss to add
@@ -345,9 +340,29 @@ func (a *App) renderMiniPlayer() string {
 }
 
 func (a *App) buildMiniPlayerContent(w, h int) string {
+	// 1:1 cover art placeholder — side length fits inside the panel.
+	// Use roughly 1/3 of the panel height, but keep it square (in terminal
+	// cells 1 row ≈ 2 columns, so coverCols = coverRows * 2).
+	coverRows := h / 4
+	if coverRows < 3 {
+		coverRows = 3
+	}
+	coverCols := coverRows * 2
+	if coverCols > w-4 {
+		coverCols = w - 4
+		coverRows = coverCols / 2
+	}
+
+	coverContent := lipgloss.Place(coverCols-2, coverRows,
+		lipgloss.Center, lipgloss.Center,
+		lipgloss.NewStyle().Foreground(lipgloss.Color(blue)).Bold(true).Render("󰎄"),
+	)
+	cover := styleCoverBorder.Width(coverCols - 2).Height(coverRows).Render(coverContent)
+	coverLine := lipgloss.NewStyle().Width(w).Align(lipgloss.Center).Render(cover)
+
 	if a.currentTrack == nil {
 		idle := lipgloss.JoinVertical(lipgloss.Center,
-			styleModeIcon.Render("󰎄"),
+			coverLine,
 			"",
 			stylePlayerArtist.Width(w).Render("No track selected"),
 			stylePlayerMuted().Width(w).Render("Press Enter to play"),
@@ -381,7 +396,7 @@ func (a *App) buildMiniPlayerContent(w, h int) string {
 	controls := a.buildControls(w)
 
 	return lipgloss.JoinVertical(lipgloss.Center,
-		"",
+		coverLine,
 		title,
 		meta,
 		"",
@@ -393,7 +408,6 @@ func (a *App) buildMiniPlayerContent(w, h int) string {
 		timeStr,
 		"",
 		controls,
-		"",
 	)
 }
 

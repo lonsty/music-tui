@@ -8,6 +8,8 @@ import (
 	"time"
 
 	id3 "github.com/bogem/id3v2/v2"
+	"github.com/gopxl/beep/v2/mp3"
+	"os"
 )
 
 // ScanDir walks the given directory and returns all MP3 tracks found.
@@ -28,7 +30,6 @@ func ScanDir(dir string) ([]Track, error) {
 
 		track, parseErr := parseTrack(path)
 		if parseErr != nil {
-			// Skip files we can't parse but continue scanning.
 			return nil
 		}
 		tracks = append(tracks, track)
@@ -47,31 +48,19 @@ func isSupportedAudio(path string) bool {
 	return ext == ".mp3"
 }
 
-// parseTrack reads ID3 metadata from an MP3 file and returns a Track.
+// parseTrack reads ID3 metadata and audio duration from an MP3 file.
 func parseTrack(path string) (Track, error) {
-	tag, err := id3.Open(path, id3.Options{Parse: true})
-	if err != nil {
-		// Return a minimal track with just the filename when ID3 parsing fails.
-		return Track{
-			ID:     path,
-			Path:   path,
-			Source: SourceLocal,
-		}, nil
+	// Read ID3 tags.
+	var title, artist, album string
+	if tag, err := id3.Open(path, id3.Options{Parse: true}); err == nil {
+		title = tag.Title()
+		artist = tag.Artist()
+		album = tag.Album()
+		tag.Close()
 	}
-	defer tag.Close()
 
-	title := tag.Title()
-	artist := tag.Artist()
-	album := tag.Album()
-
-	// Try to read duration from TLEN frame (milliseconds).
-	var duration time.Duration
-	if tlen := tag.GetTextFrame(tag.CommonID("Length")); tlen.Text != "" {
-		var ms int64
-		if _, scanErr := fmt.Sscanf(tlen.Text, "%d", &ms); scanErr == nil {
-			duration = time.Duration(ms) * time.Millisecond
-		}
-	}
+	// Read actual duration via beep/mp3 — more reliable than TLEN tag.
+	duration := readMP3Duration(path)
 
 	return Track{
 		ID:       path,
@@ -82,4 +71,22 @@ func parseTrack(path string) (Track, error) {
 		Path:     path,
 		Source:   SourceLocal,
 	}, nil
+}
+
+// readMP3Duration opens the file, decodes the MP3 header, and returns the
+// track length. Returns 0 on any error.
+func readMP3Duration(path string) time.Duration {
+	f, err := os.Open(path)
+	if err != nil {
+		return 0
+	}
+	defer f.Close()
+
+	streamer, format, err := mp3.Decode(f)
+	if err != nil {
+		return 0
+	}
+	defer streamer.Close()
+
+	return format.SampleRate.D(streamer.Len())
 }
