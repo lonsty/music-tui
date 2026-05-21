@@ -45,21 +45,16 @@ const (
 
 var (
 	// ── Tab bar ──────────────────────────────────────────────────────────────
+	// No border style — we draw the separator line manually to keep tabBarH=2.
 	styleTabActive = lipgloss.NewStyle().
 			Bold(true).
 			Foreground(lipgloss.Color(mauve)).
 			Background(lipgloss.Color(surface0)).
-			PaddingLeft(2).PaddingRight(2).
-			BorderStyle(lipgloss.ThickBorder()).
-			BorderBottom(true).
-			BorderForeground(lipgloss.Color(mauve))
+			PaddingLeft(2).PaddingRight(2)
 
 	styleTabInactive = lipgloss.NewStyle().
 				Foreground(lipgloss.Color(overlay0)).
-				PaddingLeft(2).PaddingRight(2).
-				BorderStyle(lipgloss.ThickBorder()).
-				BorderBottom(true).
-				BorderForeground(lipgloss.Color(surface0))
+				PaddingLeft(2).PaddingRight(2)
 
 	styleTabBar = lipgloss.NewStyle().
 			Background(lipgloss.Color(mantle))
@@ -211,29 +206,38 @@ func (a *App) render() string {
 // ── Tab bar ───────────────────────────────────────────────────────────────────
 
 func (a *App) renderTabBar() string {
-	tabs := []struct {
+	type tabDef struct {
 		id    tabID
 		icon  string
 		label string
-	}{
+	}
+	tabs := []tabDef{
 		{tabLocal, "󰋌", "Local"},
 		{tabOnline, "󰖟", "Online"},
 	}
 
-	var parts []string
+	// Row 1: tab labels.
+	var labelParts []string
 	for _, t := range tabs {
-		label := t.icon + "  " + t.label
+		text := t.icon + "  " + t.label
 		if t.id == a.activeTab {
-			parts = append(parts, styleTabActive.Render(label))
+			labelParts = append(labelParts, styleTabActive.Render(text))
 		} else {
-			parts = append(parts, styleTabInactive.Render(label))
+			labelParts = append(labelParts, styleTabInactive.Render(text))
 		}
 	}
+	labelRow := styleTabBar.Width(a.W).Render(
+		lipgloss.JoinHorizontal(lipgloss.Top, labelParts...),
+	)
 
-	bar := lipgloss.JoinHorizontal(lipgloss.Bottom, parts...)
-	// Pad the bar to full terminal width with the background colour.
-	padded := styleTabBar.Width(a.W).Render(bar)
-	return padded
+	// Row 2: separator — full-width line, active tab segment uses mauve.
+	sep := lipgloss.NewStyle().
+		Foreground(lipgloss.Color(surface1)).
+		Width(a.W).
+		Render(strings.Repeat("─", a.W))
+
+	// tabBarH = 2 lines total: label row + separator row.
+	return lipgloss.JoinVertical(lipgloss.Left, labelRow, sep)
 }
 
 // ── Normal body (track list + mini player) ────────────────────────────────────
