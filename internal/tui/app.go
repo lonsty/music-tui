@@ -186,7 +186,7 @@ func (a *App) View() string {
 
 const (
 	topPad     = 0 // no top padding — altscreen starts at row 0
-	tabBarH    = 2 // tab labels + bottom border
+	tabBarH    = 1 // single line for tab labels (no separator row)
 	statusBarH = 1
 	borderH    = 2
 	borderW    = 2

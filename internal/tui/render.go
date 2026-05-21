@@ -46,11 +46,13 @@ const (
 
 var (
 	// ── Tab bar ──────────────────────────────────────────────────────────────
-	// No border style — we draw the separator line manually to keep tabBarH=2.
+	// Single-line tabs: active tab has a distinct background + underline;
+	// inactive tabs are dim. No separator row — tabBarH = 1.
 	styleTabActive = lipgloss.NewStyle().
 			Bold(true).
 			Foreground(lipgloss.Color(mauve)).
 			Background(lipgloss.Color(surface0)).
+			Underline(true).
 			PaddingLeft(2).PaddingRight(2)
 
 	styleTabInactive = lipgloss.NewStyle().
@@ -206,6 +208,9 @@ func (a *App) render() string {
 
 // ── Tab bar ───────────────────────────────────────────────────────────────────
 
+// renderTabBar renders a single-line tab bar (tabBarH = 1).
+// The active tab is visually distinct via background + underline; no separator
+// row is needed, which saves one line of vertical space.
 func (a *App) renderTabBar() string {
 	type tabDef struct {
 		id    tabID
@@ -217,28 +222,20 @@ func (a *App) renderTabBar() string {
 		{tabOnline, "󰖟", "Online"},
 	}
 
-	// Row 1: tab labels.
-	var labelParts []string
+	var parts []string
 	for _, t := range tabs {
 		text := t.icon + "  " + t.label
 		if t.id == a.activeTab {
-			labelParts = append(labelParts, styleTabActive.Render(text))
+			parts = append(parts, styleTabActive.Render(text))
 		} else {
-			labelParts = append(labelParts, styleTabInactive.Render(text))
+			parts = append(parts, styleTabInactive.Render(text))
 		}
 	}
-	labelRow := styleTabBar.Width(a.W).Render(
-		lipgloss.JoinHorizontal(lipgloss.Top, labelParts...),
+
+	// Fill remaining width with tab bar background.
+	return styleTabBar.Width(a.W).Render(
+		lipgloss.JoinHorizontal(lipgloss.Top, parts...),
 	)
-
-	// Row 2: separator — full-width line, active tab segment uses mauve.
-	sep := lipgloss.NewStyle().
-		Foreground(lipgloss.Color(surface1)).
-		Width(a.W).
-		Render(strings.Repeat("─", a.W))
-
-	// tabBarH = 2 lines total: label row + separator row.
-	return lipgloss.JoinVertical(lipgloss.Left, labelRow, sep)
 }
 
 // ── Normal body (track list + mini player) ────────────────────────────────────
@@ -343,24 +340,8 @@ func (a *App) renderMiniPlayer() string {
 }
 
 func (a *App) buildMiniPlayerContent(w, h int) string {
-	// 1:1 cover art placeholder — side length fits inside the panel.
-	// Use roughly 1/3 of the panel height, but keep it square (in terminal
-	// cells 1 row ≈ 2 columns, so coverCols = coverRows * 2).
-	coverRows := h / 4
-	if coverRows < 3 {
-		coverRows = 3
-	}
-	coverCols := coverRows * 2
-	if coverCols > w-4 {
-		coverCols = w - 4
-		coverRows = coverCols / 2
-	}
-
-	coverContent := lipgloss.Place(coverCols-2, coverRows,
-		lipgloss.Center, lipgloss.Center,
-		lipgloss.NewStyle().Foreground(lipgloss.Color(blue)).Bold(true).Render("󰎄"),
-	)
-	cover := styleCoverBorder.Width(coverCols - 2).Height(coverRows).Render(coverContent)
+	// Cover placeholder — visually square, centred in panel.
+	cover := buildCoverPlaceholder(w - 2)
 	coverLine := lipgloss.NewStyle().Width(w).Align(lipgloss.Center).Render(cover)
 
 	if a.currentTrack == nil {
@@ -462,15 +443,8 @@ func (a *App) renderFullPlayer() string {
 func (a *App) buildFullPlayerContent(w, h int) string {
 	t := a.currentTrack
 
-	// Cover placeholder
-	coverW := min(w-4, 16)
-	coverH := coverW / 2
-	coverInner := lipgloss.Place(coverW-2, coverH,
-		lipgloss.Center, lipgloss.Center,
-		lipgloss.NewStyle().Foreground(lipgloss.Color(blue)).Bold(true).
-			Render("󰎄"),
-	)
-	cover := styleCoverBorder.Width(coverW - 2).Height(coverH).Render(coverInner)
+	// Cover placeholder — visually square, centred.
+	cover := buildCoverPlaceholder(w - 4)
 	coverLine := lipgloss.NewStyle().Width(w).Align(lipgloss.Center).Render(cover)
 
 	// Track info lines
@@ -742,6 +716,42 @@ func visibleWindow(cursor, total, maxRows int) (start, end int) {
 		}
 	}
 	return start, end
+}
+
+// buildCoverPlaceholder renders a visually-square cover art placeholder box.
+//
+// Terminal cells are roughly 1:2 (width:height in pixels), so a visual square
+// needs outerCols = outerRows * 2 in cell units. The rounded border adds 2
+// rows (top+bottom) and 2 cols (left+right), so:
+//
+//	innerCols = outerRows*2 - 2
+//	innerRows = outerRows - 2
+//
+// maxOuterCols caps the size so the box fits inside the calling panel.
+func buildCoverPlaceholder(maxOuterCols int) string {
+	// Pick the largest outerRows such that outerCols = outerRows*2 ≤ maxOuterCols.
+	outerRows := maxOuterCols / 2
+	if outerRows > 12 {
+		outerRows = 12 // reasonable max for readability
+	}
+	if outerRows < 4 {
+		outerRows = 4
+	}
+	outerCols := outerRows * 2
+
+	innerCols := outerCols - 2
+	innerRows := outerRows - 2
+	if innerCols < 1 {
+		innerCols = 1
+	}
+	if innerRows < 1 {
+		innerRows = 1
+	}
+
+	icon := lipgloss.NewStyle().
+		Foreground(lipgloss.Color(blue)).Bold(true).Render("󰎄")
+	inner := lipgloss.Place(innerCols, innerRows, lipgloss.Center, lipgloss.Center, icon)
+	return styleCoverBorder.Width(innerCols).Height(innerRows).Render(inner)
 }
 
 // stylePlayerMuted returns a centred, muted style (used for idle hint text).
