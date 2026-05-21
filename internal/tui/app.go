@@ -57,6 +57,14 @@ type App struct {
 	// Tracks the ID of the track that was selected last time Enter was pressed.
 	// A second Enter on the same track opens the fullscreen player.
 	lastEnterID string
+
+	// ── Marquee scrollers ─────────────────────────────────────────────────────
+	// One Marquee per text field that may need to scroll.
+	mqTitle  *Marquee // player title
+	mqMeta   *Marquee // "artist · album" line
+	mqArtist *Marquee // artist-only (fullscreen)
+	mqAlbum  *Marquee // album-only  (fullscreen)
+	mqRow    *Marquee // selected list row "artist — title"
 }
 
 // NewApp creates the application model. Call WithProgram after tea.NewProgram.
@@ -78,6 +86,11 @@ func NewApp(player *audio.Player, musicDir string) *App {
 		progressBar: prog,
 		loading:     true,
 		playMode:    playModeLoop,
+		mqTitle:     NewMarquee("", "  •  "),
+		mqMeta:      NewMarquee("", "  •  "),
+		mqArtist:    NewMarquee("", "  •  "),
+		mqAlbum:     NewMarquee("", "  •  "),
+		mqRow:       NewMarquee("", "  •  "),
 	}
 }
 
@@ -138,6 +151,7 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			a.currentIdx = msg.idx
 			a.cursor = msg.idx
 			a.statusMsg = ""
+			a.syncMarquees()
 		}
 		return a, nil
 
@@ -145,6 +159,7 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return a, nil
 
 	case tickMsg:
+		a.tickMarquees()
 		return a, tick()
 
 	case trackDoneMsg:
@@ -262,4 +277,60 @@ func (a *App) rebuildShuffle() {
 	}
 	rand.Shuffle(n, func(i, j int) { order[i], order[j] = order[j], order[i] })
 	a.shuffleOrder = order
+}
+
+// ── Marquee helpers ───────────────────────────────────────────────────────────
+
+// syncMarquees updates all Marquee texts from the current track.
+// Call whenever the current track changes.
+func (a *App) syncMarquees() {
+	if a.currentTrack == nil {
+		a.mqTitle.SetText("")
+		a.mqMeta.SetText("")
+		a.mqArtist.SetText("")
+		a.mqAlbum.SetText("")
+		return
+	}
+	t := a.currentTrack
+	a.mqTitle.SetText(t.DisplayTitle())
+	a.mqMeta.SetText(t.DisplayArtist() + " · " + t.Album)
+	a.mqArtist.SetText(t.DisplayArtist())
+	a.mqAlbum.SetText(t.Album)
+}
+
+// tickMarquees advances all Marquee scroll positions.
+func (a *App) tickMarquees() {
+	listW := a.trackListInnerW()
+	const rightColW = 10
+	rowAvail := listW - rightColW - 1 // matches renderTrackList leftAvail
+	if rowAvail < 1 {
+		rowAvail = 20
+	}
+
+	miniW := a.miniPlayerW() - 4
+	if miniW <= 0 {
+		miniW = 20
+	}
+	fullW := a.fullPlayerInnerW() - 4
+	if fullW <= 0 {
+		fullW = 20
+	}
+
+	// Sync the selected-row marquee text each tick so it follows cursor moves.
+	if a.cursor < len(a.filtered) {
+		t := a.filtered[a.cursor]
+		icon := "  "
+		if a.currentTrack != nil && a.currentTrack.ID == t.ID {
+			icon = "󰎆 "
+		}
+		a.mqRow.SetText(icon + t.DisplayArtist() + " — " + t.DisplayTitle())
+	} else {
+		a.mqRow.SetText("")
+	}
+
+	a.mqRow.Tick(rowAvail)
+	a.mqTitle.Tick(miniW)
+	a.mqMeta.Tick(miniW)
+	a.mqArtist.Tick(fullW)
+	a.mqAlbum.Tick(fullW)
 }

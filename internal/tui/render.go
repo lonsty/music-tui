@@ -291,10 +291,16 @@ func (a *App) renderTrackList() string {
 		rightText := t.Format() + " " + formatDuration(t.Duration)
 		rightPadded := padLeft(rightText, rightColW)
 
-		// Left column: truncate to exact available display width, then pad.
-		leftAvail := innerW - rightColW - 1 // 1 space separator
-		leftText := truncate(icon+t.DisplayArtist()+" — "+t.DisplayTitle(), leftAvail)
-		leftPadded := padRight(leftText, leftAvail)
+		// Left column: selected row uses Marquee for scrolling; others truncate.
+		leftAvail := innerW - rightColW - 1
+		var leftPadded string
+		if isSelected {
+			// mqRow is kept in sync with the cursor by tickMarquees.
+			leftPadded = a.mqRow.Render(leftAvail)
+		} else {
+			leftText := truncate(icon+t.DisplayArtist()+" — "+t.DisplayTitle(), leftAvail)
+			leftPadded = padRight(leftText, leftAvail)
+		}
 
 		// Flat string with exact display width = innerW.
 		// No lipgloss Width — we measured correctly via strWidth.
@@ -354,14 +360,16 @@ func (a *App) buildMiniPlayerContent(w, h int) string {
 		return idle
 	}
 
-	t := a.currentTrack
 	div := styleDivider.Render(strings.Repeat("─", w-2))
 
-	// Track info
-	title := stylePlayerTitle.Width(w).Render(truncate(t.DisplayTitle(), w-2))
-	meta := stylePlayerArtist.Width(w).Render(
-		truncate(t.DisplayArtist()+" · "+t.Album, w-2),
-	)
+	// Track info — use Marquee for scrolling when text overflows.
+	titleAvail := w - 2
+	titleText := a.mqTitle.Render(titleAvail)
+	title := stylePlayerTitle.Render(titleText)
+
+	metaAvail := w - 2
+	metaText := a.mqMeta.Render(metaAvail)
+	meta := stylePlayerArtist.Render(metaText)
 
 	// Lyric placeholder
 	lyric := styleLyricNormal.Align(lipgloss.Center).Width(w).Render("󰝚  暂无歌词")
@@ -441,16 +449,18 @@ func (a *App) renderFullPlayer() string {
 }
 
 func (a *App) buildFullPlayerContent(w, h int) string {
-	t := a.currentTrack
-
 	// Cover placeholder — visually square, centred.
 	cover := buildCoverPlaceholder(w - 4)
 	coverLine := lipgloss.NewStyle().Width(w).Align(lipgloss.Center).Render(cover)
 
-	// Track info lines
-	title := stylePlayerTitle.Width(w).Render(truncate(t.DisplayTitle(), w-2))
-	artist := stylePlayerArtist.Width(w).Render(truncate(t.DisplayArtist(), w-2))
-	album := stylePlayerAlbum.Width(w).Render(truncate(t.Album, w-2))
+	// Track info lines — Marquee scrolling for overflow.
+	avail := w - 2
+	title := stylePlayerTitle.Width(w).Align(lipgloss.Center).
+		Render(a.mqTitle.Render(avail))
+	artist := stylePlayerArtist.Width(w).Align(lipgloss.Center).
+		Render(a.mqArtist.Render(avail))
+	album := stylePlayerAlbum.Width(w).Align(lipgloss.Center).
+		Render(a.mqAlbum.Render(avail))
 
 	// Progress bar + time (single line each)
 	pos := a.player.Position()
