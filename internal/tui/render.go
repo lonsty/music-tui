@@ -279,43 +279,45 @@ func (a *App) renderTrackList() string {
 		isSelected := i == a.cursor
 		isPlaying := a.currentTrack != nil && a.currentTrack.ID == t.ID
 
-		// Playing icon (2 display columns wide)
 		icon := "  "
 		if isPlaying {
 			icon = "󰎆 "
 		}
 
-		// Right column fixed width — "FLAC 00:00" = 9 cols, pad to 10.
+		// Right column: right-aligned, fixed display width.
 		const rightColW = 10
 		rightText := t.Format() + " " + formatDuration(t.Duration)
-		// Pad rightText to rightColW (right-align with spaces on the left).
-		rightPadded := strings.Repeat(" ", max(0, rightColW-displayWidth(rightText))) + rightText
 
-		// Left column: fill remaining width.
-		leftAvail := innerW - rightColW - 1 // 1 space separator
-		leftText := icon + t.DisplayArtist() + " — " + t.DisplayTitle()
-		leftText = truncate(leftText, leftAvail)
-		// Pad to leftAvail so total line = innerW.
-		leftPadded := leftText + strings.Repeat(" ", max(0, leftAvail-displayWidth(leftText)))
+		// Left column: truncated to leave room for right col + 1 separator.
+		leftAvail := innerW - rightColW - 1
+		leftText := truncate(icon+t.DisplayArtist()+" — "+t.DisplayTitle(), leftAvail)
 
-		// Single flat string — one Render call, background fills the whole line.
-		line := leftPadded + " " + rightPadded
+		// Pad left to leftAvail so right column always sits at the same position.
+		// Use rune count (ASCII-only right col, so this is accurate for that part).
+		leftText += strings.Repeat(" ", max(0, leftAvail-len([]rune(leftText))))
 
+		// Right-pad rightText to rightColW for consistent alignment.
+		rightText = strings.Repeat(" ", max(0, rightColW-len([]rune(rightText)))) + rightText
+
+		line := leftText + " " + rightText
+
+		// Apply colour + Width in a single Render so lipgloss pads any remaining
+		// space with the background colour — no manual space-counting needed.
 		var style lipgloss.Style
 		switch {
 		case isPlaying && isSelected:
-			style = lipgloss.NewStyle().
+			style = lipgloss.NewStyle().Width(innerW).
 				Background(lipgloss.Color(surface0)).
 				Foreground(lipgloss.Color(blue)).Bold(true)
 		case isPlaying:
-			style = lipgloss.NewStyle().
+			style = lipgloss.NewStyle().Width(innerW).
 				Foreground(lipgloss.Color(blue)).Bold(true)
 		case isSelected:
-			style = lipgloss.NewStyle().
+			style = lipgloss.NewStyle().Width(innerW).
 				Background(lipgloss.Color(surface0)).
 				Foreground(lipgloss.Color(text)).Bold(true)
 		default:
-			style = lipgloss.NewStyle().
+			style = lipgloss.NewStyle().Width(innerW).
 				Foreground(lipgloss.Color(subtext0))
 		}
 
