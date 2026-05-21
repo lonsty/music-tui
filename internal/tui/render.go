@@ -346,8 +346,25 @@ func (a *App) renderMiniPlayer() string {
 }
 
 func (a *App) buildMiniPlayerContent(w, h int) string {
-	// Cover placeholder — visually square, centred in panel.
-	cover := buildCoverPlaceholder(w - 2)
+	// Fixed rows consumed by everything below the cover art:
+	//   ""(1) + title(1) + meta(1) + ""(1) + div(1) + lyric(1) + div(1) +
+	//   ""(1) + bar(1) + timeStr(1) + ""(1) + controls(1) = 12
+	// One blank row above and below the cover box → +2 padding rows.
+	const belowRows = 12
+	const coverPad = 2
+	coverAvailRows := h - belowRows - coverPad
+	// Largest visual square: outerCols = outerRows*2, both dimensions constrained.
+	// maxOuterCols is panel inner width minus 2 for a small horizontal margin.
+	coverOuterRows := coverAvailRows
+	if maxCols := (w - 2); coverOuterRows*2 > maxCols {
+		coverOuterRows = maxCols / 2
+	}
+	if coverOuterRows < 4 {
+		coverOuterRows = 4
+	}
+	coverOuterCols := coverOuterRows * 2
+
+	cover := a.getCoverArt(coverOuterCols, coverOuterRows)
 	coverLine := lipgloss.NewStyle().Width(w).Align(lipgloss.Center).Render(cover)
 
 	if a.currentTrack == nil {
@@ -364,11 +381,11 @@ func (a *App) buildMiniPlayerContent(w, h int) string {
 
 	// Track info — use Marquee for scrolling when text overflows.
 	titleAvail := w - 2
-	titleText := a.mqTitle.Render(titleAvail)
+	titleText := a.mqTitle.RenderCentered(titleAvail)
 	title := stylePlayerTitle.Render(titleText)
 
 	metaAvail := w - 2
-	metaText := a.mqMeta.Render(metaAvail)
+	metaText := a.mqMeta.RenderCentered(metaAvail)
 	meta := stylePlayerArtist.Render(metaText)
 
 	// Lyric placeholder
@@ -389,6 +406,7 @@ func (a *App) buildMiniPlayerContent(w, h int) string {
 
 	return lipgloss.JoinVertical(lipgloss.Center,
 		coverLine,
+		"",
 		title,
 		meta,
 		"",
@@ -449,18 +467,34 @@ func (a *App) renderFullPlayer() string {
 }
 
 func (a *App) buildFullPlayerContent(w, h int) string {
-	// Cover placeholder — visually square, centred.
-	cover := buildCoverPlaceholder(w - 4)
+	// Fixed rows consumed by everything below the cover art:
+	//   ""(1) + title(1) + artist(1) + album(1) + ""(1) +
+	//   barLine(1) + timeLine(1) + ""(1) + controls(1) = 9
+	// One blank row above and below the cover box → +2 padding rows.
+	const belowRows = 9
+	const coverPad = 2
+	coverAvailRows := h - belowRows - coverPad
+	// Largest visual square: outerCols = outerRows*2, both dimensions constrained.
+	coverOuterRows := coverAvailRows
+	if maxCols := (w - 4); coverOuterRows*2 > maxCols {
+		coverOuterRows = maxCols / 2
+	}
+	if coverOuterRows < 4 {
+		coverOuterRows = 4
+	}
+	coverOuterCols := coverOuterRows * 2
+
+	cover := a.getCoverArt(coverOuterCols, coverOuterRows)
 	coverLine := lipgloss.NewStyle().Width(w).Align(lipgloss.Center).Render(cover)
 
 	// Track info lines — Marquee scrolling for overflow.
 	avail := w - 2
 	title := stylePlayerTitle.Width(w).Align(lipgloss.Center).
-		Render(a.mqTitle.Render(avail))
+		Render(a.mqTitle.RenderCentered(avail))
 	artist := stylePlayerArtist.Width(w).Align(lipgloss.Center).
-		Render(a.mqArtist.Render(avail))
+		Render(a.mqArtist.RenderCentered(avail))
 	album := stylePlayerAlbum.Width(w).Align(lipgloss.Center).
-		Render(a.mqAlbum.Render(avail))
+		Render(a.mqAlbum.RenderCentered(avail))
 
 	// Progress bar + time (single line each)
 	pos := a.player.Position()
@@ -728,27 +762,11 @@ func visibleWindow(cursor, total, maxRows int) (start, end int) {
 	return start, end
 }
 
-// buildCoverPlaceholder renders a visually-square cover art placeholder box.
-//
-// Terminal cells are roughly 1:2 (width:height in pixels), so a visual square
-// needs outerCols = outerRows * 2 in cell units. The rounded border adds 2
-// rows (top+bottom) and 2 cols (left+right), so:
-//
-//	innerCols = outerRows*2 - 2
-//	innerRows = outerRows - 2
-//
-// maxOuterCols caps the size so the box fits inside the calling panel.
-func buildCoverPlaceholder(maxOuterCols int) string {
-	// Pick the largest outerRows such that outerCols = outerRows*2 ≤ maxOuterCols.
-	outerRows := maxOuterCols / 2
-	if outerRows > 12 {
-		outerRows = 12 // reasonable max for readability
-	}
-	if outerRows < 4 {
-		outerRows = 4
-	}
-	outerCols := outerRows * 2
-
+// buildCoverPlaceholderSized renders a cover art placeholder box with an
+// explicit outer size (outerCols × outerRows in terminal cell units).
+// The border occupies 1 cell on each side, so the icon area is
+// (outerCols-2) × (outerRows-2).
+func buildCoverPlaceholderSized(outerCols, outerRows int) string {
 	innerCols := outerCols - 2
 	innerRows := outerRows - 2
 	if innerCols < 1 {
@@ -757,7 +775,6 @@ func buildCoverPlaceholder(maxOuterCols int) string {
 	if innerRows < 1 {
 		innerRows = 1
 	}
-
 	icon := lipgloss.NewStyle().
 		Foreground(lipgloss.Color(blue)).Bold(true).Render("󰎄")
 	inner := lipgloss.Place(innerCols, innerRows, lipgloss.Center, lipgloss.Center, icon)

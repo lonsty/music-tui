@@ -65,6 +65,12 @@ type App struct {
 	mqArtist *Marquee // artist-only (fullscreen)
 	mqAlbum  *Marquee // album-only  (fullscreen)
 	mqRow    *Marquee // selected list row "artist — title"
+
+	// ── Cover art cache ───────────────────────────────────────────────────────
+	// Pre-rendered terminal art string for the current track's cover.
+	// Invalidated whenever the track changes or the box size changes.
+	coverRendered string
+	coverW        int // outerCols value used to produce coverRendered
 }
 
 // NewApp creates the application model. Call WithProgram after tea.NewProgram.
@@ -281,9 +287,28 @@ func (a *App) rebuildShuffle() {
 
 // ── Marquee helpers ───────────────────────────────────────────────────────────
 
+// syncRowMarquee updates mqRow to match the current cursor position.
+// Call immediately when the cursor moves so the next render shows the correct
+// row text rather than the previous row's stale content.
+func (a *App) syncRowMarquee() {
+	if a.cursor >= len(a.filtered) {
+		a.mqRow.SetText("")
+		return
+	}
+	t := a.filtered[a.cursor]
+	icon := "  "
+	if a.currentTrack != nil && a.currentTrack.ID == t.ID {
+		icon = "󰎆 "
+	}
+	a.mqRow.SetText(icon + t.DisplayArtist() + " — " + t.DisplayTitle())
+}
+
 // syncMarquees updates all Marquee texts from the current track.
 // Call whenever the current track changes.
 func (a *App) syncMarquees() {
+	// Invalidate cover art cache whenever the track changes.
+	a.coverRendered = ""
+
 	if a.currentTrack == nil {
 		a.mqTitle.SetText("")
 		a.mqMeta.SetText("")
@@ -296,6 +321,48 @@ func (a *App) syncMarquees() {
 	a.mqMeta.SetText(t.DisplayArtist() + " · " + t.Album)
 	a.mqArtist.SetText(t.DisplayArtist())
 	a.mqAlbum.SetText(t.Album)
+}
+
+// getCoverArt renders the current track's embedded cover art inside a square
+// bordered box that fits within maxOuterCols columns and maxOuterRows character
+// rows.
+//
+// The largest visual square is chosen: each character row equals 2 pixel rows,
+// so outerCols = outerRows*2.  Both maxOuterCols and maxOuterRows constrain the
+// result.  The image is scaled with its original aspect ratio preserved
+// ("contain"): the longest edge fills the inner area and the shorter edge is
+// centred with blank padding.  Falls back to buildCoverPlaceholderSized when no
+// cover art is available or rendering fails.
+//
+// Results are cached and reused as long as the track and box dimensions are
+// unchanged.
+func (a *App) getCoverArt(maxOuterCols, maxOuterRows int) string {
+	// Largest square that fits both width and height constraints.
+	// A visual square needs outerCols = outerRows*2 (cells are ~2× taller than wide).
+	outerRows := maxOuterCols / 2
+	if maxOuterRows > 0 && outerRows > maxOuterRows {
+		outerRows = maxOuterRows
+	}
+	if outerRows < 4 {
+		outerRows = 4
+	}
+	outerCols := outerRows * 2
+
+	if a.currentTrack == nil || len(a.currentTrack.CoverArt) == 0 {
+		return buildCoverPlaceholderSized(outerCols, outerRows)
+	}
+	if a.coverRendered != "" && a.coverW == outerCols {
+		return a.coverRendered
+	}
+
+	rendered := renderCoverArt(a.currentTrack.CoverArt, outerCols, outerRows)
+	if rendered == "" {
+		return buildCoverPlaceholderSized(outerCols, outerRows)
+	}
+	// No border when cover art is present — the image fills the box directly.
+	a.coverRendered = rendered
+	a.coverW = outerCols
+	return a.coverRendered
 }
 
 // tickMarquees advances all Marquee scroll positions.

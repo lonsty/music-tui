@@ -52,10 +52,19 @@ func isSupportedAudio(path string) bool {
 func parseTrack(path string) (Track, error) {
 	// Read ID3 tags.
 	var title, artist, album string
+	var coverArt []byte
 	if tag, err := id3.Open(path, id3.Options{Parse: true}); err == nil {
 		title = tag.Title()
 		artist = tag.Artist()
 		album = tag.Album()
+		// Extract embedded cover art from the first APIC (Attached picture) frame.
+		frames := tag.GetFrames(tag.CommonID("Attached picture"))
+		if len(frames) > 0 {
+			if pic, ok := frames[0].(id3.PictureFrame); ok && len(pic.Picture) > 0 {
+				coverArt = make([]byte, len(pic.Picture))
+				copy(coverArt, pic.Picture)
+			}
+		}
 		tag.Close()
 	}
 
@@ -70,6 +79,7 @@ func parseTrack(path string) (Track, error) {
 		Duration: duration,
 		Path:     path,
 		Source:   SourceLocal,
+		CoverArt: coverArt,
 	}, nil
 }
 

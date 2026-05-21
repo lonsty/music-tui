@@ -29,6 +29,9 @@ type Track struct {
 	// URL is the remote stream URL; only set for SourceNetease tracks.
 	URL    string
 	Source Source
+	// CoverArt holds the raw image bytes (JPEG or PNG) from the ID3 APIC frame.
+	// Nil when no cover art is embedded in the file.
+	CoverArt []byte
 }
 
 // DisplayTitle returns a human-readable title for the track.

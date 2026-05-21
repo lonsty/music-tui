@@ -46,19 +46,23 @@ func (a *App) handleNormalKey(msg tea.KeyMsg) tea.Cmd {
 	case "j", "down":
 		if a.cursor < len(a.filtered)-1 {
 			a.cursor++
+			a.syncRowMarquee()
 		}
 
 	case "k", "up":
 		if a.cursor > 0 {
 			a.cursor--
+			a.syncRowMarquee()
 		}
 
 	case "g":
 		a.cursor = 0
+		a.syncRowMarquee()
 
 	case "G":
 		if len(a.filtered) > 0 {
 			a.cursor = len(a.filtered) - 1
+			a.syncRowMarquee()
 		}
 
 	// ── Playback ─────────────────────────────────────────────────────────────
@@ -185,12 +189,14 @@ func (a *App) handleSearchKey(msg tea.KeyMsg) tea.Cmd {
 	case "down":
 		if a.cursor < len(a.filtered)-1 {
 			a.cursor++
+			a.syncRowMarquee()
 		}
 		return nil
 
 	case "up":
 		if a.cursor > 0 {
 			a.cursor--
+			a.syncRowMarquee()
 		}
 		return nil
 	}

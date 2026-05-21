@@ -1,6 +1,10 @@
 package tui
 
-import "github.com/charmbracelet/x/ansi"
+import (
+	"strings"
+
+	"github.com/charmbracelet/x/ansi"
+)
 
 // Marquee is a scrolling-text widget. When the text fits within the given
 // width it is returned as-is; when it overflows the text scrolls left at one
@@ -80,6 +84,26 @@ func (m *Marquee) Render(width int) string {
 
 	// Build a double-loop buffer so we can always slice `width` columns
 	// starting at m.offset without worrying about running off the end.
+	buf := m.loop + m.loop
+	return colSlice(buf, m.offset, width)
+}
+
+// RenderCentered returns a string of exactly `width` display columns.
+// If the text fits, it is centered with equal left/right padding.
+// If it overflows, a scrolling window of `width` columns is returned
+// (same as Render — scrolling text is always left-edge aligned).
+func (m *Marquee) RenderCentered(width int) string {
+	if width <= 0 {
+		return ""
+	}
+	tw := strWidth(m.text)
+	if tw <= width {
+		pad := width - tw
+		left := pad / 2
+		right := pad - left
+		return strings.Repeat(" ", left) + m.text + strings.Repeat(" ", right)
+	}
+
 	buf := m.loop + m.loop
 	return colSlice(buf, m.offset, width)
 }
