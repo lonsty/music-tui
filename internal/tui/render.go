@@ -311,14 +311,10 @@ func (a *App) renderTrackList() string {
 		if isSelected {
 			midPadded = a.mqRow.Render(midAvail)
 			if isPlaying {
-				// Re-render the marquee output with gradient; the marquee
-				// already truncated/padded to midAvail columns.
 				midPadded = gradientText(strings.TrimRight(midPadded, " "), true, gradientColors...) +
 					padRight("", midAvail-strWidth(strings.TrimRight(midPadded, " ")))
 			}
 		} else {
-			// Use strWidth(midText) ≤ midAvail to avoid appending "…" when
-			// the text fits exactly.
 			if strWidth(midText) <= midAvail {
 				if isPlaying {
 					midPadded = gradientText(midText, true, gradientColors...) +
@@ -337,7 +333,15 @@ func (a *App) renderTrackList() string {
 			}
 		}
 
-		line := icon + midPadded + rightPadded
+		// For playing rows: colour the icon and right column blue so they
+		// match the gradient side visually (gradient only covers mid column).
+		styleBlue := lipgloss.NewStyle().Foreground(lipgloss.Color(blue)).Bold(true)
+		var line string
+		if isPlaying {
+			line = styleBlue.Render(icon) + midPadded + styleBlue.Render(rightPadded)
+		} else {
+			line = icon + midPadded + rightPadded
+		}
 
 		var style lipgloss.Style
 		switch {
