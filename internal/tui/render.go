@@ -625,16 +625,22 @@ func (a *App) renderStatusBar() string {
 		hints = hint("Esc", "Back") + hint("Spc", "Pause") +
 			hint("n", "Next") + hint("p", "Prev") + hint("m", "Mode")
 	} else {
-		switch state {
-		case audio.StateStopped:
-			hints = hint("Enter", "Play") + hint("/", "Search") +
-				hint(",", "Settings") + hint("?", "Help") + hint("q", "Quit")
-		case audio.StatePlaying:
+		switch {
+		case state == audio.StatePlaying:
 			hints = hint("Spc", "Pause") + hint("n", "Next") + hint("p", "Prev") +
 				hint("+/-", "Vol") + hint("/", "Search") + hint("?", "Help") + hint("q", "Quit")
-		case audio.StatePaused:
+		case state == audio.StatePaused:
 			hints = hint("Spc", "Resume") + hint("n", "Next") + hint("p", "Prev") +
 				hint("+/-", "Vol") + hint("/", "Search") + hint("?", "Help") + hint("q", "Quit")
+		case a.currentTrack != nil:
+			// Stopped but a track is loaded (e.g. briefly between track changes).
+			// Show playback hints to avoid a flash of "Enter Play" during seeks.
+			hints = hint("Spc", "Resume") + hint("n", "Next") + hint("p", "Prev") +
+				hint("+/-", "Vol") + hint("/", "Search") + hint("?", "Help") + hint("q", "Quit")
+		default:
+			// Truly stopped with no track — guide the user to load one.
+			hints = hint("Enter", "Play") + hint("/", "Search") +
+				hint(",", "Settings") + hint("?", "Help") + hint("q", "Quit")
 		}
 	}
 
