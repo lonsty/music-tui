@@ -1147,7 +1147,8 @@ func retroLabel(idx int) string {
 		return "off"
 	}
 	if hz >= 1000 {
-		return fmt.Sprintf("%dk", hz/1000)
+		// Round to nearest 100 Hz before dividing, e.g. 1378 → "1.4k".
+		return fmt.Sprintf("%.1fk", float64(hz)/1000.0)
 	}
 	return fmt.Sprintf("%d", hz)
 }

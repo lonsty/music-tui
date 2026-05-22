@@ -1,19 +1,26 @@
 package tui
 
 import (
+	"os"
 	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
 )
 
+// cmdQuit saves the session and stops playback before quitting.
+// Used by every quit path to avoid code duplication.
+func (a *App) cmdQuit() tea.Cmd {
+	return tea.Sequence(
+		func() tea.Msg { a.saveSession(); a.player.Stop(); return noopMsg{} },
+		tea.Quit,
+	)
+}
+
 // handleKey is the top-level keyboard dispatcher.
 func (a *App) handleKey(msg tea.KeyMsg) tea.Cmd {
 	// Global quit — works in every state.
 	if msg.String() == "ctrl+c" {
-		return tea.Sequence(
-			func() tea.Msg { a.saveSession(); a.player.Stop(); return noopMsg{} },
-			tea.Quit,
-		)
+		return a.cmdQuit()
 	}
 
 	// Fullscreen view has its own minimal key set.
@@ -41,10 +48,7 @@ func (a *App) handleKey(msg tea.KeyMsg) tea.Cmd {
 func (a *App) handleNormalKey(msg tea.KeyMsg) tea.Cmd {
 	switch msg.String() {
 	case "q":
-		return tea.Sequence(
-			func() tea.Msg { a.saveSession(); a.player.Stop(); return noopMsg{} },
-			tea.Quit,
-		)
+		return a.cmdQuit()
 
 	// ── Navigation ──────────────────────────────────────────────────────────
 	case "j", "down":
@@ -196,10 +200,7 @@ func (a *App) handleFullscreenKey(msg tea.KeyMsg) tea.Cmd {
 		a.player.SetVolume(a.volume)
 
 	case "q":
-		return tea.Sequence(
-			func() tea.Msg { a.saveSession(); a.player.Stop(); return noopMsg{} },
-			tea.Quit,
-		)
+		return a.cmdQuit()
 	}
 	return nil
 }
@@ -275,6 +276,14 @@ func (a *App) handleSettingsKey(msg tea.KeyMsg) tea.Cmd {
 		optsChanged := newOpts != a.chip8Options
 
 		if dirChanged {
+			// Validate the directory exists before saving.
+			if info, err := os.Stat(newDir); err != nil || !info.IsDir() {
+				a.statusMsg = "󰅚  Directory not found: " + newDir
+				a.activeOvl = overlayNone
+				a.musicDirInput.Blur()
+				a.settingsInput.Blur()
+				return nil
+			}
 			a.musicDir = newDir
 			if a.st != nil {
 				_ = a.st.SetSetting("music_dir", newDir)

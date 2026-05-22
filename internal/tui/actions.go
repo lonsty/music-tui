@@ -247,6 +247,7 @@ func clampVolume(v float64) float64 {
 
 // cmdSyncLibrary runs an incremental sync of a.musicDir against the database,
 // then reloads the full track list and sends a scanDoneMsg.
+// Any sync error is surfaced in the status bar via scanDoneMsg.err.
 func (a *App) cmdSyncLibrary() tea.Cmd {
 	if a.st == nil || a.musicDir == "" {
 		return nil
@@ -255,16 +256,17 @@ func (a *App) cmdSyncLibrary() tea.Cmd {
 	st := a.st
 	return func() tea.Msg {
 		coverDir, _ := store.CoverCacheDir()
-		_, _, _, err := store.SyncDir(context.Background(), dir, st, coverDir, nil)
-		if err != nil {
-			// Non-fatal: continue and return whatever is in the DB.
-			_ = err
-		}
+		_, _, _, syncErr := store.SyncDir(context.Background(), dir, st, coverDir, nil)
 		tracks, dbErr := st.AllTracks()
 		if dbErr != nil {
 			return scanDoneMsg{err: dbErr}
 		}
-		return scanDoneMsg{tracks: tracks}
+		// Return tracks even when syncErr is non-nil: we show whatever is in
+		// the DB and surface the sync error in the status bar.
+		if len(tracks) == 0 {
+			tracks = []library.Track{} // always non-nil slice
+		}
+		return scanDoneMsg{tracks: tracks, err: syncErr}
 	}
 }
 
@@ -323,13 +325,16 @@ func (a *App) cmdToggleChip() tea.Cmd {
 	return func() tea.Msg {
 		args := []string{track.Path, outPath, "--format", "mp3"}
 		if extraOpts != "" {
-			parsed, _ := shellSplit(extraOpts)
+			parsed := shellSplit(extraOpts)
 			args = append(args, parsed...)
 		} else {
-			// Default preset when no custom options are given.
 			args = append(args, "--sf2", "nes")
 		}
-		cmd := exec.Command("p2chip", args...)
+		// Use a 10-minute timeout so a stalled p2chip process doesn't block
+		// the chip state forever.
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
+		defer cancel()
+		cmd := exec.CommandContext(ctx, "p2chip", args...)
 		if err := cmd.Run(); err != nil {
 			return chip8DoneMsg{err: fmt.Errorf("p2chip: %w", err)}
 		}
@@ -344,16 +349,10 @@ func chip8CacheKey(path string) string {
 	return fmt.Sprintf("%x", h[:8])
 }
 
-// shellSplit splits a string into tokens the same way a POSIX shell would,
+// shellSplit splits a string into tokens the way a POSIX shell would,
 // respecting single-quoted and double-quoted sub-strings.
-//
-// It handles the common cases needed for p2chip option strings like:
-//
-//	--sf2 nes --onset 0.6 --trim "0:30"
-//
-// Returns a nil error; malformed quoting is handled leniently (unclosed
-// quotes are treated as if closed at end-of-string).
-func shellSplit(s string) ([]string, error) {
+// Malformed quoting (unclosed quotes) is handled leniently.
+func shellSplit(s string) []string {
 	var tokens []string
 	var cur strings.Builder
 	inSingle := false
@@ -390,5 +389,5 @@ func shellSplit(s string) ([]string, error) {
 	if cur.Len() > 0 {
 		tokens = append(tokens, cur.String())
 	}
-	return tokens, nil
+	return tokens
 }

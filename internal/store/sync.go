@@ -34,8 +34,15 @@ func SyncDir(
 ) (added, updated, deleted int, firstErr error) {
 	// ── Collect all audio files ───────────────────────────────────────────
 	var paths []string
-	_ = filepath.WalkDir(dir, func(path string, d fs.DirEntry, err error) error {
-		if err != nil || d.IsDir() {
+	walkErr := filepath.WalkDir(dir, func(path string, d fs.DirEntry, err error) error {
+		if err != nil {
+			// Record the first walk error but continue scanning other entries.
+			if firstErr == nil {
+				firstErr = err
+			}
+			return nil
+		}
+		if d.IsDir() {
 			return nil
 		}
 		if isSupportedAudio(path) {
@@ -43,6 +50,9 @@ func SyncDir(
 		}
 		return nil
 	})
+	if walkErr != nil && firstErr == nil {
+		firstErr = walkErr
+	}
 	total := len(paths)
 
 	// ── Process each file ─────────────────────────────────────────────────

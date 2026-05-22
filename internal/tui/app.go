@@ -137,7 +137,11 @@ func NewApp(player *audio.Player, st *store.Store, musicDir string, tracks []lib
 		progress.WithoutPercentage(),
 	)
 
-	tmpDir, _ := os.MkdirTemp("", "music-tui-*")
+	tmpDir, err := os.MkdirTemp("", "music-tui-*")
+	if err != nil {
+		// Fall back to the system temp directory; p2chip will still work.
+		tmpDir = os.TempDir()
+	}
 
 	vol := 1.0
 	mode := playModeLoop

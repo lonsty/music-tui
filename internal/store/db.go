@@ -122,13 +122,13 @@ func (s *Store) SetSettings(pairs map[string]string) error {
 		 ON CONFLICT(key) DO UPDATE SET value=excluded.value`,
 	)
 	if err != nil {
-		tx.Rollback()
+		_ = tx.Rollback()
 		return err
 	}
 	defer stmt.Close()
 	for k, v := range pairs {
 		if _, err := stmt.Exec(k, v); err != nil {
-			tx.Rollback()
+			_ = tx.Rollback()
 			return err
 		}
 	}
