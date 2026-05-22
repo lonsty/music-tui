@@ -625,9 +625,17 @@ func (a *App) renderStatusBar() string {
 		hints = hint("Esc", "Back") + hint("Spc", "Pause") +
 			hint("n", "Next") + hint("p", "Prev") + hint("m", "Mode")
 	} else {
-		hints = hint("/", "Search") + hint("i", "Info") +
-			hint("f", "Full") + hint("m", "Mode") +
-			hint("?", "Help") + hint("q", "Quit")
+		switch state {
+		case audio.StateStopped:
+			hints = hint("Enter", "Play") + hint("/", "Search") +
+				hint(",", "Settings") + hint("?", "Help") + hint("q", "Quit")
+		case audio.StatePlaying:
+			hints = hint("Spc", "Pause") + hint("n", "Next") + hint("p", "Prev") +
+				hint("+/-", "Vol") + hint("/", "Search") + hint("?", "Help") + hint("q", "Quit")
+		case audio.StatePaused:
+			hints = hint("Spc", "Resume") + hint("n", "Next") + hint("p", "Prev") +
+				hint("+/-", "Vol") + hint("/", "Search") + hint("?", "Help") + hint("q", "Quit")
+		}
 	}
 
 	if a.statusMsg != "" {
