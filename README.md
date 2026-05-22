@@ -66,27 +66,36 @@ CGO_ENABLED=1 go build -o music-tui ./cmd/music-tui
 
 ### 交叉编译 / Cross-compilation
 
-使用 `build.sh`（需要 [zig](https://ziglang.org/)）可以一键构建所有平台：
+使用 `build.sh`（需要 [zig](https://ziglang.org/)）：
 
 ```bash
 brew install zig        # macOS 上安装 zig
 chmod +x build.sh
-./build.sh              # 构建 macOS arm64/amd64、Linux arm64/amd64、Windows amd64
-SKIP_LINUX=1 ./build.sh # 只构建 macOS 和 Windows
+./build.sh              # macOS 上：构建 macOS arm64/amd64 + Windows
+                        # Linux 上：构建 Linux arm64/amd64 + Windows
 ```
 
-输出文件在 `bin/` 目录：
+> **Linux 目标**必须在 Linux 主机上构建（oto/v3 用 `pkg-config alsa` 查找 ALSA 头文件，macOS 上不存在）。  
+> Linux 上需要先安装：`sudo apt install libasound2-dev`
 
-| 文件 | 平台 |
-|------|------|
-| `music-tui-darwin-arm64` | macOS Apple Silicon |
-| `music-tui-darwin-amd64` | macOS Intel |
-| `music-tui-linux-amd64` | Linux x86_64（需要 libasound2 / glibc） |
-| `music-tui-linux-arm64` | Linux ARM64（需要 libasound2 / glibc） |
-| `music-tui-windows-amd64.exe` | Windows x86_64 |
+也可以通过打 tag 触发 GitHub Actions 自动构建所有平台：
 
-> **Linux 运行依赖**：`libasound2`（ALSA，桌面 Linux 均已预装）和 glibc。  
-> **Windows**：无额外依赖，直接运行。
+```bash
+git tag v1.0.0 && git push origin v1.0.0
+```
+
+输出文件 (`bin/`)：
+
+| 文件 | 平台 | 构建主机 |
+|------|------|---------|
+| `music-tui-darwin-arm64` | macOS Apple Silicon | macOS |
+| `music-tui-darwin-amd64` | macOS Intel | macOS |
+| `music-tui-linux-amd64` | Linux x86_64 | Linux |
+| `music-tui-linux-arm64` | Linux ARM64 | Linux |
+| `music-tui-windows-amd64.exe` | Windows x86_64 | macOS 或 Linux |
+
+> **Linux 运行依赖**：`libasound2`（ALSA，桌面 Linux 均预装）和 glibc。  
+> **Windows / macOS**：无额外运行时依赖。
 
 ---
 
