@@ -57,22 +57,36 @@ brew install fluidsynth
 git clone https://github.com/eilianxiao/music-tui
 cd music-tui
 
-# CGO 必须启用（go-sqlite3 依赖）
+# 本地编译（CGO 必须启用）
 CGO_ENABLED=1 go build -o music-tui ./cmd/music-tui
 
 ./music-tui ~/Music   # 首次运行指定目录
 ./music-tui           # 后续直接运行，目录从数据库读取
 ```
 
-跨平台编译使用 `build.sh`（需要 zig）：
+### 交叉编译 / Cross-compilation
+
+使用 `build.sh`（需要 [zig](https://ziglang.org/)）可以一键构建所有平台：
 
 ```bash
+brew install zig        # macOS 上安装 zig
 chmod +x build.sh
-./build.sh              # 编译 macOS arm64 / amd64 和 Linux
-SKIP_LINUX=1 ./build.sh # 只编译 macOS
+./build.sh              # 构建 macOS arm64/amd64、Linux arm64/amd64、Windows amd64
+SKIP_LINUX=1 ./build.sh # 只构建 macOS 和 Windows
 ```
 
-> Windows 需在 Windows 主机上原生编译：`go build -o music-tui.exe ./cmd/music-tui`
+输出文件在 `bin/` 目录：
+
+| 文件 | 平台 |
+|------|------|
+| `music-tui-darwin-arm64` | macOS Apple Silicon |
+| `music-tui-darwin-amd64` | macOS Intel |
+| `music-tui-linux-amd64` | Linux x86_64（需要 libasound2 / glibc） |
+| `music-tui-linux-arm64` | Linux ARM64（需要 libasound2 / glibc） |
+| `music-tui-windows-amd64.exe` | Windows x86_64 |
+
+> **Linux 运行依赖**：`libasound2`（ALSA，桌面 Linux 均已预装）和 glibc。  
+> **Windows**：无额外依赖，直接运行。
 
 ---
 
@@ -195,6 +209,8 @@ CGO_ENABLED=1 go build ./...   # 编译（CGO 必需）
 go test ./...                  # 运行测试
 go vet ./...                   # 静态检查
 ```
+
+也可以用 `build.sh` 同时编译所有平台（见上方安装章节）。
 
 ---
 
