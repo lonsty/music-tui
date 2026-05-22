@@ -20,8 +20,7 @@ jobs:
         with:
           go-version-file: go.mod
 
-      - name: Install zig
-        run: brew install zig
+      - uses: mlugg/setup-zig@v2
 
       - name: Build
         run: |
@@ -44,12 +43,7 @@ jobs:
         with:
           go-version-file: go.mod
 
-      - name: Install zig
-        run: |
-          ZIG_VERSION="0.13.0"
-          curl -sSL "https://ziglang.org/download/${ZIG_VERSION}/zig-linux-x86_64-${ZIG_VERSION}.tar.xz" \
-            | tar -xJ -C /usr/local
-          ln -s "/usr/local/zig-linux-x86_64-${ZIG_VERSION}/zig" /usr/local/bin/zig
+      - uses: mlugg/setup-zig@v2
 
       - name: Install ALSA headers
         run: sudo apt-get install -y libasound2-dev
