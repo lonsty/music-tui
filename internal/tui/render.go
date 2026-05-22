@@ -310,13 +310,30 @@ func (a *App) renderTrackList() string {
 		var midPadded string
 		if isSelected {
 			midPadded = a.mqRow.Render(midAvail)
+			if isPlaying {
+				// Re-render the marquee output with gradient; the marquee
+				// already truncated/padded to midAvail columns.
+				midPadded = gradientText(strings.TrimRight(midPadded, " "), true, gradientColors...) +
+					padRight("", midAvail-strWidth(strings.TrimRight(midPadded, " ")))
+			}
 		} else {
 			// Use strWidth(midText) ≤ midAvail to avoid appending "…" when
 			// the text fits exactly.
 			if strWidth(midText) <= midAvail {
-				midPadded = padRight(midText, midAvail)
+				if isPlaying {
+					midPadded = gradientText(midText, true, gradientColors...) +
+						padRight("", midAvail-strWidth(midText))
+				} else {
+					midPadded = padRight(midText, midAvail)
+				}
 			} else {
-				midPadded = padRight(truncate(midText, midAvail), midAvail)
+				cut := truncate(midText, midAvail)
+				if isPlaying {
+					midPadded = gradientText(cut, true, gradientColors...) +
+						padRight("", midAvail-strWidth(cut))
+				} else {
+					midPadded = padRight(cut, midAvail)
+				}
 			}
 		}
 
@@ -325,12 +342,12 @@ func (a *App) renderTrackList() string {
 		var style lipgloss.Style
 		switch {
 		case isPlaying && isSelected:
+			// Gradient handles foreground; keep background + bold only.
 			style = lipgloss.NewStyle().
-				Background(lipgloss.Color(surface0)).
-				Foreground(lipgloss.Color(blue)).Bold(true)
+				Background(lipgloss.Color(surface0)).Bold(true)
 		case isPlaying:
-			style = lipgloss.NewStyle().
-				Foreground(lipgloss.Color(blue)).Bold(true)
+			// Gradient handles foreground; bold only.
+			style = lipgloss.NewStyle().Bold(true)
 		case isSelected:
 			style = lipgloss.NewStyle().
 				Background(lipgloss.Color(surface0)).
@@ -397,7 +414,12 @@ func (a *App) buildMiniPlayerContent(w, h int) string {
 	// Track info — use Marquee for scrolling when text overflows.
 	titleAvail := w - 2
 	titleText := a.mqTitle.RenderCentered(titleAvail)
-	title := stylePlayerTitle.Render(titleText)
+	// Build gradient title: strip padding, apply gradient, re-centre.
+	titleCore := strings.TrimSpace(titleText)
+	titleGrad := gradientText(titleCore, true, gradientColors...)
+	pad := titleAvail - strWidth(titleCore)
+	lpad, rpad := pad/2, pad-pad/2
+	title := strings.Repeat(" ", lpad) + titleGrad + strings.Repeat(" ", rpad)
 
 	metaAvail := w - 2
 	metaText := a.mqMeta.RenderCentered(metaAvail)
@@ -504,8 +526,11 @@ func (a *App) buildFullPlayerContent(w, h int) string {
 
 	// Track info lines — Marquee scrolling for overflow.
 	avail := w - 2
-	title := stylePlayerTitle.Width(w).Align(lipgloss.Center).
-		Render(a.mqTitle.RenderCentered(avail))
+	// Title with gradient.
+	titleCore := strings.TrimSpace(a.mqTitle.RenderCentered(avail))
+	titleGrad := gradientText(titleCore, true, gradientColors...)
+	tpad := avail - strWidth(titleCore)
+	title := strings.Repeat(" ", tpad/2) + titleGrad + strings.Repeat(" ", tpad-tpad/2)
 	artist := stylePlayerArtist.Width(w).Align(lipgloss.Center).
 		Render(a.mqArtist.RenderCentered(avail))
 	album := stylePlayerAlbum.Width(w).Align(lipgloss.Center).
@@ -793,6 +818,97 @@ func (a *App) renderSettingsOverlay() string {
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
+
+// gradientText applies a linear colour gradient across the display columns of s.
+// colors must contain at least two hex colour strings (e.g. "#89B4FA").
+// Each rune is coloured by interpolating between adjacent colour stops based on
+// its position in the total display-column count.
+// bold controls whether each rune is also rendered in bold.
+func gradientText(s string, bold bool, colors ...string) string {
+	if len(s) == 0 || len(colors) < 2 {
+		return s
+	}
+	totalW := strWidth(s)
+	if totalW == 0 {
+		return s
+	}
+
+	// Parse hex colours into RGB float64 triples.
+	type rgb struct{ r, g, b float64 }
+	stops := make([]rgb, len(colors))
+	for i, c := range colors {
+		c = strings.TrimPrefix(c, "#")
+		if len(c) != 6 {
+			stops[i] = rgb{1, 1, 1}
+			continue
+		}
+		parse := func(s string) float64 {
+			v := 0
+			for _, ch := range s {
+				v <<= 4
+				switch {
+				case ch >= '0' && ch <= '9':
+					v += int(ch - '0')
+				case ch >= 'a' && ch <= 'f':
+					v += int(ch-'a') + 10
+				case ch >= 'A' && ch <= 'F':
+					v += int(ch-'A') + 10
+				}
+			}
+			return float64(v) / 255.0
+		}
+		stops[i] = rgb{parse(c[0:2]), parse(c[2:4]), parse(c[4:6])}
+	}
+
+	interpolate := func(t float64) rgb {
+		// t ∈ [0,1]; map onto [0, len(stops)-1]
+		scaled := t * float64(len(stops)-1)
+		lo := int(scaled)
+		if lo >= len(stops)-1 {
+			return stops[len(stops)-1]
+		}
+		frac := scaled - float64(lo)
+		a, b := stops[lo], stops[lo+1]
+		return rgb{
+			a.r + (b.r-a.r)*frac,
+			a.g + (b.g-a.g)*frac,
+			a.b + (b.b-a.b)*frac,
+		}
+	}
+
+	clamp := func(v float64) uint8 {
+		if v < 0 {
+			return 0
+		}
+		if v > 1 {
+			return 255
+		}
+		return uint8(v * 255)
+	}
+
+	var out strings.Builder
+	col := 0
+	for _, r := range s {
+		rw := strWidth(string(r))
+		t := float64(col) / float64(totalW-1)
+		if totalW == 1 {
+			t = 0
+		}
+		c := interpolate(t)
+		hex := fmt.Sprintf("#%02X%02X%02X", clamp(c.r), clamp(c.g), clamp(c.b))
+		st := lipgloss.NewStyle().Foreground(lipgloss.Color(hex))
+		if bold {
+			st = st.Bold(true)
+		}
+		out.WriteString(st.Render(string(r)))
+		col += rw
+	}
+	return out.String()
+}
+
+// gradientColors is the default gradient palette used for playing-track text.
+// blue → mauve → pink (Catppuccin Mocha).
+var gradientColors = []string{blue, mauve, pink}
 
 // strWidth returns the terminal display width of s (handles CJK, Nerd Font, etc.)
 // using the same wcwidth table that lipgloss uses internally.
