@@ -134,9 +134,12 @@ func (a *App) handleNormalKey(msg tea.KeyMsg) tea.Cmd {
 
 	case ",":
 		a.activeOvl = overlaySettings
+		a.settingsActive = 0
+		a.musicDirInput.SetValue(a.musicDir)
+		a.musicDirInput.Focus()
+		a.musicDirInput.CursorEnd()
 		a.settingsInput.SetValue(a.chip8Options)
-		a.settingsInput.Focus()
-		a.settingsInput.CursorEnd()
+		a.settingsInput.Blur()
 
 	case "tab":
 		a.activeTab = (a.activeTab + 1) % 2
@@ -172,9 +175,12 @@ func (a *App) handleFullscreenKey(msg tea.KeyMsg) tea.Cmd {
 
 	case ",":
 		a.activeOvl = overlaySettings
+		a.settingsActive = 0
+		a.musicDirInput.SetValue(a.musicDir)
+		a.musicDirInput.Focus()
+		a.musicDirInput.CursorEnd()
 		a.settingsInput.SetValue(a.chip8Options)
-		a.settingsInput.Focus()
-		a.settingsInput.CursorEnd()
+		a.settingsInput.Blur()
 
 	case "r":
 		return a.cmdRetroUp()
@@ -261,22 +267,77 @@ func (a *App) handleInfoKey(_ tea.KeyMsg) tea.Cmd {
 func (a *App) handleSettingsKey(msg tea.KeyMsg) tea.Cmd {
 	switch msg.String() {
 	case "enter":
-		// Save and close.
-		a.chip8Options = strings.TrimSpace(a.settingsInput.Value())
+		// Save both fields and close.
+		newDir := strings.TrimSpace(a.musicDirInput.Value())
+		newOpts := strings.TrimSpace(a.settingsInput.Value())
+
+		dirChanged := newDir != a.musicDir && newDir != ""
+		optsChanged := newOpts != a.chip8Options
+
+		if dirChanged {
+			a.musicDir = newDir
+			if a.st != nil {
+				_ = a.st.SetSetting("music_dir", newDir)
+			}
+		}
+		if optsChanged {
+			a.chip8Options = newOpts
+			if a.st != nil {
+				_ = a.st.SetSetting("chip8_options", newOpts)
+			}
+			// Invalidate the chip cache so new options apply next time.
+			a.chipPath = ""
+			a.chipOrigin = ""
+		}
+
 		a.activeOvl = overlayNone
+		a.musicDirInput.Blur()
 		a.settingsInput.Blur()
-		// Invalidate the chip cache so the new options are used next time.
-		a.chipPath = ""
-		a.chipOrigin = ""
 		return nil
+
 	case "esc":
 		// Discard and close.
 		a.activeOvl = overlayNone
+		a.musicDirInput.Blur()
 		a.settingsInput.Blur()
 		return nil
+
+	case "tab", "shift+tab":
+		// Toggle active input field.
+		if a.settingsActive == 0 {
+			a.settingsActive = 1
+			a.musicDirInput.Blur()
+			a.settingsInput.Focus()
+		} else {
+			a.settingsActive = 0
+			a.settingsInput.Blur()
+			a.musicDirInput.Focus()
+		}
+		return nil
+
+	case "ctrl+r":
+		// Reload library (runs in background, closes overlay).
+		a.musicDir = strings.TrimSpace(a.musicDirInput.Value())
+		if a.musicDir == "" {
+			a.musicDir = strings.TrimSpace(a.musicDirInput.Placeholder)
+		}
+		if a.st != nil {
+			_ = a.st.SetSetting("music_dir", a.musicDir)
+		}
+		a.activeOvl = overlayNone
+		a.musicDirInput.Blur()
+		a.settingsInput.Blur()
+		a.loading = true
+		a.statusMsg = "Reloading library…"
+		return a.cmdSyncLibrary()
 	}
-	// Forward all other keys to the text input.
+
+	// Forward typing to the active input.
 	var cmd tea.Cmd
-	a.settingsInput, cmd = a.settingsInput.Update(msg)
+	if a.settingsActive == 0 {
+		a.musicDirInput, cmd = a.musicDirInput.Update(msg)
+	} else {
+		a.settingsInput, cmd = a.settingsInput.Update(msg)
+	}
 	return cmd
 }

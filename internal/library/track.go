@@ -30,8 +30,12 @@ type Track struct {
 	URL    string
 	Source Source
 	// CoverArt holds the raw image bytes (JPEG or PNG) from the ID3 APIC frame.
-	// Nil when no cover art is embedded in the file.
+	// Populated during in-memory scanning; nil when loaded from the database
+	// (use CoverPath to lazy-load the cached file instead).
 	CoverArt []byte
+	// CoverPath is the filesystem path to the cached cover-art file written by
+	// the scanner.  Empty when no cover art was found.
+	CoverPath string
 }
 
 // DisplayTitle returns a human-readable title for the track.

@@ -630,7 +630,7 @@ func (a *App) renderHelpOverlay() string {
 		{"m", "Cycle play mode"},
 		{"b", "Toggle 8-bit chip mode  (converts + crossfades)"},
 		{"r / R", "Lo-fi effect  lower / raise sample rate"},
-		{",", "Settings"},
+		{",", "Settings  (music dir · p2chip options · Ctrl+R reload)"},
 		{"/", "Search  (s: artist  a: album  t: title)"},
 		{"i", "Track info"},
 		{"f", "Toggle fullscreen"},
@@ -700,39 +700,64 @@ func (a *App) renderInfoOverlay() string {
 // ── Settings overlay ──────────────────────────────────────────────────────────
 
 func (a *App) renderSettingsOverlay() string {
-	const lineW = 50
+	const lineW = 52
 
 	title := styleOverlayTitle.Render("  Settings")
-	divider := func(label string) string {
-		fill := lineW - len(label) - 1
+	topDiv := styleOverlayMuted.Render(strings.Repeat("─", lineW))
+
+	sectionLabel := func(label string) string {
+		fill := lineW - len(label) - 4
 		if fill < 0 {
 			fill = 0
 		}
 		return styleOverlayMuted.Render("── " + label + " " + strings.Repeat("─", fill))
 	}
 
-	// ── 8-bit Conversion section ──────────────────────────────────────────────
-	label := styleOverlayKey.Width(10).Render("Options")
-	inputLine := "  " + label + "  " + a.settingsInput.View()
-	hint := styleOverlayMuted.Render("  Extra options appended to the p2chip command.")
-	exHint := styleOverlayMuted.Render("  e.g.  --sf2 nes --onset 0.6 --trim 0:60")
+	// ── Active-input highlight helper ─────────────────────────────────────
+	labelStyle := func(active bool) lipgloss.Style {
+		if active {
+			return styleOverlayKey.Copy().Foreground(lipgloss.Color(mauve))
+		}
+		return styleOverlayKey
+	}
 
-	// ── Footer ────────────────────────────────────────────────────────────────
+	// ── Music Library section ─────────────────────────────────────────────
+	dirActive := a.settingsActive == 0
+	dirLabel := labelStyle(dirActive).Width(10).Render("Directory")
+	dirLine := "  " + dirLabel + "  " + a.musicDirInput.View()
+	reloadKey := styleOverlayKey.Render(" Ctrl+R ")
+	reloadHint := "  " + reloadKey + styleOverlayMuted.Render(" reload library  (adds new · removes missing)")
+
+	// ── 8-bit Conversion section ──────────────────────────────────────────
+	optsActive := a.settingsActive == 1
+	optsLabel := labelStyle(optsActive).Width(10).Render("Options")
+	optsLine := "  " + optsLabel + "  " + a.settingsInput.View()
+	optsHint := styleOverlayMuted.Render("  Extra options appended to the p2chip command.")
+	optsEx := styleOverlayMuted.Render("  e.g.  --sf2 nes --onset 0.6")
+
+	// ── Footer ────────────────────────────────────────────────────────────
 	enterKey := styleOverlayKey.Render(" Enter ")
 	escKey := styleOverlayKey.Render(" Esc ")
-	footer := "  " + enterKey + styleOverlayMuted.Render(" confirm  ·  ") +
-		escKey + styleOverlayMuted.Render(" cancel")
+	tabKey := styleOverlayKey.Render(" Tab ")
+	footer := "  " + enterKey + styleOverlayMuted.Render(" save  ·  ") +
+		escKey + styleOverlayMuted.Render(" cancel  ·  ") +
+		tabKey + styleOverlayMuted.Render(" switch field")
 
 	rows := []string{
 		title,
-		styleOverlayMuted.Render(strings.Repeat("─", lineW)),
+		topDiv,
 		"",
-		divider("8-bit Conversion  (p2chip)"),
+		sectionLabel("Music Library"),
 		"",
-		inputLine,
+		dirLine,
+		reloadHint,
 		"",
-		hint,
-		exHint,
+		sectionLabel("8-bit Conversion  (p2chip)"),
+		"",
+		optsLine,
+		"",
+		optsHint,
+		optsEx,
 		"",
 		footer,
 	}

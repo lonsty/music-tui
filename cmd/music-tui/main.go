@@ -9,27 +9,55 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 
 	"github.com/eilianxiao/music-tui/internal/audio"
+	"github.com/eilianxiao/music-tui/internal/store"
 	"github.com/eilianxiao/music-tui/internal/tui"
 )
 
 func main() {
-	musicDir := resolveMusicDir()
+	// ── Open (or create) the persistent database ──────────────────────────
+	dataDir, err := store.DataDir()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "failed to resolve data dir: %v\n", err)
+		os.Exit(1)
+	}
+	st, err := store.Open(filepath.Join(dataDir, "music-tui.db"))
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "failed to open database: %v\n", err)
+		os.Exit(1)
+	}
+	defer st.Close()
 
+	// ── Load persisted settings ───────────────────────────────────────────
+	musicDir, _ := st.GetSetting("music_dir")
+	if musicDir == "" {
+		musicDir = resolveMusicDir()
+		// Persist the resolved default so the user can see and edit it.
+		_ = st.SetSetting("music_dir", musicDir)
+	}
+
+	chip8Opts, _ := st.GetSetting("chip8_options")
+
+	// ── Load tracks from DB (no filesystem scan on startup) ───────────────
+	tracks, err := st.AllTracks()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "failed to load tracks: %v\n", err)
+		os.Exit(1)
+	}
+
+	// ── Initialise audio player ───────────────────────────────────────────
 	player, err := audio.NewPlayer()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "failed to initialise audio: %v\n", err)
 		os.Exit(1)
 	}
 
-	app := tui.NewApp(player, musicDir)
+	app := tui.NewApp(player, st, musicDir, tracks, chip8Opts)
 
 	p := tea.NewProgram(
 		app,
 		tea.WithAltScreen(),
 		tea.WithMouseCellMotion(),
 	)
-
-	// Wire the "track done" callback so it can send messages into the program.
 	app.WithProgram(p)
 
 	if _, err := p.Run(); err != nil {
@@ -37,17 +65,14 @@ func main() {
 		os.Exit(1)
 	}
 
-	// Clean up the temporary directory created for 8-bit conversions.
 	app.Cleanup()
 }
 
-// resolveMusicDir returns the music directory from CLI args or a sensible default.
+// resolveMusicDir returns a sensible default music directory.
 func resolveMusicDir() string {
 	if len(os.Args) >= 2 {
 		return os.Args[1]
 	}
-
-	// Try ~/Music first, fall back to current directory.
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return "."

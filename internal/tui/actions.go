@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"context"
 	"crypto/sha256"
 	"fmt"
 	"math/rand"
@@ -12,6 +13,7 @@ import (
 
 	"github.com/eilianxiao/music-tui/internal/audio"
 	"github.com/eilianxiao/music-tui/internal/library"
+	"github.com/eilianxiao/music-tui/internal/store"
 )
 
 // ── Play commands ─────────────────────────────────────────────────────────────
@@ -202,6 +204,31 @@ func clampVolume(v float64) float64 {
 		return 2.0
 	}
 	return v
+}
+
+// ── Library sync ──────────────────────────────────────────────────────────────
+
+// cmdSyncLibrary runs an incremental sync of a.musicDir against the database,
+// then reloads the full track list and sends a scanDoneMsg.
+func (a *App) cmdSyncLibrary() tea.Cmd {
+	if a.st == nil || a.musicDir == "" {
+		return nil
+	}
+	dir := a.musicDir
+	st := a.st
+	return func() tea.Msg {
+		coverDir, _ := store.CoverCacheDir()
+		_, _, _, err := store.SyncDir(context.Background(), dir, st, coverDir, nil)
+		if err != nil {
+			// Non-fatal: continue and return whatever is in the DB.
+			_ = err
+		}
+		tracks, dbErr := st.AllTracks()
+		if dbErr != nil {
+			return scanDoneMsg{err: dbErr}
+		}
+		return scanDoneMsg{tracks: tracks}
+	}
 }
 
 // ── 8-bit chip mode ───────────────────────────────────────────────────────────

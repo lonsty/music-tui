@@ -13,12 +13,14 @@ import (
 
 	"github.com/eilianxiao/music-tui/internal/audio"
 	"github.com/eilianxiao/music-tui/internal/library"
+	"github.com/eilianxiao/music-tui/internal/store"
 )
 
 // App is the root Bubble Tea model.
 type App struct {
 	player   *audio.Player
-	musicDir string
+	st       *store.Store // persistent database (may be nil for tests)
+	musicDir string       // current music library root
 
 	// ── Library ──────────────────────────────────────────────────────────────
 	tracks       []library.Track
@@ -46,7 +48,9 @@ type App struct {
 	searchInput textinput.Model
 
 	// ── Settings overlay ─────────────────────────────────────────────────────
-	settingsInput textinput.Model
+	settingsInput  textinput.Model // p2chip options
+	musicDirInput  textinput.Model // music library directory
+	settingsActive int             // 0 = musicDirInput active, 1 = settingsInput active
 
 	// ── Progress bar ─────────────────────────────────────────────────────────
 	progressBar progress.Model
@@ -88,7 +92,10 @@ type App struct {
 }
 
 // NewApp creates the application model. Call WithProgram after tea.NewProgram.
-func NewApp(player *audio.Player, musicDir string) *App {
+//
+// st may be nil (useful in tests). tracks is the pre-loaded library from the DB.
+// chip8Opts is the persisted p2chip options string.
+func NewApp(player *audio.Player, st *store.Store, musicDir string, tracks []library.Track, chip8Opts string) *App {
 	ti := textinput.New()
 	ti.Placeholder = "Search… (s: artist  a: album  t: title)"
 	ti.CharLimit = 128
@@ -98,6 +105,11 @@ func NewApp(player *audio.Player, musicDir string) *App {
 	si.CharLimit = 256
 	si.Width = 42
 
+	di := textinput.New()
+	di.Placeholder = "/path/to/music"
+	di.CharLimit = 512
+	di.Width = 42
+
 	prog := progress.New(
 		progress.WithGradient("#89B4FA", "#CBA6F7"),
 		progress.WithoutPercentage(),
@@ -105,22 +117,37 @@ func NewApp(player *audio.Player, musicDir string) *App {
 
 	tmpDir, _ := os.MkdirTemp("", "music-tui-*")
 
-	return &App{
+	app := &App{
 		player:        player,
+		st:            st,
 		musicDir:      musicDir,
 		volume:        1.0,
 		searchInput:   ti,
 		settingsInput: si,
+		musicDirInput: di,
 		progressBar:   prog,
-		loading:       true,
+		loading:       false,
 		playMode:      playModeLoop,
 		mqTitle:       NewMarquee("", "  •  "),
 		mqMeta:        NewMarquee("", "  •  "),
-		mqArtist:    NewMarquee("", "  •  "),
-		mqAlbum:     NewMarquee("", "  •  "),
-		mqRow:       NewMarquee("", "  •  "),
-		tmpDir:      tmpDir,
+		mqArtist:      NewMarquee("", "  •  "),
+		mqAlbum:       NewMarquee("", "  •  "),
+		mqRow:         NewMarquee("", "  •  "),
+		tmpDir:        tmpDir,
+		chip8Options:  chip8Opts,
 	}
+
+	if len(tracks) > 0 {
+		library.SortByArtistAlbum(tracks)
+		app.tracks = tracks
+		app.filtered = tracks
+		app.rebuildShuffle()
+		app.statusMsg = fmt.Sprintf("Loaded %d tracks", len(tracks))
+	} else {
+		app.statusMsg = "No tracks — open Settings (,) and reload the library"
+	}
+
+	return app
 }
 
 // Cleanup removes the temporary directory created by NewApp.
@@ -141,7 +168,8 @@ func (a *App) WithProgram(p *tea.Program) {
 
 // Init implements tea.Model.
 func (a *App) Init() tea.Cmd {
-	return tea.Batch(tick(), a.cmdScanLibrary())
+	// Library is pre-loaded from the database; just start the UI tick.
+	return tick()
 }
 
 // cmdScanLibrary scans the music directory in a goroutine.
@@ -262,7 +290,11 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	// Forward to settings input while settings overlay is active.
 	if a.activeOvl == overlaySettings {
 		var cmd tea.Cmd
-		a.settingsInput, cmd = a.settingsInput.Update(msg)
+		if a.settingsActive == 0 {
+			a.musicDirInput, cmd = a.musicDirInput.Update(msg)
+		} else {
+			a.settingsInput, cmd = a.settingsInput.Update(msg)
+		}
 		return a, cmd
 	}
 
@@ -411,8 +443,6 @@ func (a *App) syncMarquees() {
 // Results are cached and reused as long as the track and box dimensions are
 // unchanged.
 func (a *App) getCoverArt(maxOuterCols, maxOuterRows int) string {
-	// Largest square that fits both width and height constraints.
-	// A visual square needs outerCols = outerRows*2 (cells are ~2× taller than wide).
 	outerRows := maxOuterCols / 2
 	if maxOuterRows > 0 && outerRows > maxOuterRows {
 		outerRows = maxOuterRows
@@ -422,18 +452,31 @@ func (a *App) getCoverArt(maxOuterCols, maxOuterRows int) string {
 	}
 	outerCols := outerRows * 2
 
-	if a.currentTrack == nil || len(a.currentTrack.CoverArt) == 0 {
+	if a.currentTrack == nil {
+		return buildCoverPlaceholderSized(outerCols, outerRows)
+	}
+
+	// Prefer in-memory CoverArt (fresh scan); fall back to CoverPath (DB load).
+	coverData := a.currentTrack.CoverArt
+	if len(coverData) == 0 && a.currentTrack.CoverPath != "" {
+		if data, err := os.ReadFile(a.currentTrack.CoverPath); err == nil {
+			coverData = data
+			// Cache back into the track to avoid re-reading every frame.
+			a.currentTrack.CoverArt = data
+		}
+	}
+
+	if len(coverData) == 0 {
 		return buildCoverPlaceholderSized(outerCols, outerRows)
 	}
 	if a.coverRendered != "" && a.coverW == outerCols {
 		return a.coverRendered
 	}
 
-	rendered := renderCoverArt(a.currentTrack.CoverArt, outerCols, outerRows)
+	rendered := renderCoverArt(coverData, outerCols, outerRows)
 	if rendered == "" {
 		return buildCoverPlaceholderSized(outerCols, outerRows)
 	}
-	// No border when cover art is present — the image fills the box directly.
 	a.coverRendered = rendered
 	a.coverW = outerCols
 	return a.coverRendered
