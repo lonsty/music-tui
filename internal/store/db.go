@@ -111,6 +111,30 @@ func (s *Store) SetSetting(key, value string) error {
 	return err
 }
 
+// SetSettings writes multiple key/value pairs in a single transaction.
+func (s *Store) SetSettings(pairs map[string]string) error {
+	tx, err := s.db.Begin()
+	if err != nil {
+		return err
+	}
+	stmt, err := tx.Prepare(
+		`INSERT INTO settings(key, value) VALUES(?,?)
+		 ON CONFLICT(key) DO UPDATE SET value=excluded.value`,
+	)
+	if err != nil {
+		tx.Rollback()
+		return err
+	}
+	defer stmt.Close()
+	for k, v := range pairs {
+		if _, err := stmt.Exec(k, v); err != nil {
+			tx.Rollback()
+			return err
+		}
+	}
+	return tx.Commit()
+}
+
 // ── Tracks ────────────────────────────────────────────────────────────────────
 
 // AllTracks returns all tracks from the database in the standard sort order:

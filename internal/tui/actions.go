@@ -8,6 +8,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 
@@ -17,6 +18,47 @@ import (
 )
 
 // ── Play commands ─────────────────────────────────────────────────────────────
+
+// cmdRestoreSession loads the last-played track, seeks to the saved position,
+// and leaves the player paused regardless of the previous playing state.
+// This is called once from Init() when a saved session is present.
+func (a *App) cmdRestoreSession() tea.Cmd {
+	if a.session == nil {
+		return nil
+	}
+	sess := a.session
+	a.session = nil // consume so it's not used again
+
+	// Find the track in the filtered list by path.
+	idx := -1
+	for i, t := range a.filtered {
+		if t.Path == sess.LastTrackPath {
+			idx = i
+			break
+		}
+	}
+	if idx < 0 {
+		return nil // track no longer in library
+	}
+
+	track := a.filtered[idx]
+	posMs := sess.LastPositionMs
+
+	return func() tea.Msg {
+		// Play the track (this opens the file and starts audio).
+		if err := a.player.Play(track); err != nil {
+			return playResultMsg{err: err, idx: idx}
+		}
+		// Seek to the saved position.
+		if posMs > 0 {
+			_ = a.player.Seek(time.Duration(posMs) * time.Millisecond)
+		}
+		// Always start paused so the user can choose to resume.
+		a.player.Pause()
+		t := track
+		return playResultMsg{track: &t, idx: idx}
+	}
+}
 
 // cmdPlayTrack returns a Cmd that plays filtered[idx].
 // All App-state mutations happen via playResultMsg in Update — never in the Cmd.

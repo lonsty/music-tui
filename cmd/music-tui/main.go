@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
 
 	tea "github.com/charmbracelet/bubbletea"
 
@@ -31,18 +32,18 @@ func main() {
 	musicDir, _ := st.GetSetting("music_dir")
 	if musicDir == "" {
 		musicDir = resolveMusicDir()
-		// Persist the resolved default so the user can see and edit it.
 		_ = st.SetSetting("music_dir", musicDir)
 	}
 
-	chip8Opts, _ := st.GetSetting("chip8_options")
-
-	// ── Load tracks from DB (no filesystem scan on startup) ───────────────
+	// ── Load tracks from DB ───────────────────────────────────────────────
 	tracks, err := st.AllTracks()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "failed to load tracks: %v\n", err)
 		os.Exit(1)
 	}
+
+	// ── Restore last session ──────────────────────────────────────────────
+	sess := loadSession(st)
 
 	// ── Initialise audio player ───────────────────────────────────────────
 	player, err := audio.NewPlayer()
@@ -51,7 +52,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	app := tui.NewApp(player, st, musicDir, tracks, chip8Opts)
+	app := tui.NewApp(player, st, musicDir, tracks, sess)
 
 	p := tea.NewProgram(
 		app,
@@ -66,6 +67,57 @@ func main() {
 	}
 
 	app.Cleanup()
+}
+
+// loadSession reads all persisted playback state from the DB.
+// Returns nil when there is no previous session to restore.
+func loadSession(st *store.Store) *tui.SessionState {
+	get := func(key string) string {
+		v, _ := st.GetSetting(key)
+		return v
+	}
+	atoi := func(s string, def int) int {
+		if s == "" {
+			return def
+		}
+		n, err := strconv.Atoi(s)
+		if err != nil {
+			return def
+		}
+		return n
+	}
+	atof := func(s string, def float64) float64 {
+		if s == "" {
+			return def
+		}
+		f, err := strconv.ParseFloat(s, 64)
+		if err != nil {
+			return def
+		}
+		return f
+	}
+
+	lastTrack := get("last_track_path")
+	if lastTrack == "" {
+		// No previous session.
+		return &tui.SessionState{
+			Volume:       atof(get("volume"), 1.0),
+			PlayMode:     atoi(get("play_mode"), 0),
+			RetroIdx:     atoi(get("retro_idx"), 0),
+			Chip8Options: get("chip8_options"),
+		}
+	}
+
+	return &tui.SessionState{
+		LastTrackPath:  lastTrack,
+		LastPositionMs: int64(atoi(get("last_position_ms"), 0)),
+		WasPlaying:     get("was_playing") == "1",
+		Volume:         atof(get("volume"), 1.0),
+		PlayMode:       atoi(get("play_mode"), 0),
+		RetroIdx:       atoi(get("retro_idx"), 0),
+		Cursor:         atoi(get("cursor"), 0),
+		Chip8Options:   get("chip8_options"),
+	}
 }
 
 // resolveMusicDir returns a sensible default music directory.

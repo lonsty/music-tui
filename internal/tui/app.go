@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"math/rand"
 	"os"
+	"strconv"
 
 	"github.com/charmbracelet/bubbles/progress"
 	"github.com/charmbracelet/bubbles/textinput"
@@ -16,11 +17,27 @@ import (
 	"github.com/eilianxiao/music-tui/internal/store"
 )
 
+// SessionState holds the persisted state that is restored on the next launch.
+type SessionState struct {
+	LastTrackPath  string
+	LastPositionMs int64
+	WasPlaying     bool // if true, load the track but start paused
+	Volume         float64
+	PlayMode       int
+	RetroIdx       int
+	Cursor         int
+	Chip8Options   string
+}
+
 // App is the root Bubble Tea model.
 type App struct {
 	player   *audio.Player
 	st       *store.Store // persistent database (may be nil for tests)
 	musicDir string       // current music library root
+
+	// session holds the state loaded from the DB at startup; it is consumed
+	// by cmdRestoreSession on the first Init tick and then zeroed out.
+	session *SessionState
 
 	// ── Library ──────────────────────────────────────────────────────────────
 	tracks       []library.Track
@@ -94,8 +111,13 @@ type App struct {
 // NewApp creates the application model. Call WithProgram after tea.NewProgram.
 //
 // st may be nil (useful in tests). tracks is the pre-loaded library from the DB.
-// chip8Opts is the persisted p2chip options string.
-func NewApp(player *audio.Player, st *store.Store, musicDir string, tracks []library.Track, chip8Opts string) *App {
+// sess carries the persisted state from the previous run (may be nil).
+func NewApp(player *audio.Player, st *store.Store, musicDir string, tracks []library.Track, sess *SessionState) *App {
+	chip8Opts := ""
+	if sess != nil {
+		chip8Opts = sess.Chip8Options
+	}
+
 	ti := textinput.New()
 	ti.Placeholder = "Search… (s: artist  a: album  t: title)"
 	ti.CharLimit = 128
@@ -117,17 +139,31 @@ func NewApp(player *audio.Player, st *store.Store, musicDir string, tracks []lib
 
 	tmpDir, _ := os.MkdirTemp("", "music-tui-*")
 
+	vol := 1.0
+	mode := playModeLoop
+	rIdx := 0
+	cursor := 0
+	if sess != nil {
+		if sess.Volume > 0 {
+			vol = sess.Volume
+		}
+		mode = playMode(sess.PlayMode)
+		rIdx = sess.RetroIdx
+		cursor = sess.Cursor
+	}
+
 	app := &App{
 		player:        player,
 		st:            st,
 		musicDir:      musicDir,
-		volume:        1.0,
+		volume:        vol,
 		searchInput:   ti,
 		settingsInput: si,
 		musicDirInput: di,
 		progressBar:   prog,
 		loading:       false,
-		playMode:      playModeLoop,
+		playMode:      mode,
+		retroIdx:      rIdx,
 		mqTitle:       NewMarquee("", "  •  "),
 		mqMeta:        NewMarquee("", "  •  "),
 		mqArtist:      NewMarquee("", "  •  "),
@@ -135,7 +171,13 @@ func NewApp(player *audio.Player, st *store.Store, musicDir string, tracks []lib
 		mqRow:         NewMarquee("", "  •  "),
 		tmpDir:        tmpDir,
 		chip8Options:  chip8Opts,
+		session:       sess,
 	}
+
+	// Apply volume to player immediately.
+	player.SetVolume(vol)
+	// Apply retro preset.
+	player.SetRetroPreset(rIdx)
 
 	if len(tracks) > 0 {
 		library.SortByArtistAlbum(tracks)
@@ -143,6 +185,14 @@ func NewApp(player *audio.Player, st *store.Store, musicDir string, tracks []lib
 		app.filtered = tracks
 		app.rebuildShuffle()
 		app.statusMsg = fmt.Sprintf("Loaded %d tracks", len(tracks))
+		// Restore cursor, clamped to valid range.
+		if cursor >= len(tracks) {
+			cursor = len(tracks) - 1
+		}
+		if cursor < 0 {
+			cursor = 0
+		}
+		app.cursor = cursor
 	} else {
 		app.statusMsg = "No tracks — open Settings (,) and reload the library"
 	}
@@ -150,12 +200,44 @@ func NewApp(player *audio.Player, st *store.Store, musicDir string, tracks []lib
 	return app
 }
 
-// Cleanup removes the temporary directory created by NewApp.
-// Call this when the application exits.
+// Cleanup saves the current session state to the database and removes
+// the temporary directory.  Call this when the application exits.
 func (a *App) Cleanup() {
+	a.saveSession()
 	if a.tmpDir != "" {
 		_ = os.RemoveAll(a.tmpDir)
 	}
+}
+
+// saveSession persists all user-facing state to the settings table so it can
+// be restored on the next launch.
+func (a *App) saveSession() {
+	if a.st == nil {
+		return
+	}
+	pos := a.player.Position()
+	state := a.player.State()
+	wasPlaying := "0"
+	if state == audio.StatePlaying || state == audio.StatePaused {
+		wasPlaying = "1"
+	}
+
+	lastTrackPath := ""
+	if a.currentTrack != nil {
+		lastTrackPath = a.currentTrack.Path
+	}
+
+	pairs := map[string]string{
+		"volume":           strconv.FormatFloat(a.volume, 'f', 4, 64),
+		"play_mode":        strconv.Itoa(int(a.playMode)),
+		"retro_idx":        strconv.Itoa(a.retroIdx),
+		"last_track_path":  lastTrackPath,
+		"last_position_ms": strconv.FormatInt(pos.Milliseconds(), 10),
+		"was_playing":      wasPlaying,
+		"cursor":           strconv.Itoa(a.cursor),
+		"chip8_options":    a.chip8Options,
+	}
+	_ = a.st.SetSettings(pairs)
 }
 
 // WithProgram wires the audio "done" callback to send a trackDoneMsg.
@@ -168,8 +250,11 @@ func (a *App) WithProgram(p *tea.Program) {
 
 // Init implements tea.Model.
 func (a *App) Init() tea.Cmd {
-	// Library is pre-loaded from the database; just start the UI tick.
-	return tick()
+	cmds := []tea.Cmd{tick()}
+	if a.session != nil && a.session.LastTrackPath != "" {
+		cmds = append(cmds, a.cmdRestoreSession())
+	}
+	return tea.Batch(cmds...)
 }
 
 // cmdScanLibrary scans the music directory in a goroutine.
