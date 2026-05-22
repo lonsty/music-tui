@@ -36,6 +36,9 @@ func main() {
 		fmt.Fprintf(os.Stderr, "error running program: %v\n", err)
 		os.Exit(1)
 	}
+
+	// Clean up the temporary directory created for 8-bit conversions.
+	app.Cleanup()
 }
 
 // resolveMusicDir returns the music directory from CLI args or a sensible default.

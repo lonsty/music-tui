@@ -94,10 +94,14 @@ func (a *App) handleNormalKey(msg tea.KeyMsg) tea.Cmd {
 	case "m":
 		return a.cmdNextPlayMode()
 
-	// ── Bit-crush effect ──────────────────────────────────────────────────────
+	// ── 8-bit chip mode ───────────────────────────────────────────────────────
 	case "b":
+		return a.cmdToggleChip()
+
+	// ── Retro lo-fi effect (r/R) ──────────────────────────────────────────────
+	case "r":
 		return a.cmdRetroUp()
-	case "B":
+	case "R":
 		return a.cmdRetroDown()
 
 	// ── Volume ────────────────────────────────────────────────────────────────
@@ -154,8 +158,11 @@ func (a *App) handleFullscreenKey(msg tea.KeyMsg) tea.Cmd {
 		return a.cmdNextPlayMode()
 
 	case "b":
+		return a.cmdToggleChip()
+
+	case "r":
 		return a.cmdRetroUp()
-	case "B":
+	case "R":
 		return a.cmdRetroDown()
 
 	case "+", "=":

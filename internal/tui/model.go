@@ -107,6 +107,14 @@ type playResultMsg struct {
 // Never return nil from a tea.Cmd — it causes a panic.
 type noopMsg struct{}
 
+// chip8DoneMsg is sent by the background goroutine that runs p2chip.
+// On success chipPath holds the converted mp3 path; err is non-nil on failure.
+type chip8DoneMsg struct {
+	originPath string // Track.Path of the source file
+	chipPath   string // path to the generated 8-bit mp3
+	err        error
+}
+
 // tick fires a tickMsg after 500 ms.
 func tick() tea.Cmd {
 	return tea.Tick(500*time.Millisecond, func(t time.Time) tea.Msg {

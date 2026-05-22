@@ -1,7 +1,11 @@
 package tui
 
 import (
+	"crypto/sha256"
+	"fmt"
 	"math/rand"
+	"os/exec"
+	"path/filepath"
 	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -198,4 +202,72 @@ func clampVolume(v float64) float64 {
 		return 2.0
 	}
 	return v
+}
+
+// ── 8-bit chip mode ───────────────────────────────────────────────────────────
+
+// cmdToggleChip toggles the 8-bit conversion mode for the current track.
+//
+// State machine:
+//   - chipBusy == true  → no-op (conversion or crossfade already in progress)
+//   - chipMode == true  → crossfade back to the original track, clear chipMode
+//   - chipMode == false → convert (if needed) then crossfade to 8-bit version
+func (a *App) cmdToggleChip() tea.Cmd {
+	// Locked — ignore repeat presses.
+	if a.chipBusy {
+		return nil
+	}
+	if a.currentTrack == nil {
+		return nil
+	}
+
+	a.chipBusy = true
+
+	if a.chipMode {
+		// ── Turn off: crossfade back to original ──────────────────────────
+		originPath := a.currentTrack.Path
+		return func() tea.Msg {
+			pos := a.player.Position()
+			_ = a.player.CrossfadeTo(originPath, pos)
+			a.chipMode = false
+			a.chipBusy = false
+			return noopMsg{}
+		}
+	}
+
+	// ── Turn on ───────────────────────────────────────────────────────────
+	track := *a.currentTrack
+
+	// Cache hit — crossfade immediately without re-converting.
+	if a.chipOrigin == track.Path && a.chipPath != "" {
+		cachedPath := a.chipPath
+		return func() tea.Msg {
+			pos := a.player.Position()
+			_ = a.player.CrossfadeTo(cachedPath, pos)
+			a.chipMode = true
+			a.chipBusy = false
+			return noopMsg{}
+		}
+	}
+
+	// No cache — run p2chip in the background.
+	outPath := filepath.Join(a.tmpDir, chip8CacheKey(track.Path)+".mp3")
+	return func() tea.Msg {
+		cmd := exec.Command(
+			"p2chip", track.Path, outPath,
+			"--sf2", "nes",
+			"--format", "mp3",
+		)
+		if err := cmd.Run(); err != nil {
+			return chip8DoneMsg{err: fmt.Errorf("p2chip: %w", err)}
+		}
+		return chip8DoneMsg{originPath: track.Path, chipPath: outPath}
+	}
+}
+
+// chip8CacheKey returns a short hex string derived from path, used as the
+// cache file name for the converted 8-bit mp3.
+func chip8CacheKey(path string) string {
+	h := sha256.Sum256([]byte(path))
+	return fmt.Sprintf("%x", h[:8])
 }

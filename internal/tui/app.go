@@ -4,6 +4,7 @@ package tui
 import (
 	"fmt"
 	"math/rand"
+	"os"
 
 	"github.com/charmbracelet/bubbles/progress"
 	"github.com/charmbracelet/bubbles/textinput"
@@ -31,6 +32,13 @@ type App struct {
 	volume    float64  // [0.0, 2.0]; 1.0 = unity gain
 	playMode  playMode // sequential / loop / single / random
 	retroIdx  int      // retro effect preset index (0 = off)
+
+	// ── 8-bit mode ───────────────────────────────────────────────────────────
+	chipMode   bool   // currently playing the 8-bit converted version
+	chipBusy   bool   // conversion or crossfade in progress (locked)
+	chipPath   string // path to the cached 8-bit mp3 (in tmpDir)
+	chipOrigin string // Track.Path for which chipPath was generated
+	tmpDir     string // temp directory; created on startup, removed on exit
 
 	// ── Search ───────────────────────────────────────────────────────────────
 	searchInput textinput.Model
@@ -85,6 +93,8 @@ func NewApp(player *audio.Player, musicDir string) *App {
 		progress.WithoutPercentage(),
 	)
 
+	tmpDir, _ := os.MkdirTemp("", "music-tui-*")
+
 	return &App{
 		player:      player,
 		musicDir:    musicDir,
@@ -98,6 +108,15 @@ func NewApp(player *audio.Player, musicDir string) *App {
 		mqArtist:    NewMarquee("", "  •  "),
 		mqAlbum:     NewMarquee("", "  •  "),
 		mqRow:       NewMarquee("", "  •  "),
+		tmpDir:      tmpDir,
+	}
+}
+
+// Cleanup removes the temporary directory created by NewApp.
+// Call this when the application exits.
+func (a *App) Cleanup() {
+	if a.tmpDir != "" {
+		_ = os.RemoveAll(a.tmpDir)
 	}
 }
 
@@ -164,6 +183,24 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case noopMsg:
 		return a, nil
+
+	case chip8DoneMsg:
+		if msg.err != nil {
+			// Conversion failed — unlock and surface the error.
+			a.chipBusy = false
+			a.statusMsg = "󰅚  8-bit convert failed: " + msg.err.Error()
+			return a, nil
+		}
+		// Cache the result and crossfade to the 8-bit track.
+		a.chipPath = msg.chipPath
+		a.chipOrigin = msg.originPath
+		pos := a.player.Position()
+		return a, func() tea.Msg {
+			_ = a.player.CrossfadeTo(msg.chipPath, pos)
+			a.chipMode = true
+			a.chipBusy = false
+			return noopMsg{}
+		}
 
 	case tickMsg:
 		a.tickMarquees()

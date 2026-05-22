@@ -597,7 +597,17 @@ func (a *App) renderStatusBar() string {
 		retroChip = "  " + styleStatusState.Render(" "+retroLabel(a.retroIdx)+" ")
 	}
 
-	line := " " + stateChip + "  " + modeChip + retroChip + "  " + hints
+	var chipChip string
+	switch {
+	case a.chipBusy && !a.chipMode:
+		chipChip = "  " + styleStatusState.Render(" 8-bit Converting… ")
+	case a.chipBusy && a.chipMode:
+		chipChip = "  " + styleStatusState.Render(" 8-bit Switching… ")
+	case a.chipMode:
+		chipChip = "  " + styleStatusState.Render(" 8-bit ")
+	}
+
+	line := " " + stateChip + "  " + modeChip + retroChip + chipChip + "  " + hints
 	// No Width — don't pad with background colour to the right edge.
 	return styleStatusLine.Render(line)
 }
@@ -614,7 +624,8 @@ func (a *App) renderHelpOverlay() string {
 		{"Space", "Pause / Resume"},
 		{"n / p", "Next / Previous"},
 		{"m", "Cycle play mode"},
-		{"b / B", "Lo-fi effect  lower / raise sample rate"},
+		{"b", "Toggle 8-bit chip mode  (converts + crossfades)"},
+		{"r / R", "Lo-fi effect  lower / raise sample rate"},
 		{"/", "Search  (s: artist  a: album  t: title)"},
 		{"i", "Track info"},
 		{"f", "Toggle fullscreen"},

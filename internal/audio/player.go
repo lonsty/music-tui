@@ -434,6 +434,117 @@ func (p *Player) SetRetroPreset(idx int) {
 	speaker.Unlock()
 }
 
+// CrossfadeTo fades out the current track, then starts newPath from
+// positionOffset with a fade-in.  The call blocks until both the fade-out and
+// the fade-in are fully complete, making it safe to call from a tea.Cmd
+// goroutine.
+//
+// The fade duration is fixed at 300 ms.  If the player is stopped or paused
+// when called, the crossfade still proceeds (it opens and seeks newPath).
+func (p *Player) CrossfadeTo(newPath string, positionOffset time.Duration) error {
+	const fadeDuration = 300 * time.Millisecond
+	const steps = 30 // number of volume steps
+	stepSleep := fadeDuration / steps
+
+	// ── Fade out current track ─────────────────────────────────────────────
+	// Walk vol.Volume from its current dB value down to –10 (virtually silent).
+	p.mu.Lock()
+	vol := p.vol
+	p.mu.Unlock()
+
+	if vol != nil {
+		speaker.Lock()
+		startDB := vol.Volume
+		speaker.Unlock()
+
+		targetDB := -10.0 // beep's Volume is in dB (base-2 log scale)
+		for i := 1; i <= steps; i++ {
+			t := float64(i) / float64(steps)
+			db := startDB + (targetDB-startDB)*t
+			speaker.Lock()
+			vol.Volume = db
+			speaker.Unlock()
+			time.Sleep(stepSleep)
+		}
+	}
+
+	// ── Snapshot position before tearing down ────────────────────────────
+	// positionOffset was captured by the caller right before the call, so we
+	// use that value plus the time spent fading out.
+	seekTo := positionOffset + fadeDuration
+
+	// ── Stop current stream ───────────────────────────────────────────────
+	old := p.stopCurrent()
+	if old != nil {
+		old.Close()
+	}
+
+	// ── Open and start new stream ─────────────────────────────────────────
+	f, err := os.Open(newPath)
+	if err != nil {
+		return fmt.Errorf("crossfade open %q: %w", newPath, err)
+	}
+	streamer, format, err := mp3.Decode(f)
+	if err != nil {
+		f.Close()
+		return fmt.Errorf("crossfade decode %q: %w", newPath, err)
+	}
+
+	// Seek to the target position (ignore errors — the file may be shorter).
+	targetSample := format.SampleRate.N(seekTo)
+	if targetSample > 0 && targetSample < streamer.Len() {
+		_ = streamer.Seek(targetSample)
+	}
+
+	var src beep.Streamer = streamer
+	if format.SampleRate != defaultSampleRate {
+		src = beep.Resample(4, format.SampleRate, defaultSampleRate, streamer)
+	}
+	retro := &retroProcessor{Streamer: src}
+	ctrl := &beep.Ctrl{Streamer: retro, Paused: false}
+	newVol := &effects.Volume{Streamer: ctrl, Base: 2, Volume: -10.0, Silent: false}
+
+	p.mu.Lock()
+	onDone := p.onDone
+	retro.holdLen, retro.alpha = retroParams(int(defaultSampleRate), retroTargetRate(p.retroIdx))
+	p.streamer = streamer
+	p.retro = retro
+	p.ctrl = ctrl
+	p.vol = newVol
+	p.format = format
+	p.state = StatePlaying
+	targetVolDB := 0.0 // unity gain in beep's log scale
+	p.mu.Unlock()
+
+	speaker.Play(beep.Seq(newVol, beep.Callback(func() {
+		p.mu.Lock()
+		wasPlaying := p.state == StatePlaying
+		if wasPlaying {
+			p.state = StateStopped
+		}
+		p.mu.Unlock()
+		if wasPlaying && onDone != nil {
+			onDone()
+		}
+	})))
+
+	// ── Fade in ────────────────────────────────────────────────────────────
+	for i := 1; i <= steps; i++ {
+		t := float64(i) / float64(steps)
+		db := -10.0 + (targetVolDB-(-10.0))*t
+		speaker.Lock()
+		newVol.Volume = db
+		speaker.Unlock()
+		time.Sleep(stepSleep)
+	}
+	// Ensure we land exactly at unity gain.
+	speaker.Lock()
+	newVol.Volume = targetVolDB
+	speaker.Unlock()
+
+	return nil
+}
+
 // State returns the current playback state.
 func (p *Player) State() State {
 	p.mu.Lock()
