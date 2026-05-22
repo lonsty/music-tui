@@ -291,7 +291,7 @@ func (a *App) renderTrackList() string {
 		const leftFixW = 2
 		icon := "  "   // 2 spaces (no-play state)
 		if isPlaying {
-			icon = "󰎆" // Nerd Font note glyph, 2 cols wide
+			icon = "󰎆 " // glyph(1 col) + 1 space = 2 cols
 		}
 
 		// ── Right: format + duration (fixed 10 cols, right-aligned) ──────
