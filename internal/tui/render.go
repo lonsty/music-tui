@@ -196,6 +196,8 @@ func (a *App) render() string {
 		return a.renderHelpOverlay()
 	case overlayInfo:
 		return a.renderInfoOverlay()
+	case overlaySettings:
+		return a.renderSettingsOverlay()
 	}
 
 	tab := a.renderTabBar()
@@ -626,6 +628,7 @@ func (a *App) renderHelpOverlay() string {
 		{"m", "Cycle play mode"},
 		{"b", "Toggle 8-bit chip mode  (converts + crossfades)"},
 		{"r / R", "Lo-fi effect  lower / raise sample rate"},
+		{",", "Settings"},
 		{"/", "Search  (s: artist  a: album  t: title)"},
 		{"i", "Track info"},
 		{"f", "Toggle fullscreen"},
@@ -686,6 +689,51 @@ func (a *App) renderInfoOverlay() string {
 		rows = append(rows, styleOverlayMuted.Render("  No track selected"))
 	}
 	rows = append(rows, "", styleOverlayMuted.Render("  Any key to close"))
+
+	box := styleOverlayBox.Render(lipgloss.JoinVertical(lipgloss.Left, rows...))
+	return strings.Repeat("\n", topPad) +
+		lipgloss.Place(a.W, a.H-topPad, lipgloss.Center, lipgloss.Center, box)
+}
+
+// ── Settings overlay ──────────────────────────────────────────────────────────
+
+func (a *App) renderSettingsOverlay() string {
+	const lineW = 50
+
+	title := styleOverlayTitle.Render("  Settings")
+	divider := func(label string) string {
+		fill := lineW - len(label) - 1
+		if fill < 0 {
+			fill = 0
+		}
+		return styleOverlayMuted.Render("── " + label + " " + strings.Repeat("─", fill))
+	}
+
+	// ── 8-bit Conversion section ──────────────────────────────────────────────
+	label := styleOverlayKey.Width(10).Render("Options")
+	inputLine := "  " + label + "  " + a.settingsInput.View()
+	hint := styleOverlayMuted.Render("  Extra options appended to the p2chip command.")
+	exHint := styleOverlayMuted.Render("  e.g.  --sf2 nes --onset 0.6 --trim 0:60")
+
+	// ── Footer ────────────────────────────────────────────────────────────────
+	enterKey := styleOverlayKey.Render(" Enter ")
+	escKey := styleOverlayKey.Render(" Esc ")
+	footer := "  " + enterKey + styleOverlayMuted.Render(" confirm  ·  ") +
+		escKey + styleOverlayMuted.Render(" cancel")
+
+	rows := []string{
+		title,
+		styleOverlayMuted.Render(strings.Repeat("─", lineW)),
+		"",
+		divider("8-bit Conversion  (p2chip)"),
+		"",
+		inputLine,
+		"",
+		hint,
+		exHint,
+		"",
+		footer,
+	}
 
 	box := styleOverlayBox.Render(lipgloss.JoinVertical(lipgloss.Left, rows...))
 	return strings.Repeat("\n", topPad) +

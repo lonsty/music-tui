@@ -24,10 +24,11 @@ const (
 type overlay int
 
 const (
-	overlayNone   overlay = iota
-	overlayHelp            // ? key
-	overlaySearch          // / key
-	overlayInfo            // i key — track detail
+	overlayNone     overlay = iota
+	overlayHelp              // ? key
+	overlaySearch            // / key
+	overlayInfo              // i key — track detail
+	overlaySettings          // , key — settings
 )
 
 // ── Tab ───────────────────────────────────────────────────────────────────────

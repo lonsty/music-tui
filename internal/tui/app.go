@@ -34,14 +34,18 @@ type App struct {
 	retroIdx  int      // retro effect preset index (0 = off)
 
 	// ── 8-bit mode ───────────────────────────────────────────────────────────
-	chipMode   bool   // currently playing the 8-bit converted version
-	chipBusy   bool   // conversion or crossfade in progress (locked)
-	chipPath   string // path to the cached 8-bit mp3 (in tmpDir)
-	chipOrigin string // Track.Path for which chipPath was generated
-	tmpDir     string // temp directory; created on startup, removed on exit
+	chipMode     bool   // currently playing the 8-bit converted version
+	chipBusy     bool   // conversion or crossfade in progress (locked)
+	chipPath     string // path to the cached 8-bit mp3 (in tmpDir)
+	chipOrigin   string // Track.Path for which chipPath was generated
+	tmpDir       string // temp directory; created on startup, removed on exit
+	chip8Options string // extra CLI options forwarded to p2chip
 
 	// ── Search ───────────────────────────────────────────────────────────────
 	searchInput textinput.Model
+
+	// ── Settings overlay ─────────────────────────────────────────────────────
+	settingsInput textinput.Model
 
 	// ── Progress bar ─────────────────────────────────────────────────────────
 	progressBar progress.Model
@@ -88,6 +92,11 @@ func NewApp(player *audio.Player, musicDir string) *App {
 	ti.Placeholder = "Search… (s: artist  a: album  t: title)"
 	ti.CharLimit = 128
 
+	si := textinput.New()
+	si.Placeholder = "--sf2 nes --onset 0.5"
+	si.CharLimit = 256
+	si.Width = 42
+
 	prog := progress.New(
 		progress.WithGradient("#89B4FA", "#CBA6F7"),
 		progress.WithoutPercentage(),
@@ -96,15 +105,16 @@ func NewApp(player *audio.Player, musicDir string) *App {
 	tmpDir, _ := os.MkdirTemp("", "music-tui-*")
 
 	return &App{
-		player:      player,
-		musicDir:    musicDir,
-		volume:      1.0,
-		searchInput: ti,
-		progressBar: prog,
-		loading:     true,
-		playMode:    playModeLoop,
-		mqTitle:     NewMarquee("", "  •  "),
-		mqMeta:      NewMarquee("", "  •  "),
+		player:        player,
+		musicDir:      musicDir,
+		volume:        1.0,
+		searchInput:   ti,
+		settingsInput: si,
+		progressBar:   prog,
+		loading:       true,
+		playMode:      playModeLoop,
+		mqTitle:       NewMarquee("", "  •  "),
+		mqMeta:        NewMarquee("", "  •  "),
 		mqArtist:    NewMarquee("", "  •  "),
 		mqAlbum:     NewMarquee("", "  •  "),
 		mqRow:       NewMarquee("", "  •  "),
@@ -227,6 +237,13 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		var cmd tea.Cmd
 		a.searchInput, cmd = a.searchInput.Update(msg)
 		a.applyFilter()
+		return a, cmd
+	}
+
+	// Forward to settings input while settings overlay is active.
+	if a.activeOvl == overlaySettings {
+		var cmd tea.Cmd
+		a.settingsInput, cmd = a.settingsInput.Update(msg)
 		return a, cmd
 	}
 

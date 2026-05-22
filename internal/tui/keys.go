@@ -1,6 +1,8 @@
 package tui
 
 import (
+	"strings"
+
 	tea "github.com/charmbracelet/bubbletea"
 )
 
@@ -27,6 +29,8 @@ func (a *App) handleKey(msg tea.KeyMsg) tea.Cmd {
 		return a.handleInfoKey(msg)
 	case overlaySearch:
 		return a.handleSearchKey(msg)
+	case overlaySettings:
+		return a.handleSettingsKey(msg)
 	}
 
 	return a.handleNormalKey(msg)
@@ -128,6 +132,12 @@ func (a *App) handleNormalKey(msg tea.KeyMsg) tea.Cmd {
 	case "?":
 		a.activeOvl = overlayHelp
 
+	case ",":
+		a.activeOvl = overlaySettings
+		a.settingsInput.SetValue(a.chip8Options)
+		a.settingsInput.Focus()
+		a.settingsInput.CursorEnd()
+
 	case "tab":
 		a.activeTab = (a.activeTab + 1) % 2
 
@@ -159,6 +169,12 @@ func (a *App) handleFullscreenKey(msg tea.KeyMsg) tea.Cmd {
 
 	case "b":
 		return a.cmdToggleChip()
+
+	case ",":
+		a.activeOvl = overlaySettings
+		a.settingsInput.SetValue(a.chip8Options)
+		a.settingsInput.Focus()
+		a.settingsInput.CursorEnd()
 
 	case "r":
 		return a.cmdRetroUp()
@@ -238,4 +254,29 @@ func (a *App) handleHelpKey(_ tea.KeyMsg) tea.Cmd {
 func (a *App) handleInfoKey(_ tea.KeyMsg) tea.Cmd {
 	a.activeOvl = overlayNone
 	return nil
+}
+
+// ── Settings overlay ──────────────────────────────────────────────────────────
+
+func (a *App) handleSettingsKey(msg tea.KeyMsg) tea.Cmd {
+	switch msg.String() {
+	case "enter":
+		// Save and close.
+		a.chip8Options = strings.TrimSpace(a.settingsInput.Value())
+		a.activeOvl = overlayNone
+		a.settingsInput.Blur()
+		// Invalidate the chip cache so the new options are used next time.
+		a.chipPath = ""
+		a.chipOrigin = ""
+		return nil
+	case "esc":
+		// Discard and close.
+		a.activeOvl = overlayNone
+		a.settingsInput.Blur()
+		return nil
+	}
+	// Forward all other keys to the text input.
+	var cmd tea.Cmd
+	a.settingsInput, cmd = a.settingsInput.Update(msg)
+	return cmd
 }

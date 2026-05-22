@@ -252,12 +252,17 @@ func (a *App) cmdToggleChip() tea.Cmd {
 
 	// No cache — run p2chip in the background.
 	outPath := filepath.Join(a.tmpDir, chip8CacheKey(track.Path)+".mp3")
+	extraOpts := a.chip8Options // capture before goroutine
 	return func() tea.Msg {
-		cmd := exec.Command(
-			"p2chip", track.Path, outPath,
-			"--sf2", "nes",
-			"--format", "mp3",
-		)
+		args := []string{track.Path, outPath, "--format", "mp3"}
+		if extraOpts != "" {
+			parsed, _ := shellSplit(extraOpts)
+			args = append(args, parsed...)
+		} else {
+			// Default preset when no custom options are given.
+			args = append(args, "--sf2", "nes")
+		}
+		cmd := exec.Command("p2chip", args...)
 		if err := cmd.Run(); err != nil {
 			return chip8DoneMsg{err: fmt.Errorf("p2chip: %w", err)}
 		}
@@ -265,9 +270,58 @@ func (a *App) cmdToggleChip() tea.Cmd {
 	}
 }
 
-// chip8CacheKey returns a short hex string derived from path, used as the
-// cache file name for the converted 8-bit mp3.
+// chip8CacheKey returns a short hex string derived from path and options,
+// used as the cache file name for the converted 8-bit mp3.
 func chip8CacheKey(path string) string {
 	h := sha256.Sum256([]byte(path))
 	return fmt.Sprintf("%x", h[:8])
+}
+
+// shellSplit splits a string into tokens the same way a POSIX shell would,
+// respecting single-quoted and double-quoted sub-strings.
+//
+// It handles the common cases needed for p2chip option strings like:
+//
+//	--sf2 nes --onset 0.6 --trim "0:30"
+//
+// Returns a nil error; malformed quoting is handled leniently (unclosed
+// quotes are treated as if closed at end-of-string).
+func shellSplit(s string) ([]string, error) {
+	var tokens []string
+	var cur strings.Builder
+	inSingle := false
+	inDouble := false
+
+	for i := 0; i < len(s); i++ {
+		c := s[i]
+		switch {
+		case inSingle:
+			if c == '\'' {
+				inSingle = false
+			} else {
+				cur.WriteByte(c)
+			}
+		case inDouble:
+			if c == '"' {
+				inDouble = false
+			} else {
+				cur.WriteByte(c)
+			}
+		case c == '\'':
+			inSingle = true
+		case c == '"':
+			inDouble = true
+		case c == ' ' || c == '\t':
+			if cur.Len() > 0 {
+				tokens = append(tokens, cur.String())
+				cur.Reset()
+			}
+		default:
+			cur.WriteByte(c)
+		}
+	}
+	if cur.Len() > 0 {
+		tokens = append(tokens, cur.String())
+	}
+	return tokens, nil
 }
