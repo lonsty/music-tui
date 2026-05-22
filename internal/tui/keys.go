@@ -94,6 +94,12 @@ func (a *App) handleNormalKey(msg tea.KeyMsg) tea.Cmd {
 	case "m":
 		return a.cmdNextPlayMode()
 
+	// ── Bit-crush effect ──────────────────────────────────────────────────────
+	case "b":
+		return a.cmdRetroUp()
+	case "B":
+		return a.cmdRetroDown()
+
 	// ── Volume ────────────────────────────────────────────────────────────────
 	case "+", "=":
 		a.volume = clampVolume(a.volume + 0.1)
@@ -146,6 +152,11 @@ func (a *App) handleFullscreenKey(msg tea.KeyMsg) tea.Cmd {
 
 	case "m":
 		return a.cmdNextPlayMode()
+
+	case "b":
+		return a.cmdRetroUp()
+	case "B":
+		return a.cmdRetroDown()
 
 	case "+", "=":
 		a.volume = clampVolume(a.volume + 0.1)

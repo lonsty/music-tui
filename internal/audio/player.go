@@ -3,6 +3,7 @@ package audio
 
 import (
 	"fmt"
+	"math"
 	"os"
 	"sync"
 	"time"
@@ -29,6 +30,96 @@ const (
 	StatePaused
 )
 
+// retroProcessor is a beep.Streamer that produces a clean "lo-fi pixelated"
+// sound effect by combining:
+//
+//  1. A one-pole IIR low-pass pre-filter whose cutoff is set just below the
+//     Nyquist frequency of the target sample rate (targetRate/2).  This removes
+//     all frequency content that would alias after downsampling, so the output
+//     contains no harsh high-frequency artefacts.
+//
+//  2. Sample-and-hold at the target rate: every `hold` output frames the filter
+//     output is captured; the same value is then repeated for the remaining
+//     frames.  This is identical to the behaviour of a classic DAC running at
+//     a low sample rate — each "step" plays one constant sample.
+//
+// No bit-depth quantisation is applied, so the only distortion is the reduced
+// time resolution.  The result sounds like the music has been "pixelated" in
+// time: clearly recognisable, no noise, but with a characteristic staircase
+// quality.
+//
+// When holdLen ≤ 1 the processor is a transparent pass-through.
+type retroProcessor struct {
+	Streamer beep.Streamer
+	holdLen  int // output frames per hold step; ≤1 = bypass
+
+	// IIR low-pass filter state (one per channel).
+	lpL, lpR float64
+	alpha    float64 // IIR coefficient; computed from targetRate
+
+	// Sample-and-hold state.
+	heldL, heldR float64
+	holdPos      int
+}
+
+func (rp *retroProcessor) Stream(samples [][2]float64) (n int, ok bool) {
+	n, ok = rp.Streamer.Stream(samples)
+	if n == 0 || rp.holdLen <= 1 {
+		return
+	}
+
+	α := rp.alpha
+	inv := 1 - α
+
+	for i := range samples[:n] {
+		l, r := samples[i][0], samples[i][1]
+
+		// Low-pass filter: attenuate frequencies above targetRate/2 to prevent
+		// aliasing when the hold step "quantises" time.
+		rp.lpL = α*l + inv*rp.lpL
+		rp.lpR = α*r + inv*rp.lpR
+
+		// Sample-and-hold: capture a new value at the start of each hold period.
+		if rp.holdPos == 0 {
+			rp.heldL = rp.lpL
+			rp.heldR = rp.lpR
+		}
+		samples[i][0] = rp.heldL
+		samples[i][1] = rp.heldR
+
+		rp.holdPos++
+		if rp.holdPos >= rp.holdLen {
+			rp.holdPos = 0
+		}
+	}
+	return
+}
+
+func (rp *retroProcessor) Err() error { return rp.Streamer.Err() }
+
+// retroParams returns the hold length and IIR alpha for a given preset and
+// output sample rate.
+//
+// Alpha for a one-pole IIR approximation of cutoff fc at sample rate fs:
+//
+//	α ≈ 1 - exp(-2π × fc / fs)  (bilinear approximation, good for fc ≪ fs)
+//
+// Cutoff is set to targetRate/2 (Nyquist of the target rate).
+func retroParams(outputRate, targetRate int) (holdLen int, alpha float64) {
+	if targetRate <= 0 || targetRate >= outputRate {
+		return 1, 1.0 // bypass
+	}
+	holdLen = outputRate / targetRate
+	if holdLen < 2 {
+		holdLen = 1 // effectively bypass
+		return
+	}
+	fc := float64(targetRate) / 2.0
+	fs := float64(outputRate)
+	alpha = 1 - math.Exp(-2*math.Pi*fc/fs)
+	return
+}
+
 // Player is a goroutine-safe audio player.
 //
 // # Lock discipline
@@ -45,10 +136,12 @@ const (
 type Player struct {
 	mu       sync.Mutex
 	streamer beep.StreamSeekCloser
+	retro    *retroProcessor
 	ctrl     *beep.Ctrl
 	vol      *effects.Volume
 	format   beep.Format
 	state    State
+	retroIdx int // retro effect preset index (0 = off)
 	onDone   func()
 }
 
@@ -97,13 +190,16 @@ func (p *Player) Play(track library.Track) error {
 	if format.SampleRate != defaultSampleRate {
 		src = beep.Resample(4, format.SampleRate, defaultSampleRate, streamer)
 	}
-	ctrl := &beep.Ctrl{Streamer: src, Paused: false}
+	retro := &retroProcessor{Streamer: src}
+	ctrl := &beep.Ctrl{Streamer: retro, Paused: false}
 	vol := &effects.Volume{Streamer: ctrl, Base: 2, Volume: 0, Silent: false}
 
-	// 4. Snapshot onDone, then store the new stream fields.
+	// 4. Snapshot onDone and effect preset, then store the new stream fields.
 	p.mu.Lock()
 	onDone := p.onDone
+	retro.holdLen, retro.alpha = retroParams(int(defaultSampleRate), retroTargetRate(p.retroIdx))
 	p.streamer = streamer
+	p.retro = retro
 	p.ctrl = ctrl
 	p.vol = vol
 	p.format = format
@@ -142,6 +238,7 @@ func (p *Player) stopCurrent() beep.StreamSeekCloser {
 	// Mark stopped so the Callback skips onDone.
 	old := p.streamer
 	p.streamer = nil
+	p.retro = nil
 	p.ctrl = nil
 	p.vol = nil
 	p.format = beep.Format{}
@@ -275,6 +372,65 @@ func (p *Player) SetVolume(v float64) {
 	speaker.Lock()
 	vol.Volume = (v/2.0)*4.0 - 3.0
 	vol.Silent = v == 0
+	speaker.Unlock()
+}
+
+// retroPresets defines all retro effect presets in order.
+// Index 0 is always "off" (bypass).  Remaining entries are target virtual
+// sample rates in Hz, from highest (least degraded) to lowest (most degraded).
+var retroPresets = []int{
+	0,     // 0: off
+	11025, // 1: ≈ NES APU rate
+	5513,  // 2: coarser
+	2756,  // 3: lo-fi telephone
+	1378,  // 4: very coarse
+	689,   // 5: extreme
+	344,   // 6: barely intelligible
+}
+
+// RetroPresetCount is the total number of retro presets (including "off").
+var RetroPresetCount = len(retroPresets)
+
+// retroTargetRate maps a preset index to the target virtual sample rate.
+// Returns 0 (bypass) for out-of-range indices.
+func retroTargetRate(idx int) int {
+	if idx < 0 || idx >= len(retroPresets) {
+		return 0
+	}
+	return retroPresets[idx]
+}
+
+// RetroPresetRate returns the target virtual sample rate (Hz) for preset index idx.
+// Returns 0 for off (idx=0) or out-of-range values.
+func RetroPresetRate(idx int) int {
+	return retroTargetRate(idx)
+}
+
+// SetRetroPreset switches the retro effect preset while playing.
+// idx=0 disables the effect; valid range: [0, RetroPresetCount).
+// Safe to call while a track is playing — takes effect on the next audio chunk.
+func (p *Player) SetRetroPreset(idx int) {
+	if idx < 0 || idx >= RetroPresetCount {
+		idx = 0
+	}
+	p.mu.Lock()
+	p.retroIdx = idx
+	retro := p.retro
+	p.mu.Unlock()
+
+	if retro == nil {
+		return
+	}
+
+	holdLen, alpha := retroParams(int(defaultSampleRate), retroTargetRate(idx))
+
+	speaker.Lock()
+	retro.holdLen = holdLen
+	retro.alpha = alpha
+	// Reset state to avoid a transient pop when switching presets.
+	retro.holdPos = 0
+	retro.lpL, retro.lpR = 0, 0
+	retro.heldL, retro.heldR = 0, 0
 	speaker.Unlock()
 }
 

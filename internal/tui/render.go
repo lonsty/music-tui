@@ -592,7 +592,12 @@ func (a *App) renderStatusBar() string {
 
 	modeChip := styleModeIcon.Render(" " + playModeIcon(a.playMode) + " ")
 
-	line := " " + stateChip + "  " + modeChip + "  " + hints
+	var retroChip string
+	if a.retroIdx > 0 {
+		retroChip = "  " + styleStatusState.Render(" "+retroLabel(a.retroIdx)+" ")
+	}
+
+	line := " " + stateChip + "  " + modeChip + retroChip + "  " + hints
 	// No Width — don't pad with background colour to the right edge.
 	return styleStatusLine.Render(line)
 }
@@ -609,6 +614,7 @@ func (a *App) renderHelpOverlay() string {
 		{"Space", "Pause / Resume"},
 		{"n / p", "Next / Previous"},
 		{"m", "Cycle play mode"},
+		{"b / B", "Lo-fi effect  lower / raise sample rate"},
 		{"/", "Search  (s: artist  a: album  t: title)"},
 		{"i", "Track info"},
 		{"f", "Toggle fullscreen"},
@@ -784,6 +790,19 @@ func buildCoverPlaceholderSized(outerCols, outerRows int) string {
 // stylePlayerMuted returns a centred, muted style (used for idle hint text).
 func stylePlayerMuted() lipgloss.Style {
 	return lipgloss.NewStyle().Foreground(lipgloss.Color(overlay0)).Align(lipgloss.Center)
+}
+
+// retroLabel returns a short display label for a retro preset index.
+// It formats the target sample rate into a concise string, e.g. "11k", "344".
+func retroLabel(idx int) string {
+	hz := audio.RetroPresetRate(idx)
+	if hz <= 0 {
+		return "off"
+	}
+	if hz >= 1000 {
+		return fmt.Sprintf("%dk", hz/1000)
+	}
+	return fmt.Sprintf("%d", hz)
 }
 
 // min returns the smaller of two ints.

@@ -6,6 +6,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 
+	"github.com/eilianxiao/music-tui/internal/audio"
 	"github.com/eilianxiao/music-tui/internal/library"
 )
 
@@ -101,6 +102,28 @@ func (a *App) cmdNextPlayMode() tea.Cmd {
 		if a.playMode == playModeRandom {
 			a.rebuildShuffle()
 		}
+		return noopMsg{}
+	}
+}
+
+// cmdRetroUp increases the retro effect preset by one step (lower sample rate).
+func (a *App) cmdRetroUp() tea.Cmd {
+	return func() tea.Msg {
+		if a.retroIdx < audio.RetroPresetCount-1 {
+			a.retroIdx++
+		}
+		a.player.SetRetroPreset(a.retroIdx)
+		return noopMsg{}
+	}
+}
+
+// cmdRetroDown decreases the retro effect preset by one step (higher sample rate / off).
+func (a *App) cmdRetroDown() tea.Cmd {
+	return func() tea.Msg {
+		if a.retroIdx > 0 {
+			a.retroIdx--
+		}
+		a.player.SetRetroPreset(a.retroIdx)
 		return noopMsg{}
 	}
 }

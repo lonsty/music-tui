@@ -28,8 +28,9 @@ type App struct {
 	currentIdx   int // index of currentTrack in filtered (for next/prev)
 
 	// ── Playback ─────────────────────────────────────────────────────────────
-	volume   float64  // [0.0, 2.0]; 1.0 = unity gain
-	playMode playMode // sequential / loop / single / random
+	volume    float64  // [0.0, 2.0]; 1.0 = unity gain
+	playMode  playMode // sequential / loop / single / random
+	retroIdx  int      // retro effect preset index (0 = off)
 
 	// ── Search ───────────────────────────────────────────────────────────────
 	searchInput textinput.Model
