@@ -81,14 +81,36 @@ func isSupportedAudio(path string) bool {
 // parseTrack reads ID3 metadata and audio duration from an MP3 file.
 // CoverArt is populated in-memory; the caller decides whether to persist it.
 func parseTrack(path string) (Track, error) {
-	var title, artist, album string
+	var title, artist, albumArtist, album, year, trackNum, genre, comment string
 	var coverArt []byte
 
 	if tag, err := id3.Open(path, id3.Options{Parse: true}); err == nil {
-		title = tag.Title()
+		title  = tag.Title()
 		artist = tag.Artist()
-		album = tag.Album()
-		frames := tag.GetFrames(tag.CommonID("Attached picture"))
+		album  = tag.Album()
+		year   = tag.Year()
+		genre  = tag.Genre()
+
+		// TPE2 — album artist
+		if f := tag.GetTextFrame("TPE2"); f.Text != "" {
+			albumArtist = f.Text
+		}
+
+		// TRCK — track number (may be "3/12")
+		if f := tag.GetTextFrame("TRCK"); f.Text != "" {
+			trackNum = f.Text
+		}
+
+		// COMM — first comment frame
+		frames := tag.GetFrames(tag.CommonID("Comments"))
+		if len(frames) > 0 {
+			if cf, ok := frames[0].(id3.CommentFrame); ok {
+				comment = cf.Text
+			}
+		}
+
+		// APIC — first attached picture
+		frames = tag.GetFrames(tag.CommonID("Attached picture"))
 		if len(frames) > 0 {
 			if pic, ok := frames[0].(id3.PictureFrame); ok && len(pic.Picture) > 0 {
 				coverArt = make([]byte, len(pic.Picture))
@@ -101,14 +123,19 @@ func parseTrack(path string) (Track, error) {
 	duration := readMP3Duration(path)
 
 	return Track{
-		ID:       path, // overwritten by ParseTrackWithCover
-		Title:    title,
-		Artist:   artist,
-		Album:    album,
-		Duration: duration,
-		Path:     path,
-		Source:   SourceLocal,
-		CoverArt: coverArt,
+		ID:          path, // overwritten by ParseTrackWithCover
+		Title:       title,
+		Artist:      artist,
+		AlbumArtist: albumArtist,
+		Album:       album,
+		Year:        year,
+		TrackNumber: trackNum,
+		Genre:       genre,
+		Comment:     comment,
+		Duration:    duration,
+		Path:        path,
+		Source:      SourceLocal,
+		CoverArt:    coverArt,
 	}, nil
 }
 

@@ -19,11 +19,16 @@ const (
 
 // Track represents a single music track with metadata.
 type Track struct {
-	ID       string
-	Title    string
-	Artist   string
-	Album    string
-	Duration time.Duration
+	ID           string
+	Title        string
+	Artist       string
+	AlbumArtist  string        // TPE2 / ALBUMARTIST tag
+	Album        string
+	Year         string        // TDRC / TYER tag (stored as string, e.g. "2003")
+	TrackNumber  string        // TRCK tag (e.g. "3" or "3/12")
+	Genre        string        // TCON tag
+	Comment      string        // COMM tag
+	Duration     time.Duration
 	// Path is the local filesystem path; only set for SourceLocal tracks.
 	Path string
 	// URL is the remote stream URL; only set for SourceNetease tracks.
@@ -51,6 +56,18 @@ func (t *Track) DisplayTitle() string {
 
 // DisplayArtist returns the artist name, or "Unknown Artist" if empty.
 func (t *Track) DisplayArtist() string {
+	if t.Artist != "" {
+		return t.Artist
+	}
+	return "Unknown Artist"
+}
+
+// DisplayAlbumArtist returns the album artist for sorting and display.
+// Falls back to Artist, then "Unknown Artist".
+func (t *Track) DisplayAlbumArtist() string {
+	if t.AlbumArtist != "" {
+		return t.AlbumArtist
+	}
 	if t.Artist != "" {
 		return t.Artist
 	}

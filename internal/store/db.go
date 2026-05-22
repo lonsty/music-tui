@@ -64,20 +64,25 @@ func migrate(db *sql.DB) error {
 		);
 
 		CREATE TABLE IF NOT EXISTS tracks (
-			id           TEXT PRIMARY KEY,
-			path         TEXT NOT NULL UNIQUE,
-			title        TEXT NOT NULL DEFAULT '',
-			artist       TEXT NOT NULL DEFAULT '',
-			album        TEXT NOT NULL DEFAULT '',
-			duration_ms  INTEGER NOT NULL DEFAULT 0,
-			cover_path   TEXT NOT NULL DEFAULT '',
-			source       INTEGER NOT NULL DEFAULT 0,
-			mtime        INTEGER NOT NULL DEFAULT 0,
-			added_at     INTEGER NOT NULL DEFAULT 0
+			id            TEXT PRIMARY KEY,
+			path          TEXT NOT NULL UNIQUE,
+			title         TEXT NOT NULL DEFAULT '',
+			artist        TEXT NOT NULL DEFAULT '',
+			album_artist  TEXT NOT NULL DEFAULT '',
+			album         TEXT NOT NULL DEFAULT '',
+			year          TEXT NOT NULL DEFAULT '',
+			track_number  TEXT NOT NULL DEFAULT '',
+			genre         TEXT NOT NULL DEFAULT '',
+			comment       TEXT NOT NULL DEFAULT '',
+			duration_ms   INTEGER NOT NULL DEFAULT 0,
+			cover_path    TEXT NOT NULL DEFAULT '',
+			source        INTEGER NOT NULL DEFAULT 0,
+			mtime         INTEGER NOT NULL DEFAULT 0,
+			added_at      INTEGER NOT NULL DEFAULT 0
 		);
 
-		CREATE INDEX IF NOT EXISTS idx_tracks_artist_album
-			ON tracks(artist, album);
+		CREATE INDEX IF NOT EXISTS idx_tracks_sort
+			ON tracks(album_artist, year, album, track_number);
 	`)
 	return err
 }
@@ -108,12 +113,20 @@ func (s *Store) SetSetting(key, value string) error {
 
 // ── Tracks ────────────────────────────────────────────────────────────────────
 
-// AllTracks returns all tracks from the database, sorted by artist then album.
+// AllTracks returns all tracks from the database in the standard sort order:
+// album artist → year → album → track number → title.
 func (s *Store) AllTracks() ([]library.Track, error) {
 	rows, err := s.db.Query(`
-		SELECT id, path, title, artist, album, duration_ms, cover_path, source
+		SELECT id, path, title, artist, album_artist, album,
+		       year, track_number, genre, comment,
+		       duration_ms, cover_path, source
 		FROM tracks
-		ORDER BY artist ASC, album ASC, title ASC
+		ORDER BY
+			LOWER(COALESCE(NULLIF(album_artist,''), artist, '')),
+			year,
+			LOWER(album),
+			CAST(SUBSTR(track_number, 1, INSTR(track_number||'/', '/')-1) AS INTEGER),
+			LOWER(title)
 	`)
 	if err != nil {
 		return nil, err
@@ -124,16 +137,15 @@ func (s *Store) AllTracks() ([]library.Track, error) {
 	for rows.Next() {
 		var t library.Track
 		var durationMs int64
-		var coverPath string
 		var source int
 		if err := rows.Scan(
-			&t.ID, &t.Path, &t.Title, &t.Artist, &t.Album,
-			&durationMs, &coverPath, &source,
+			&t.ID, &t.Path, &t.Title, &t.Artist, &t.AlbumArtist, &t.Album,
+			&t.Year, &t.TrackNumber, &t.Genre, &t.Comment,
+			&durationMs, &t.CoverPath, &source,
 		); err != nil {
 			return nil, err
 		}
 		t.Duration = time.Duration(durationMs) * time.Millisecond
-		t.CoverPath = coverPath
 		t.Source = library.Source(source)
 		tracks = append(tracks, t)
 	}
@@ -156,19 +168,27 @@ func (s *Store) TrackMtime(path string) (int64, error) {
 func (s *Store) UpsertTrack(t library.Track, mtime int64) error {
 	_, err := s.db.Exec(`
 		INSERT INTO tracks
-			(id, path, title, artist, album, duration_ms, cover_path, source, mtime, added_at)
-		VALUES (?,?,?,?,?,?,?,?,?,?)
+			(id, path, title, artist, album_artist, album,
+			 year, track_number, genre, comment,
+			 duration_ms, cover_path, source, mtime, added_at)
+		VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
 		ON CONFLICT(path) DO UPDATE SET
-			id          = excluded.id,
-			title       = excluded.title,
-			artist      = excluded.artist,
-			album       = excluded.album,
-			duration_ms = excluded.duration_ms,
-			cover_path  = excluded.cover_path,
-			source      = excluded.source,
-			mtime       = excluded.mtime
+			id           = excluded.id,
+			title        = excluded.title,
+			artist       = excluded.artist,
+			album_artist = excluded.album_artist,
+			album        = excluded.album,
+			year         = excluded.year,
+			track_number = excluded.track_number,
+			genre        = excluded.genre,
+			comment      = excluded.comment,
+			duration_ms  = excluded.duration_ms,
+			cover_path   = excluded.cover_path,
+			source       = excluded.source,
+			mtime        = excluded.mtime
 	`,
-		t.ID, t.Path, t.Title, t.Artist, t.Album,
+		t.ID, t.Path, t.Title, t.Artist, t.AlbumArtist, t.Album,
+		t.Year, t.TrackNumber, t.Genre, t.Comment,
 		t.Duration.Milliseconds(), t.CoverPath,
 		int(t.Source), mtime, time.Now().Unix(),
 	)

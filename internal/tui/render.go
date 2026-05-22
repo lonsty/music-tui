@@ -668,10 +668,13 @@ func (a *App) renderInfoOverlay() string {
 	}
 
 	title := styleOverlayTitle.Render("󰋽  Track Info")
-	div := styleOverlayMuted.Render(strings.Repeat("─", 42))
+	div := styleOverlayMuted.Render(strings.Repeat("─", 46))
 
 	row := func(label, value string) string {
-		l := styleOverlayKey.Width(10).Render(label)
+		if value == "" {
+			return ""
+		}
+		l := styleOverlayKey.Width(13).Render(label)
 		v := styleOverlayValue.Render(truncate(value, 36))
 		return "  " + l + "  " + v
 	}
@@ -679,14 +682,23 @@ func (a *App) renderInfoOverlay() string {
 	var rows []string
 	rows = append(rows, title, div, "")
 	if t != nil {
-		rows = append(rows,
-			row("Title", t.DisplayTitle()),
-			row("Artist", t.DisplayArtist()),
-			row("Album", t.Album),
-			row("Duration", formatDuration(t.Duration)),
-			row("Format", t.Format()),
-			row("Path", t.Path),
-		)
+		for _, r := range []string{
+			row("Title",        t.DisplayTitle()),
+			row("Artist",       t.DisplayArtist()),
+			row("Album Artist", t.AlbumArtist),
+			row("Album",        t.Album),
+			row("Year",         t.Year),
+			row("Track",        t.TrackNumber),
+			row("Genre",        t.Genre),
+			row("Comment",      t.Comment),
+			row("Duration",     formatDuration(t.Duration)),
+			row("Format",       t.Format()),
+			row("Path",         t.Path),
+		} {
+			if r != "" {
+				rows = append(rows, r)
+			}
+		}
 	} else {
 		rows = append(rows, styleOverlayMuted.Render("  No track selected"))
 	}
