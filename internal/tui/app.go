@@ -480,9 +480,9 @@ func (a *App) getCoverArt(maxOuterCols, maxOuterRows int) string {
 // tickMarquees advances all Marquee scroll positions.
 func (a *App) tickMarquees() {
 	listW := a.trackListInnerW()
-	const leftFixW = 3  // icon(2) + separator(1)
+	const leftFixW = 2
 	const rightColW = 10
-	midAvail := listW - leftFixW - rightColW - 1
+	midAvail := listW - leftFixW - rightColW
 	if midAvail < 4 {
 		midAvail = 4
 	}

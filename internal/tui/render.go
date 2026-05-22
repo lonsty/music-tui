@@ -284,20 +284,24 @@ func (a *App) renderTrackList() string {
 		isSelected := i == a.cursor
 		isPlaying := a.currentTrack != nil && a.currentTrack.ID == t.ID
 
-		// ── Left: icon (fixed 2 cols + 1 space = 3) ──────────────────────
-		const leftFixW = 3 // icon(2) + separator(1)
-		icon := "   "
+		// ── Left: icon, fixed 2 display columns ───────────────────────────
+		// The Nerd Font glyph 󰎆 occupies 2 terminal columns; the plain
+		// space pair also occupies exactly 2.  We hard-code the width rather
+		// than relying on strWidth which may mis-measure private-use glyphs.
+		const leftFixW = 2
+		icon := "  "   // 2 spaces (no-play state)
 		if isPlaying {
-			icon = "󰎆  "
+			icon = "󰎆" // Nerd Font note glyph, 2 cols wide
 		}
 
-		// ── Right: format + duration (fixed 10 cols) ──────────────────────
+		// ── Right: format + duration (fixed 10 cols, right-aligned) ──────
 		const rightColW = 10
 		rightText := t.Format() + " " + formatDuration(t.Duration)
 		rightPadded := padLeft(rightText, rightColW)
 
-		// ── Middle: album · Artist · title (elastic, marquee on selected) ─
-		midAvail := innerW - leftFixW - rightColW - 1 // -1 for separator before right
+		// ── Middle: Album · Artist · Title (elastic, marquee on selected) ─
+		// Total line width = leftFixW + midAvail + rightColW = innerW
+		midAvail := innerW - leftFixW - rightColW
 		if midAvail < 4 {
 			midAvail = 4
 		}
@@ -305,13 +309,18 @@ func (a *App) renderTrackList() string {
 		midText := rowMidText(t)
 		var midPadded string
 		if isSelected {
-			// mqRow scrolls the middle segment only.
 			midPadded = a.mqRow.Render(midAvail)
 		} else {
-			midPadded = padRight(truncate(midText, midAvail), midAvail)
+			// Use strWidth(midText) ≤ midAvail to avoid appending "…" when
+			// the text fits exactly.
+			if strWidth(midText) <= midAvail {
+				midPadded = padRight(midText, midAvail)
+			} else {
+				midPadded = padRight(truncate(midText, midAvail), midAvail)
+			}
 		}
 
-		line := icon + midPadded + " " + rightPadded
+		line := icon + midPadded + rightPadded
 
 		var style lipgloss.Style
 		switch {
@@ -843,7 +852,7 @@ func rowMidText(t library.Track) string {
 		parts = append(parts, ar)
 	}
 	parts = append(parts, t.DisplayTitle())
-	return strings.Join(parts, "  ·  ")
+	return strings.Join(parts, " · ")
 }
 
 // formatDuration converts a duration to mm:ss.
