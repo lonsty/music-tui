@@ -205,6 +205,7 @@ func NewApp(player *audio.Player, st *store.Store, musicDir string, tracks []lib
 					app.currentIdx = i
 					app.cursor = i
 					app.syncMarquees()
+					app.syncRowMarquee() // populate mqRow for gradient list row
 					break
 				}
 			}
@@ -341,6 +342,7 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		a.cursor = msg.idx
 		a.statusMsg = ""
 		a.syncMarquees()
+		a.syncRowMarquee()
 
 		// If we were in chip mode, automatically start converting the new track.
 		if wasChipMode {
