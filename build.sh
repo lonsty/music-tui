@@ -1,16 +1,16 @@
 #!/usr/bin/env bash
 # build.sh — Cross-compile music-tui for macOS / Linux / Windows
 #
+# go-sqlite3 requires CGO on every target.
+#
 # Requirements:
 #   go   — https://go.dev/dl/
-#   zig  — https://ziglang.org/  (required for Linux targets)
+#   zig  — https://ziglang.org/  (required for cross-compilation targets)
 #          macOS: brew install zig
 #
 # Platform notes:
-#   macOS   — CGO_ENABLED=0; oto uses purego to dlopen AudioToolbox at runtime.
-#             No system libraries required at build time.
-#   Windows — CGO_ENABLED=0; oto uses golang.org/x/sys for WASAPI.
-#             No system libraries required at build time.
+#   macOS   — CGO_ENABLED=1; uses the host clang/cc toolchain.
+#             Requires Xcode Command Line Tools: xcode-select --install
 #   Linux   — CGO_ENABLED=1; oto requires ALSA (libasound2-dev / alsa-lib-devel).
 #             zig is used as the C cross-compiler so no host gcc is needed, but
 #             the ALSA development headers must be present on the build host:
@@ -18,6 +18,10 @@
 #               Fedora/RHEL:   dnf install alsa-lib-devel
 #             The resulting binary links libasound dynamically; the target host
 #             must have libasound2 (typically pre-installed on desktop Linux).
+#   Windows — CGO cross-compilation from macOS/Linux is complex and not
+#             supported by this script.  Build natively on a Windows host:
+#               go build -o music-tui.exe ./cmd/music-tui
+#             Or use a Windows Docker image with go-sqlite3 CGO support.
 #
 # Usage:  chmod +x build.sh && ./build.sh
 #
@@ -46,27 +50,23 @@ zig_cc() {
 ok()   { printf "  ✓  %-12s  %s\n" "$(du -sh "$1" | cut -f1)" "$1"; }
 skip() { printf "  -  %-30s  skipped (%s)\n" "$1" "$2"; }
 
-echo "Building $APP"
+echo "Building $APP  (CGO required for go-sqlite3)"
 echo "──────────────────────────────────────────"
 
-# ── macOS arm64 (CGo-free) ────────────────────────────────────────────────────
-printf "  %-38s" "macOS arm64  (CGo-free)"
-GOOS=darwin GOARCH=arm64 CGO_ENABLED=0 \
+# ── macOS arm64 (native CGO) ──────────────────────────────────────────────────
+printf "  %-38s" "macOS arm64  (CGO, native)"
+GOOS=darwin GOARCH=arm64 CGO_ENABLED=1 \
   go build -trimpath -ldflags="$LDFLAGS" -o "$BIN/${APP}-darwin-arm64" "$PKG"
 ok "$BIN/${APP}-darwin-arm64"
 
-# ── macOS amd64 (CGo-free, cross-arch from arm64 host) ───────────────────────
-printf "  %-38s" "macOS amd64  (CGo-free)"
-GOOS=darwin GOARCH=amd64 CGO_ENABLED=0 \
+# ── macOS amd64 (CGO, cross-arch from arm64 host) ────────────────────────────
+printf "  %-38s" "macOS amd64  (CGO, cross-arch)"
+GOOS=darwin GOARCH=amd64 CGO_ENABLED=1 \
   go build -trimpath -ldflags="$LDFLAGS" -o "$BIN/${APP}-darwin-amd64" "$PKG"
 ok "$BIN/${APP}-darwin-amd64"
 
-# ── Windows amd64 (CGo-free) ──────────────────────────────────────────────────
-printf "  %-38s" "Windows amd64 (CGo-free)"
-GOOS=windows GOARCH=amd64 CGO_ENABLED=0 \
-  go build -trimpath -ldflags="$LDFLAGS" \
-  -o "$BIN/${APP}-windows-amd64.exe" "$PKG"
-ok "$BIN/${APP}-windows-amd64.exe"
+# ── Windows — not supported via cross-compilation ────────────────────────────
+skip "Windows amd64" "CGO cross-compile not supported; build natively on Windows"
 
 # ── Linux targets (require ALSA headers on the build host) ───────────────────
 if [[ "$SKIP_LINUX" == "1" ]]; then
@@ -82,7 +82,7 @@ elif ! pkg-config --exists alsa 2>/dev/null; then
   echo ""
 else
   # ── Linux amd64 (zig, CGo for ALSA, dynamic glibc) ─────────────────────────
-  printf "  %-38s" "Linux  amd64 (CGo, dynamic ALSA)"
+  printf "  %-38s" "Linux  amd64 (CGO, zig, dynamic ALSA)"
   W=$(zig_cc x86_64-linux-gnu)
   GOOS=linux GOARCH=amd64 CGO_ENABLED=1 CC="$W" \
     go build -trimpath -ldflags="$LDFLAGS" \
@@ -91,7 +91,7 @@ else
   ok "$BIN/${APP}-linux-amd64"
 
   # ── Linux arm64 (zig, CGo for ALSA, dynamic glibc) ─────────────────────────
-  printf "  %-38s" "Linux  arm64 (CGo, dynamic ALSA)"
+  printf "  %-38s" "Linux  arm64 (CGO, zig, dynamic ALSA)"
   W=$(zig_cc aarch64-linux-gnu)
   GOOS=linux GOARCH=arm64 CGO_ENABLED=1 CC="$W" \
     go build -trimpath -ldflags="$LDFLAGS" \
