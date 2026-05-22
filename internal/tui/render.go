@@ -607,11 +607,22 @@ func (a *App) renderStatusBar() string {
 	}
 
 	state := a.player.State()
+
+	// During a track change the player briefly passes through StateStopped
+	// (old stream torn down, new stream not yet started).  Showing "Stopped"
+	// for those few frames causes a distracting flash.  When a track is
+	// loaded, treat the transient stopped state as Playing so the chip stays
+	// stable until the new stream reports its real state.
+	displayState := state
+	if displayState == audio.StateStopped && a.currentTrack != nil {
+		displayState = audio.StatePlaying
+	}
+
 	stateLabel := map[audio.State]string{
 		audio.StateStopped: "  Stopped ",
 		audio.StatePlaying: "  Playing ",
 		audio.StatePaused:  "  Paused  ",
-	}[state]
+	}[displayState]
 	stateChip := styleStatusState.Render(stateLabel)
 
 	// Build hint chips: [key] label
@@ -623,7 +634,7 @@ func (a *App) renderStatusBar() string {
 	var hints string
 	if a.currentView == viewFullscreen {
 		pauseLabel := "Pause"
-		if state == audio.StatePaused {
+		if displayState == audio.StatePaused {
 			pauseLabel = "Resume"
 		}
 		hints = hint("Esc", "Back") + hint("Spc", pauseLabel) +
@@ -632,10 +643,10 @@ func (a *App) renderStatusBar() string {
 			hint("b", "8-bit") + hint("q", "Quit")
 	} else {
 		switch {
-		case state == audio.StatePlaying:
+		case displayState == audio.StatePlaying:
 			hints = hint("Spc", "Pause") + hint("n", "Next") + hint("p", "Prev") +
 				hint("+/-", "Vol") + hint("/", "Search") + hint("?", "Help") + hint("q", "Quit")
-		case state == audio.StatePaused:
+		case displayState == audio.StatePaused:
 			hints = hint("Spc", "Resume") + hint("n", "Next") + hint("p", "Prev") +
 				hint("+/-", "Vol") + hint("/", "Search") + hint("?", "Help") + hint("q", "Quit")
 		case a.currentTrack != nil:
