@@ -705,9 +705,12 @@ func (a *App) renderInfoOverlay() string {
 		t = &tc
 	}
 
-	const labelW = 13  // fixed label column width
-	const valueW = 38  // max value column width before wrapping
-	const indent = "                 " // 2 + labelW + 2 spaces = 17 chars
+	// styleOverlayKey has PaddingLeft(1)+PaddingRight(1), so Width(W) fits
+	// W-2 visible characters.  The longest label is "Album Artist" (12 chars),
+	// requiring Width(14).  indent must equal 2(prefix) + 14(labelW) + 2(gap) = 18.
+	const labelW = 14
+	const valueW = 38
+	const indent = "                  " // 18 spaces: 2 + 14 + 2
 
 	title := styleOverlayTitle.Render("󰋽  Track Info")
 	div := styleOverlayMuted.Render(strings.Repeat("─", labelW+valueW+6))
@@ -787,10 +790,12 @@ func (a *App) renderSettingsOverlay() string {
 	}
 
 	// ── Music Library section ─────────────────────────────────────────────
-	// labelW(10) + indent(2) + gap(2) = 14; input width = lineW - 14
-	const inputW = lineW - 14
+	// labelW(11) + indent(2+2) = 15; input width = lineW - 15
+	// styleOverlayKey has PaddingLeft(1)+PaddingRight(1), so Width(11)
+	// fits 9 visible chars — exactly "Directory".
+	const inputW = lineW - 15
 	dirActive := a.settingsActive == 0
-	dirLabel := labelStyle(dirActive).Width(10).Render("Directory")
+	dirLabel := labelStyle(dirActive).Width(11).Render("Directory")
 	// Show the current value truncated to inputW so the overlay never overflows.
 	// The textinput widget handles cursor/editing; we display a preview when
 	// the input is not active, and the live input.View() when it is.
@@ -813,7 +818,7 @@ func (a *App) renderSettingsOverlay() string {
 
 	// ── 8-bit Conversion section ──────────────────────────────────────────
 	optsActive := a.settingsActive == 1
-	optsLabel := labelStyle(optsActive).Width(10).Render("Options")
+	optsLabel := labelStyle(optsActive).Width(11).Render("Options")
 	var optsView string
 	if optsActive {
 		a.settingsInput.Width = inputW
