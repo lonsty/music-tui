@@ -19,17 +19,15 @@ import (
 
 // ── Play commands ─────────────────────────────────────────────────────────────
 
-// cmdRestoreSession loads the last-played track, seeks to the saved position,
-// and leaves the player paused regardless of the previous playing state.
-// This is called once from Init() when a saved session is present.
+// cmdRestoreSession loads the last-played track at the saved position and
+// leaves the player paused.  Called once from Init().
 func (a *App) cmdRestoreSession() tea.Cmd {
 	if a.session == nil {
 		return nil
 	}
 	sess := a.session
-	a.session = nil // consume so it's not used again
+	a.session = nil // consume
 
-	// Find the track in the filtered list by path.
 	idx := -1
 	for i, t := range a.filtered {
 		if t.Path == sess.LastTrackPath {
@@ -38,22 +36,19 @@ func (a *App) cmdRestoreSession() tea.Cmd {
 		}
 	}
 	if idx < 0 {
-		return nil // track no longer in library
+		return nil
 	}
 
 	track := a.filtered[idx]
-	posMs := sess.LastPositionMs
+	offsetDur := time.Duration(sess.LastPositionMs) * time.Millisecond
 
 	return func() tea.Msg {
-		// Play the track (this opens the file and starts audio).
-		if err := a.player.Play(track); err != nil {
+		// PlayAt opens the file and seeks before handing to the speaker,
+		// so the position is accurate from the very first frame.
+		if err := a.player.PlayAt(track, offsetDur); err != nil {
 			return playResultMsg{err: err, idx: idx}
 		}
-		// Seek to the saved position.
-		if posMs > 0 {
-			_ = a.player.Seek(time.Duration(posMs) * time.Millisecond)
-		}
-		// Always start paused so the user can choose to resume.
+		// Start paused — user presses Space to resume.
 		a.player.Pause()
 		t := track
 		return playResultMsg{track: &t, idx: idx}

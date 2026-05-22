@@ -141,7 +141,8 @@ type Player struct {
 	vol      *effects.Volume
 	format   beep.Format
 	state    State
-	retroIdx int // retro effect preset index (0 = off)
+	retroIdx int     // retro effect preset index (0 = off)
+	volume   float64 // desired volume [0,2]; applied on each Play call
 	onDone   func()
 }
 
@@ -151,7 +152,7 @@ func NewPlayer() (*Player, error) {
 	if err := speaker.Init(defaultSampleRate, bufferSize); err != nil {
 		return nil, fmt.Errorf("init speaker: %w", err)
 	}
-	return &Player{state: StateStopped}, nil
+	return &Player{state: StateStopped, volume: 1.0}, nil
 }
 
 // SetOnDone registers a callback fired (in the beep mixer goroutine) when the
@@ -164,11 +165,19 @@ func (p *Player) SetOnDone(fn func()) {
 
 // Play stops any current playback, then loads and starts the given track.
 func (p *Player) Play(track library.Track) error {
-	// 1. Stop current audio.  stopCurrent returns the old streamer so we can
-	//    close it *after* installing the new one (see step 4).
+	return p.playAt(track, 0)
+}
+
+// PlayAt starts the track at the given byte offset into the file, then seeks
+// to offsetDur before handing the stream to the speaker.  The volume stored
+// in the player is applied to the new stream immediately.
+func (p *Player) PlayAt(track library.Track, offsetDur time.Duration) error {
+	return p.playAt(track, offsetDur)
+}
+
+func (p *Player) playAt(track library.Track, offsetDur time.Duration) error {
 	old := p.stopCurrent()
 
-	// 2. Open and decode the file.
 	f, err := os.Open(track.Path)
 	if err != nil {
 		if old != nil {
@@ -185,19 +194,28 @@ func (p *Player) Play(track library.Track) error {
 		return fmt.Errorf("decode mp3 %q: %w", track.Path, err)
 	}
 
-	// 3. Resample if the file's rate differs from the speaker's.
+	// Seek before the stream reaches the speaker so no frames are lost.
+	if offsetDur > 0 {
+		target := format.SampleRate.N(offsetDur)
+		if target > 0 && target < streamer.Len() {
+			_ = streamer.Seek(target)
+		}
+	}
+
 	var src beep.Streamer = streamer
 	if format.SampleRate != defaultSampleRate {
 		src = beep.Resample(4, format.SampleRate, defaultSampleRate, streamer)
 	}
 	retro := &retroProcessor{Streamer: src}
 	ctrl := &beep.Ctrl{Streamer: retro, Paused: false}
-	vol := &effects.Volume{Streamer: ctrl, Base: 2, Volume: 0, Silent: false}
 
-	// 4. Snapshot onDone and effect preset, then store the new stream fields.
 	p.mu.Lock()
 	onDone := p.onDone
 	retro.holdLen, retro.alpha = retroParams(int(defaultSampleRate), retroTargetRate(p.retroIdx))
+	// Apply the stored volume to the new stream so it takes effect immediately.
+	volDB := volumeDB(p.volume)
+	isSilent := p.volume == 0
+	vol := &effects.Volume{Streamer: ctrl, Base: 2, Volume: volDB, Silent: isSilent}
 	p.streamer = streamer
 	p.retro = retro
 	p.ctrl = ctrl
@@ -206,8 +224,6 @@ func (p *Player) Play(track library.Track) error {
 	p.state = StatePlaying
 	p.mu.Unlock()
 
-	// 5. Hand the stream to the speaker.  speaker.Play is self-locking;
-	//    do NOT wrap it in speaker.Lock.
 	speaker.Play(beep.Seq(vol, beep.Callback(func() {
 		p.mu.Lock()
 		wasPlaying := p.state == StatePlaying
@@ -220,7 +236,6 @@ func (p *Player) Play(track library.Track) error {
 		}
 	})))
 
-	// 6. Close the previous streamer now that the speaker is no longer using it.
 	if old != nil {
 		old.Close()
 	}
@@ -361,18 +376,27 @@ func (p *Player) Seek(d time.Duration) error {
 }
 
 // SetVolume sets playback volume. v ∈ [0.0, 2.0]; 1.0 = unity gain.
+// The value is persisted in the player so it is applied automatically when
+// the next track is loaded via Play or PlayAt.
 func (p *Player) SetVolume(v float64) {
 	p.mu.Lock()
+	p.volume = v
 	vol := p.vol
 	p.mu.Unlock()
 
 	if vol == nil {
-		return
+		return // no active stream; value will be applied on next Play
 	}
 	speaker.Lock()
-	vol.Volume = (v/2.0)*4.0 - 3.0
+	vol.Volume = volumeDB(v)
 	vol.Silent = v == 0
 	speaker.Unlock()
+}
+
+// volumeDB converts a linear volume in [0,2] to the dB gain value expected
+// by effects.Volume (Base=2 log scale: 0 dB ≈ unity, −3 dB ≈ 0.5×).
+func volumeDB(v float64) float64 {
+	return (v/2.0)*4.0 - 3.0
 }
 
 // retroPresets defines all retro effect presets in order.
@@ -514,7 +538,7 @@ func (p *Player) CrossfadeTo(newPath string, positionOffset time.Duration) error
 	p.vol = newVol
 	p.format = format
 	p.state = StatePlaying
-	targetVolDB := 0.0 // unity gain in beep's log scale
+	targetVolDB := volumeDB(p.volume) // restore to the user's chosen volume
 	p.mu.Unlock()
 
 	speaker.Play(beep.Seq(newVol, beep.Callback(func() {

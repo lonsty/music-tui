@@ -193,6 +193,22 @@ func NewApp(player *audio.Player, st *store.Store, musicDir string, tracks []lib
 			cursor = 0
 		}
 		app.cursor = cursor
+
+		// Pre-populate currentTrack so the first rendered frame already shows
+		// the correct playing state (no flash/blank period while the async
+		// restore Cmd is in flight).
+		if sess != nil && sess.LastTrackPath != "" {
+			for i, t := range tracks {
+				if t.Path == sess.LastTrackPath {
+					tc := t
+					app.currentTrack = &tc
+					app.currentIdx = i
+					app.cursor = i
+					app.syncMarquees()
+					break
+				}
+			}
+		}
 	} else {
 		app.statusMsg = "No tracks — open Settings (,) and reload the library"
 	}
