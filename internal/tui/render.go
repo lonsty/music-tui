@@ -705,22 +705,39 @@ func (a *App) renderInfoOverlay() string {
 		t = &tc
 	}
 
-	title := styleOverlayTitle.Render("󰋽  Track Info")
-	div := styleOverlayMuted.Render(strings.Repeat("─", 46))
+	const labelW = 13  // fixed label column width
+	const valueW = 38  // max value column width before wrapping
+	const indent = "                 " // 2 + labelW + 2 spaces = 17 chars
 
-	row := func(label, value string) string {
+	title := styleOverlayTitle.Render("󰋽  Track Info")
+	div := styleOverlayMuted.Render(strings.Repeat("─", labelW+valueW+6))
+
+	// row renders a single label+value pair.
+	// Long values are word-wrapped at valueW columns, continuation lines
+	// are indented to align with the first value character.
+	row := func(label, value string) []string {
 		if value == "" {
-			return ""
+			return nil
 		}
-		l := styleOverlayKey.Width(13).Render(label)
-		v := styleOverlayValue.Render(truncate(value, 36))
-		return "  " + l + "  " + v
+		l := styleOverlayKey.Width(labelW).Render(label)
+		// Wrap value into segments of at most valueW display columns.
+		segments := wrapText(value, valueW)
+		var result []string
+		for i, seg := range segments {
+			v := styleOverlayValue.Render(seg)
+			if i == 0 {
+				result = append(result, "  "+l+"  "+v)
+			} else {
+				result = append(result, indent+v)
+			}
+		}
+		return result
 	}
 
 	var rows []string
 	rows = append(rows, title, div, "")
 	if t != nil {
-		for _, r := range []string{
+		for _, lines := range [][]string{
 			row("Title",        t.DisplayTitle()),
 			row("Artist",       t.DisplayArtist()),
 			row("Album Artist", t.AlbumArtist),
@@ -733,9 +750,7 @@ func (a *App) renderInfoOverlay() string {
 			row("Format",       t.Format()),
 			row("Path",         t.Path),
 		} {
-			if r != "" {
-				rows = append(rows, r)
-			}
+			rows = append(rows, lines...)
 		}
 	} else {
 		rows = append(rows, styleOverlayMuted.Render("  No track selected"))
@@ -772,16 +787,45 @@ func (a *App) renderSettingsOverlay() string {
 	}
 
 	// ── Music Library section ─────────────────────────────────────────────
+	// labelW(10) + indent(2) + gap(2) = 14; input width = lineW - 14
+	const inputW = lineW - 14
 	dirActive := a.settingsActive == 0
 	dirLabel := labelStyle(dirActive).Width(10).Render("Directory")
-	dirLine := "  " + dirLabel + "  " + a.musicDirInput.View()
+	// Show the current value truncated to inputW so the overlay never overflows.
+	// The textinput widget handles cursor/editing; we display a preview when
+	// the input is not active, and the live input.View() when it is.
+	var dirView string
+	if dirActive {
+		a.musicDirInput.Width = inputW
+		dirView = a.musicDirInput.View()
+	} else {
+		// Inactive: show truncated value so it never wraps.
+		val := a.musicDirInput.Value()
+		if strWidth(val) > inputW {
+			// Show the tail of the path (most useful part).
+			val = "…" + val[len(val)-inputW+1:]
+		}
+		dirView = styleOverlayValue.Render(val)
+	}
+	dirLine := "  " + dirLabel + "  " + dirView
 	reloadKey := styleOverlayKey.Render(" Ctrl+R ")
 	reloadHint := "  " + reloadKey + styleOverlayMuted.Render(" reload library  (adds new · removes missing)")
 
 	// ── 8-bit Conversion section ──────────────────────────────────────────
 	optsActive := a.settingsActive == 1
 	optsLabel := labelStyle(optsActive).Width(10).Render("Options")
-	optsLine := "  " + optsLabel + "  " + a.settingsInput.View()
+	var optsView string
+	if optsActive {
+		a.settingsInput.Width = inputW
+		optsView = a.settingsInput.View()
+	} else {
+		val := a.settingsInput.Value()
+		if strWidth(val) > inputW {
+			val = truncate(val, inputW)
+		}
+		optsView = styleOverlayValue.Render(val)
+	}
+	optsLine := "  " + optsLabel + "  " + optsView
 	optsHint := styleOverlayMuted.Render("  Extra options appended to the p2chip command.")
 	optsEx := styleOverlayMuted.Render("  e.g.  --sf2 nes --onset 0.6")
 
@@ -952,6 +996,56 @@ func padLeft(s string, targetW int) string {
 		return s
 	}
 	return strings.Repeat(" ", targetW-w) + s
+}
+
+// wrapText splits s into lines of at most maxW display columns.
+// It tries to break at '/' or ' ' boundaries; if no such boundary exists
+// within a segment it hard-breaks at maxW.
+func wrapText(s string, maxW int) []string {
+	if maxW <= 0 {
+		return []string{s}
+	}
+	if strWidth(s) <= maxW {
+		return []string{s}
+	}
+
+	var lines []string
+	for strWidth(s) > maxW {
+		// Find the last break point (/ or space) within maxW columns.
+		breakAt := -1
+		col := 0
+		for i, r := range s {
+			rw := strWidth(string(r))
+			if col+rw > maxW {
+				break
+			}
+			if r == '/' || r == ' ' {
+				breakAt = i + len(string(r)) // break after the delimiter
+			}
+			col += rw
+		}
+
+		if breakAt <= 0 {
+			// No break point found: hard-break at maxW columns.
+			col = 0
+			breakAt = len(s)
+			for i, r := range s {
+				rw := strWidth(string(r))
+				if col+rw > maxW {
+					breakAt = i
+					break
+				}
+				col += rw
+			}
+		}
+
+		lines = append(lines, s[:breakAt])
+		s = strings.TrimLeft(s[breakAt:], " ")
+	}
+	if s != "" {
+		lines = append(lines, s)
+	}
+	return lines
 }
 
 // rowMidText builds the middle-column text for a track list row:
