@@ -872,10 +872,7 @@ func (a *App) renderSettingsOverlay() string {
 // colors must contain at least two hex colour strings (e.g. "#89B4FA").
 // Each rune is coloured by interpolating between adjacent colour stops based on
 // its position in the total display-column count.
-// bold controls whether the entire string is also rendered in bold.
-//
-// Uses raw ANSI SGR sequences (not lipgloss) for maximum performance — avoids
-// per-rune Style/termenv allocations that caused multi-second first-render lag.
+// bold controls whether each rune is also rendered in bold.
 func gradientText(s string, bold bool, colors ...string) string {
 	if len(s) == 0 || len(colors) < 2 {
 		return s
@@ -885,16 +882,16 @@ func gradientText(s string, bold bool, colors ...string) string {
 		return s
 	}
 
-	// Parse hex stops once.
-	type rgb struct{ r, g, b uint8 }
+	// Parse hex colours into RGB float64 triples.
+	type rgb struct{ r, g, b float64 }
 	stops := make([]rgb, len(colors))
 	for i, c := range colors {
 		c = strings.TrimPrefix(c, "#")
 		if len(c) != 6 {
-			stops[i] = rgb{255, 255, 255}
+			stops[i] = rgb{1, 1, 1}
 			continue
 		}
-		h := func(s string) uint8 {
+		parse := func(s string) float64 {
 			v := 0
 			for _, ch := range s {
 				v <<= 4
@@ -907,47 +904,52 @@ func gradientText(s string, bold bool, colors ...string) string {
 					v += int(ch-'A') + 10
 				}
 			}
-			if v > 255 {
-				v = 255
-			}
-			return uint8(v)
+			return float64(v) / 255.0
 		}
-		stops[i] = rgb{h(c[0:2]), h(c[2:4]), h(c[4:6])}
+		stops[i] = rgb{parse(c[0:2]), parse(c[2:4]), parse(c[4:6])}
 	}
 
-	lerp := func(t float64) rgb {
+	interpolate := func(t float64) rgb {
+		// t ∈ [0,1]; map onto [0, len(stops)-1]
 		scaled := t * float64(len(stops)-1)
 		lo := int(scaled)
 		if lo >= len(stops)-1 {
 			return stops[len(stops)-1]
 		}
-		f := scaled - float64(lo)
+		frac := scaled - float64(lo)
 		a, b := stops[lo], stops[lo+1]
-		blend := func(av, bv uint8) uint8 {
-			return uint8(float64(av) + (float64(bv)-float64(av))*f)
+		return rgb{
+			a.r + (b.r-a.r)*frac,
+			a.g + (b.g-a.g)*frac,
+			a.b + (b.b-a.b)*frac,
 		}
-		return rgb{blend(a.r, b.r), blend(a.g, b.g), blend(a.b, b.b)}
+	}
+
+	clamp := func(v float64) uint8 {
+		if v < 0 {
+			return 0
+		}
+		if v > 1 {
+			return 255
+		}
+		return uint8(v * 255)
 	}
 
 	var out strings.Builder
-	out.Grow(len(s) * 24) // pre-allocate: each rune ≈ 20 bytes of ANSI
-
-	const resetSeq = "\x1b[0m"
-	boldSeq := ""
-	if bold {
-		boldSeq = "\x1b[1m"
-	}
-
 	col := 0
 	for _, r := range s {
 		rw := strWidth(string(r))
-		t := 0.0
-		if totalW > 1 {
-			t = float64(col) / float64(totalW-1)
+		t := float64(col) / float64(totalW-1)
+		if totalW == 1 {
+			t = 0
 		}
-		c := lerp(t)
-		// \x1b[38;2;R;G;Bm — 24-bit foreground colour
-		fmt.Fprintf(&out, "\x1b[38;2;%d;%d;%dm%s%c%s", c.r, c.g, c.b, boldSeq, r, resetSeq)
+		c := interpolate(t)
+		hex := fmt.Sprintf("#%02X%02X%02X", clamp(c.r), clamp(c.g), clamp(c.b))
+		st := lipgloss.NewStyle().Foreground(lipgloss.Color(hex))
+		if bold {
+			st = st.Bold(true)
+		}
+		out.WriteString(st.Render(string(r)))
 		col += rw
 	}
 	return out.String()
