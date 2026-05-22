@@ -9,6 +9,7 @@ import (
 	"github.com/charmbracelet/x/ansi"
 
 	"github.com/eilianxiao/music-tui/internal/audio"
+	"github.com/eilianxiao/music-tui/internal/library"
 )
 
 // ── Catppuccin Mocha palette ─────────────────────────────────────────────────
@@ -283,31 +284,34 @@ func (a *App) renderTrackList() string {
 		isSelected := i == a.cursor
 		isPlaying := a.currentTrack != nil && a.currentTrack.ID == t.ID
 
-		icon := "  "
+		// ── Left: icon (fixed 2 cols + 1 space = 3) ──────────────────────
+		const leftFixW = 3 // icon(2) + separator(1)
+		icon := "   "
 		if isPlaying {
-			icon = "󰎆 "
+			icon = "󰎆  "
 		}
 
-		// Right column: fixed display width, right-aligned.
+		// ── Right: format + duration (fixed 10 cols) ──────────────────────
 		const rightColW = 10
 		rightText := t.Format() + " " + formatDuration(t.Duration)
 		rightPadded := padLeft(rightText, rightColW)
 
-		// Left column: selected row uses Marquee for scrolling; others truncate.
-		leftAvail := innerW - rightColW - 1
-		var leftPadded string
-		if isSelected {
-			// mqRow is kept in sync with the cursor by tickMarquees.
-			leftPadded = a.mqRow.Render(leftAvail)
-		} else {
-			leftText := truncate(icon+t.DisplayArtist()+" — "+t.DisplayTitle(), leftAvail)
-			leftPadded = padRight(leftText, leftAvail)
+		// ── Middle: album · Artist · title (elastic, marquee on selected) ─
+		midAvail := innerW - leftFixW - rightColW - 1 // -1 for separator before right
+		if midAvail < 4 {
+			midAvail = 4
 		}
 
-		// Flat string with exact display width = innerW.
-		// No lipgloss Width — we measured correctly via strWidth.
-		// Background highlight is applied by the style below.
-		line := leftPadded + " " + rightPadded
+		midText := rowMidText(t)
+		var midPadded string
+		if isSelected {
+			// mqRow scrolls the middle segment only.
+			midPadded = a.mqRow.Render(midAvail)
+		} else {
+			midPadded = padRight(truncate(midText, midAvail), midAvail)
+		}
+
+		line := icon + midPadded + " " + rightPadded
 
 		var style lipgloss.Style
 		switch {
@@ -823,6 +827,23 @@ func padLeft(s string, targetW int) string {
 		return s
 	}
 	return strings.Repeat(" ", targetW-w) + s
+}
+
+// rowMidText builds the middle-column text for a track list row:
+//   Album · Artist · Title
+//
+// Parts that are empty are omitted.  The result is used both for direct
+// display (non-selected rows) and as the Marquee source (selected row).
+func rowMidText(t library.Track) string {
+	var parts []string
+	if a := t.Album; a != "" {
+		parts = append(parts, a)
+	}
+	if ar := t.DisplayArtist(); ar != "Unknown Artist" || t.Artist != "" {
+		parts = append(parts, ar)
+	}
+	parts = append(parts, t.DisplayTitle())
+	return strings.Join(parts, "  ·  ")
 }
 
 // formatDuration converts a duration to mm:ss.

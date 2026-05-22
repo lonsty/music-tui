@@ -394,19 +394,14 @@ func (a *App) rebuildShuffle() {
 // ── Marquee helpers ───────────────────────────────────────────────────────────
 
 // syncRowMarquee updates mqRow to match the current cursor position.
-// Call immediately when the cursor moves so the next render shows the correct
-// row text rather than the previous row's stale content.
+// The text is the middle-column content: Album · Artist · Title.
 func (a *App) syncRowMarquee() {
 	if a.cursor >= len(a.filtered) {
 		a.mqRow.SetText("")
 		return
 	}
 	t := a.filtered[a.cursor]
-	icon := "  "
-	if a.currentTrack != nil && a.currentTrack.ID == t.ID {
-		icon = "󰎆 "
-	}
-	a.mqRow.SetText(icon + t.DisplayArtist() + " — " + t.DisplayTitle())
+	a.mqRow.SetText(rowMidText(t))
 }
 
 // syncMarquees updates all Marquee texts from the current track.
@@ -485,10 +480,11 @@ func (a *App) getCoverArt(maxOuterCols, maxOuterRows int) string {
 // tickMarquees advances all Marquee scroll positions.
 func (a *App) tickMarquees() {
 	listW := a.trackListInnerW()
+	const leftFixW = 3  // icon(2) + separator(1)
 	const rightColW = 10
-	rowAvail := listW - rightColW - 1 // matches renderTrackList leftAvail
-	if rowAvail < 1 {
-		rowAvail = 20
+	midAvail := listW - leftFixW - rightColW - 1
+	if midAvail < 4 {
+		midAvail = 4
 	}
 
 	miniW := a.miniPlayerW() - 4
@@ -503,16 +499,12 @@ func (a *App) tickMarquees() {
 	// Sync the selected-row marquee text each tick so it follows cursor moves.
 	if a.cursor < len(a.filtered) {
 		t := a.filtered[a.cursor]
-		icon := "  "
-		if a.currentTrack != nil && a.currentTrack.ID == t.ID {
-			icon = "󰎆 "
-		}
-		a.mqRow.SetText(icon + t.DisplayArtist() + " — " + t.DisplayTitle())
+		a.mqRow.SetText(rowMidText(t))
 	} else {
 		a.mqRow.SetText("")
 	}
 
-	a.mqRow.Tick(rowAvail)
+	a.mqRow.Tick(midAvail)
 	a.mqTitle.Tick(miniW)
 	a.mqMeta.Tick(miniW)
 	a.mqArtist.Tick(fullW)
