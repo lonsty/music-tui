@@ -57,20 +57,14 @@ func (a *App) cmdRestoreSession() tea.Cmd {
 
 // cmdPlayTrack returns a Cmd that plays filtered[idx].
 // All App-state mutations happen via playResultMsg in Update — never in the Cmd.
-// If the player was paused before the call, the new track starts paused too.
 func (a *App) cmdPlayTrack(idx int) tea.Cmd {
 	if idx < 0 || idx >= len(a.filtered) {
 		return nil
 	}
 	track := a.filtered[idx] // value copy — safe across goroutine boundary
-	// Capture whether we were paused so the new track can mirror that state.
-	wasPaused := a.player.State() == audio.StatePaused
 	return func() tea.Msg {
 		if err := a.player.Play(track); err != nil {
 			return playResultMsg{err: err, idx: idx}
-		}
-		if wasPaused {
-			a.player.Pause()
 		}
 		t := track
 		return playResultMsg{track: &t, idx: idx}
