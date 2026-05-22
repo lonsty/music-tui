@@ -11,7 +11,7 @@ func (a *App) handleKey(msg tea.KeyMsg) tea.Cmd {
 	// Global quit — works in every state.
 	if msg.String() == "ctrl+c" {
 		return tea.Sequence(
-			func() tea.Msg { a.player.Stop(); return noopMsg{} },
+			func() tea.Msg { a.saveSession(); a.player.Stop(); return noopMsg{} },
 			tea.Quit,
 		)
 	}
@@ -42,7 +42,7 @@ func (a *App) handleNormalKey(msg tea.KeyMsg) tea.Cmd {
 	switch msg.String() {
 	case "q":
 		return tea.Sequence(
-			func() tea.Msg { a.player.Stop(); return noopMsg{} },
+			func() tea.Msg { a.saveSession(); a.player.Stop(); return noopMsg{} },
 			tea.Quit,
 		)
 
@@ -197,7 +197,7 @@ func (a *App) handleFullscreenKey(msg tea.KeyMsg) tea.Cmd {
 
 	case "q":
 		return tea.Sequence(
-			func() tea.Msg { a.player.Stop(); return noopMsg{} },
+			func() tea.Msg { a.saveSession(); a.player.Stop(); return noopMsg{} },
 			tea.Quit,
 		)
 	}

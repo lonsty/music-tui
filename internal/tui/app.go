@@ -211,6 +211,11 @@ func (a *App) Cleanup() {
 
 // saveSession persists all user-facing state to the settings table so it can
 // be restored on the next launch.
+//
+// It must be called while the player is still active (before player.Stop),
+// so that Position() returns the correct playback offset.  Cleanup() also
+// calls it as a fallback for abnormal exits, but if the player has already
+// been stopped the position will be 0.
 func (a *App) saveSession() {
 	if a.st == nil {
 		return
@@ -227,15 +232,21 @@ func (a *App) saveSession() {
 		lastTrackPath = a.currentTrack.Path
 	}
 
+	// Only write last_position_ms when the player is alive; skip the write
+	// when pos==0 and the player is stopped (would overwrite a valid position
+	// saved moments earlier by the q-key handler).
+	posMs := pos.Milliseconds()
 	pairs := map[string]string{
-		"volume":           strconv.FormatFloat(a.volume, 'f', 4, 64),
-		"play_mode":        strconv.Itoa(int(a.playMode)),
-		"retro_idx":        strconv.Itoa(a.retroIdx),
-		"last_track_path":  lastTrackPath,
-		"last_position_ms": strconv.FormatInt(pos.Milliseconds(), 10),
-		"was_playing":      wasPlaying,
-		"cursor":           strconv.Itoa(a.cursor),
-		"chip8_options":    a.chip8Options,
+		"volume":          strconv.FormatFloat(a.volume, 'f', 4, 64),
+		"play_mode":       strconv.Itoa(int(a.playMode)),
+		"retro_idx":       strconv.Itoa(a.retroIdx),
+		"last_track_path": lastTrackPath,
+		"was_playing":     wasPlaying,
+		"cursor":          strconv.Itoa(a.cursor),
+		"chip8_options":   a.chip8Options,
+	}
+	if posMs > 0 || state != audio.StateStopped {
+		pairs["last_position_ms"] = strconv.FormatInt(posMs, 10)
 	}
 	_ = a.st.SetSettings(pairs)
 }
