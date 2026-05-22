@@ -439,11 +439,12 @@ func (p *Player) SetRetroPreset(idx int) {
 // the fade-in are fully complete, making it safe to call from a tea.Cmd
 // goroutine.
 //
-// The fade duration is fixed at 300 ms.  If the player is stopped or paused
-// when called, the crossfade still proceeds (it opens and seeks newPath).
+// The fade duration is fixed at 1200 ms (smooth and audible).  If the player
+// is stopped or paused when called, the crossfade still proceeds (it opens and
+// seeks newPath).
 func (p *Player) CrossfadeTo(newPath string, positionOffset time.Duration) error {
-	const fadeDuration = 300 * time.Millisecond
-	const steps = 30 // number of volume steps
+	const fadeDuration = 1200 * time.Millisecond
+	const steps = 40 // number of volume steps (each ≈ 30 ms)
 	stepSleep := fadeDuration / steps
 
 	// ── Fade out current track ─────────────────────────────────────────────

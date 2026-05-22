@@ -601,10 +601,12 @@ func (a *App) renderStatusBar() string {
 
 	var chipChip string
 	switch {
-	case a.chipBusy && !a.chipMode:
+	case a.chipConverting:
 		chipChip = "  " + styleStatusState.Render(" 8-bit Converting… ")
 	case a.chipBusy && a.chipMode:
 		chipChip = "  " + styleStatusState.Render(" 8-bit Switching… ")
+	case a.chipBusy:
+		chipChip = "  " + styleStatusState.Render(" 8-bit… ")
 	case a.chipMode:
 		chipChip = "  " + styleStatusState.Render(" 8-bit ")
 	}

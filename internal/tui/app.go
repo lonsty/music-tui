@@ -34,12 +34,13 @@ type App struct {
 	retroIdx  int      // retro effect preset index (0 = off)
 
 	// ── 8-bit mode ───────────────────────────────────────────────────────────
-	chipMode     bool   // currently playing the 8-bit converted version
-	chipBusy     bool   // conversion or crossfade in progress (locked)
-	chipPath     string // path to the cached 8-bit mp3 (in tmpDir)
-	chipOrigin   string // Track.Path for which chipPath was generated
-	tmpDir       string // temp directory; created on startup, removed on exit
-	chip8Options string // extra CLI options forwarded to p2chip
+	chipMode       bool   // currently playing the 8-bit converted version
+	chipBusy       bool   // conversion or crossfade in progress (locked)
+	chipConverting bool   // true only during p2chip conversion (not crossfade)
+	chipPath       string // path to the cached 8-bit mp3 (in tmpDir)
+	chipOrigin     string // Track.Path for which chipPath was generated
+	tmpDir         string // temp directory; created on startup, removed on exit
+	chip8Options   string // extra CLI options forwarded to p2chip
 
 	// ── Search ───────────────────────────────────────────────────────────────
 	searchInput textinput.Model
@@ -182,12 +183,28 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case playResultMsg:
 		if msg.err != nil {
 			a.statusMsg = "󰅚  " + msg.err.Error()
-		} else {
-			a.currentTrack = msg.track
-			a.currentIdx = msg.idx
-			a.cursor = msg.idx
-			a.statusMsg = ""
-			a.syncMarquees()
+			return a, nil
+		}
+
+		// Remember whether we were in chip mode before the track change.
+		wasChipMode := a.chipMode
+
+		// Reset all chip state unconditionally on track change.
+		// Any in-flight conversion/crossfade goroutine will finish naturally
+		// but its result will be ignored because chipOrigin won't match.
+		a.chipMode = false
+		a.chipBusy = false
+		a.chipConverting = false
+
+		a.currentTrack = msg.track
+		a.currentIdx = msg.idx
+		a.cursor = msg.idx
+		a.statusMsg = ""
+		a.syncMarquees()
+
+		// If we were in chip mode, automatically start converting the new track.
+		if wasChipMode {
+			return a, a.cmdToggleChip()
 		}
 		return a, nil
 
@@ -198,12 +215,14 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if msg.err != nil {
 			// Conversion failed — unlock and surface the error.
 			a.chipBusy = false
+			a.chipConverting = false
 			a.statusMsg = "󰅚  8-bit convert failed: " + msg.err.Error()
 			return a, nil
 		}
-		// Cache the result and crossfade to the 8-bit track.
+		// Cache the result; conversion phase is done, crossfade phase begins.
 		a.chipPath = msg.chipPath
 		a.chipOrigin = msg.originPath
+		a.chipConverting = false
 		pos := a.player.Position()
 		return a, func() tea.Msg {
 			_ = a.player.CrossfadeTo(msg.chipPath, pos)

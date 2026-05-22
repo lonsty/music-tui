@@ -222,6 +222,8 @@ func (a *App) cmdToggleChip() tea.Cmd {
 	}
 
 	a.chipBusy = true
+	// chipConverting is set only when we actually invoke p2chip.
+	// Cache-hit and crossfade-back paths leave it false.
 
 	if a.chipMode {
 		// ── Turn off: crossfade back to original ──────────────────────────
@@ -251,6 +253,7 @@ func (a *App) cmdToggleChip() tea.Cmd {
 	}
 
 	// No cache — run p2chip in the background.
+	a.chipConverting = true
 	outPath := filepath.Join(a.tmpDir, chip8CacheKey(track.Path)+".mp3")
 	extraOpts := a.chip8Options // capture before goroutine
 	return func() tea.Msg {
