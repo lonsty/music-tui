@@ -622,8 +622,14 @@ func (a *App) renderStatusBar() string {
 
 	var hints string
 	if a.currentView == viewFullscreen {
-		hints = hint("Esc", "Back") + hint("Spc", "Pause") +
-			hint("n", "Next") + hint("p", "Prev") + hint("m", "Mode")
+		pauseLabel := "Pause"
+		if state == audio.StatePaused {
+			pauseLabel = "Resume"
+		}
+		hints = hint("Esc", "Back") + hint("Spc", pauseLabel) +
+			hint("n", "Next") + hint("p", "Prev") +
+			hint("+/-", "Vol") + hint("m", "Mode") +
+			hint("b", "8-bit") + hint("q", "Quit")
 	} else {
 		switch {
 		case state == audio.StatePlaying:
