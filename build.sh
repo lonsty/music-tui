@@ -116,7 +116,13 @@ else
       -o "$BIN/${APP}-linux-arm64" "$PKG"
   else
     W=$(zig_cc aarch64-linux-gnu)
+    # Point CGO to the arm64 ALSA headers (installed via libasound2-dev:arm64).
+    # On a typical Debian/Ubuntu multi-arch setup they land in
+    # /usr/include/aarch64-linux-gnu/alsa/; we also need alsa/asoundlib.h
+    # which lives in /usr/include/alsa/ (arch-independent part).
     GOOS=linux GOARCH=arm64 CGO_ENABLED=1 CC="$W" \
+      CGO_CFLAGS="-I/usr/include/aarch64-linux-gnu -I/usr/include" \
+      CGO_LDFLAGS="-L/usr/lib/aarch64-linux-gnu" \
       go build -trimpath -ldflags="$LDFLAGS" \
       -o "$BIN/${APP}-linux-arm64" "$PKG"
     rm -f "$W"
