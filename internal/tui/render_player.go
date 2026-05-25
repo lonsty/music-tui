@@ -77,7 +77,7 @@ func (a *App) buildMiniPlayerContent(w, h int) string {
 		// Has lyrics but no active line yet (plain-text or before first stamp).
 		lyricText = a.lines[0].Text
 	default:
-		lyricText = "󰝚  暂无歌词"
+		lyricText = "󰝚  No lyrics"
 	}
 	lyric := styleLyricNormal.Align(lipgloss.Center).Width(w).Render(lyricText)
 
@@ -237,9 +237,9 @@ func (a *App) renderFullLyrics() string {
 			lipgloss.Center, lipgloss.Center, spinner)
 	case len(a.lines) == 0:
 		placeholder := lipgloss.JoinVertical(lipgloss.Center,
-			styleLyricNormal.Render("暂无歌词"),
+			styleLyricNormal.Render("No lyrics"),
 			"",
-			styleOverlayMuted.Render("将同名 .lrc 文件放在音频旁边即可"),
+			styleOverlayMuted.Render("Place a .lrc file next to the audio file"),
 		)
 		lyricsContent = lipgloss.Place(innerW, lyricsH,
 			lipgloss.Center, lipgloss.Center, placeholder)
