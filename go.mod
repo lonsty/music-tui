@@ -1,4 +1,4 @@
-module github.com/eilianxiao/music-tui
+module github.com/lonsty/music-tui
 
 go 1.24.2
 

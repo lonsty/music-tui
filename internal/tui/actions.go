@@ -12,9 +12,9 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 
-	"github.com/eilianxiao/music-tui/internal/audio"
-	"github.com/eilianxiao/music-tui/internal/library"
-	"github.com/eilianxiao/music-tui/internal/store"
+	"github.com/lonsty/music-tui/internal/audio"
+	"github.com/lonsty/music-tui/internal/library"
+	"github.com/lonsty/music-tui/internal/store"
 )
 
 // chip8 command constants.

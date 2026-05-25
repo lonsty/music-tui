@@ -9,9 +9,9 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 
-	"github.com/eilianxiao/music-tui/internal/audio"
-	"github.com/eilianxiao/music-tui/internal/store"
-	"github.com/eilianxiao/music-tui/internal/tui"
+	"github.com/lonsty/music-tui/internal/audio"
+	"github.com/lonsty/music-tui/internal/store"
+	"github.com/lonsty/music-tui/internal/tui"
 )
 
 func main() {

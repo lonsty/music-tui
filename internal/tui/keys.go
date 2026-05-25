@@ -6,7 +6,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 
-	"github.com/eilianxiao/music-tui/internal/store"
+	"github.com/lonsty/music-tui/internal/store"
 )
 
 // cmdQuit saves the session and stops playback before quitting.
@@ -236,7 +236,7 @@ func (a *App) handleFullscreenKey(msg tea.KeyMsg) tea.Cmd {
 	case "q":
 		return a.cmdQuit()
 
-// normalOpenSettings placeholder
+		// normalOpenSettings placeholder
 	}
 	return nil
 }

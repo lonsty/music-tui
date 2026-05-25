@@ -5,7 +5,7 @@ import (
 	"context"
 	"time"
 
-	"github.com/eilianxiao/music-tui/internal/library"
+	"github.com/lonsty/music-tui/internal/library"
 )
 
 // Line represents a single timed lyric line (LRC format).

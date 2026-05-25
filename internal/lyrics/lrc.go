@@ -14,7 +14,7 @@ import (
 
 	id3 "github.com/bogem/id3v2/v2"
 
-	"github.com/eilianxiao/music-tui/internal/library"
+	"github.com/lonsty/music-tui/internal/library"
 )
 
 // LocalLRCProvider fetches lyrics from a lyrics file located near the audio

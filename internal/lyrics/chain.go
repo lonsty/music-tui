@@ -3,7 +3,7 @@ package lyrics
 import (
 	"context"
 
-	"github.com/eilianxiao/music-tui/internal/library"
+	"github.com/lonsty/music-tui/internal/library"
 )
 
 // ChainProvider tries each Provider in order and returns the first non-nil

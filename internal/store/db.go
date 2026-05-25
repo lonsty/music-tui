@@ -20,7 +20,7 @@ import (
 
 	_ "github.com/mattn/go-sqlite3" // SQLite driver
 
-	"github.com/eilianxiao/music-tui/internal/library"
+	"github.com/lonsty/music-tui/internal/library"
 )
 
 // Store wraps a SQLite connection and provides typed access to the database.

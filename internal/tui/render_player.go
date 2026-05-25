@@ -6,7 +6,7 @@ import (
 
 	"github.com/charmbracelet/lipgloss"
 
-	"github.com/eilianxiao/music-tui/internal/audio"
+	"github.com/lonsty/music-tui/internal/audio"
 )
 
 // ── Mini player ───────────────────────────────────────────────────────────────

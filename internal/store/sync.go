@@ -7,7 +7,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/eilianxiao/music-tui/internal/library"
+	"github.com/lonsty/music-tui/internal/library"
 )
 
 // SyncDir performs an incremental sync between the filesystem and the database.

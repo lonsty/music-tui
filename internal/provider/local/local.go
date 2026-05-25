@@ -5,9 +5,9 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/eilianxiao/music-tui/internal/audio"
-	"github.com/eilianxiao/music-tui/internal/library"
-	"github.com/eilianxiao/music-tui/internal/store"
+	"github.com/lonsty/music-tui/internal/audio"
+	"github.com/lonsty/music-tui/internal/library"
+	"github.com/lonsty/music-tui/internal/store"
 )
 
 // ProviderID is the stable identifier for the local filesystem provider.

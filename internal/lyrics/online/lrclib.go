@@ -12,8 +12,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/eilianxiao/music-tui/internal/library"
-	"github.com/eilianxiao/music-tui/internal/lyrics"
+	"github.com/lonsty/music-tui/internal/library"
+	"github.com/lonsty/music-tui/internal/lyrics"
 )
 
 const (

@@ -4,7 +4,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/eilianxiao/music-tui/internal/library"
+	"github.com/lonsty/music-tui/internal/library"
 )
 
 const testMP3 = "/Users/eilianxiao/Music/Music/Media.localized/Music/周杰伦/不能说的秘密 电影原声带/03 早操.mp3"

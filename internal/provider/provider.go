@@ -9,8 +9,8 @@ package provider
 import (
 	"context"
 
-	"github.com/eilianxiao/music-tui/internal/audio"
-	"github.com/eilianxiao/music-tui/internal/library"
+	"github.com/lonsty/music-tui/internal/audio"
+	"github.com/lonsty/music-tui/internal/library"
 )
 
 // TrackProvider is the unified abstraction over music track sources.

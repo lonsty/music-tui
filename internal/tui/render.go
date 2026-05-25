@@ -8,38 +8,38 @@ import (
 	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/x/ansi"
 
-	"github.com/eilianxiao/music-tui/internal/audio"
-	"github.com/eilianxiao/music-tui/internal/library"
+	"github.com/lonsty/music-tui/internal/audio"
+	"github.com/lonsty/music-tui/internal/library"
 )
 
 // ── Catppuccin Mocha palette ─────────────────────────────────────────────────
 
 const (
-	crust   = "#11111B"
-	mantle  = "#181825"
-	base    = "#1E1E2E"
-	surface0 = "#313244"
-	surface1 = "#45475A"
-	surface2 = "#585B70"
-	overlay0 = "#6C7086"
-	overlay1 = "#7F849C"
-	overlay2 = "#9399B2"
-	subtext0 = "#A6ADC8"
-	subtext1 = "#BAC2DE"
-	text     = "#CDD6F4"
-	lavender = "#B4BEFE"
-	blue     = "#89B4FA"
-	sapphire = "#74C7EC"
-	sky      = "#89DCEB"
-	teal     = "#94E2D5"
-	green    = "#A6E3A1"
-	yellow   = "#F9E2AF"
-	peach    = "#FAB387"
-	maroon   = "#EBA0AC"
-	red      = "#F38BA8"
-	mauve    = "#CBA6F7"
-	pink     = "#F5C2E7"
-	flamingo = "#F2CDCD"
+	crust     = "#11111B"
+	mantle    = "#181825"
+	base      = "#1E1E2E"
+	surface0  = "#313244"
+	surface1  = "#45475A"
+	surface2  = "#585B70"
+	overlay0  = "#6C7086"
+	overlay1  = "#7F849C"
+	overlay2  = "#9399B2"
+	subtext0  = "#A6ADC8"
+	subtext1  = "#BAC2DE"
+	text      = "#CDD6F4"
+	lavender  = "#B4BEFE"
+	blue      = "#89B4FA"
+	sapphire  = "#74C7EC"
+	sky       = "#89DCEB"
+	teal      = "#94E2D5"
+	green     = "#A6E3A1"
+	yellow    = "#F9E2AF"
+	peach     = "#FAB387"
+	maroon    = "#EBA0AC"
+	red       = "#F38BA8"
+	mauve     = "#CBA6F7"
+	pink      = "#F5C2E7"
+	flamingo  = "#F2CDCD"
 	rosewater = "#F5E0DC"
 )
 
@@ -50,116 +50,116 @@ var (
 	// Single-line tabs: active tab has a distinct background + underline;
 	// inactive tabs are dim. No separator row — tabBarH = 1.
 	styleTabActive = lipgloss.NewStyle().
-			Bold(true).
-			Foreground(lipgloss.Color(mauve)).
-			Background(lipgloss.Color(surface0)).
-			Underline(true).
-			PaddingLeft(2).PaddingRight(2)
+		Bold(true).
+		Foreground(lipgloss.Color(mauve)).
+		Background(lipgloss.Color(surface0)).
+		Underline(true).
+		PaddingLeft(2).PaddingRight(2)
 
 	styleTabInactive = lipgloss.NewStyle().
-				Foreground(lipgloss.Color(overlay0)).
-				PaddingLeft(2).PaddingRight(2)
+		Foreground(lipgloss.Color(overlay0)).
+		PaddingLeft(2).PaddingRight(2)
 
 	styleTabBar = lipgloss.NewStyle().
-			Background(lipgloss.Color(mantle))
+		Background(lipgloss.Color(mantle))
 
 	// ── Panels ───────────────────────────────────────────────────────────────
 	stylePanelBorder = lipgloss.NewStyle().
-				Border(lipgloss.RoundedBorder()).
-				BorderForeground(lipgloss.Color(surface1))
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(lipgloss.Color(surface1))
 
 	stylePanelTitle = lipgloss.NewStyle().
-			Bold(true).
-			Foreground(lipgloss.Color(lavender))
+		Bold(true).
+		Foreground(lipgloss.Color(lavender))
 
 	// ── Track list ───────────────────────────────────────────────────────────
 	styleTrackMeta = lipgloss.NewStyle().
-			Foreground(lipgloss.Color(overlay0))
+		Foreground(lipgloss.Color(overlay0))
 
 	// ── Mini / fullscreen player ─────────────────────────────────────────────
 	stylePlayerArtist = lipgloss.NewStyle().
-				Foreground(lipgloss.Color(subtext0)).
-				Align(lipgloss.Center)
+		Foreground(lipgloss.Color(subtext0)).
+		Align(lipgloss.Center)
 
 	stylePlayerAlbum = lipgloss.NewStyle().
-				Foreground(lipgloss.Color(overlay1)).
-				Align(lipgloss.Center)
+		Foreground(lipgloss.Color(overlay1)).
+		Align(lipgloss.Center)
 
 	styleTime = lipgloss.NewStyle().
-			Foreground(lipgloss.Color(overlay0))
+		Foreground(lipgloss.Color(overlay0))
 
 	styleControls = lipgloss.NewStyle().
-			Foreground(lipgloss.Color(subtext1)).
-			Align(lipgloss.Center)
+		Foreground(lipgloss.Color(subtext1)).
+		Align(lipgloss.Center)
 
 	styleModeIcon = lipgloss.NewStyle().
-			Foreground(lipgloss.Color(mauve)).
-			Bold(true)
+		Foreground(lipgloss.Color(mauve)).
+		Bold(true)
 
 	styleDivider = lipgloss.NewStyle().
-			Foreground(lipgloss.Color(surface1))
+		Foreground(lipgloss.Color(surface1))
 
 	styleLyricNormal = lipgloss.NewStyle().
-				Foreground(lipgloss.Color(overlay1)).
-				Align(lipgloss.Center)
+		Foreground(lipgloss.Color(overlay1)).
+		Align(lipgloss.Center)
 
 	// styleLyricActive is used for the currently playing lyric line.
 	styleLyricActive = lipgloss.NewStyle().
-				Foreground(lipgloss.Color(mauve)).
-				Bold(true).
-				Align(lipgloss.Center)
+		Foreground(lipgloss.Color(mauve)).
+		Bold(true).
+		Align(lipgloss.Center)
 
 	// ── Cover art placeholder ─────────────────────────────────────────────────
 	styleCoverBorder = lipgloss.NewStyle().
-				Border(lipgloss.RoundedBorder()).
-				BorderForeground(lipgloss.Color(blue)).
-				Foreground(lipgloss.Color(blue)).
-				Align(lipgloss.Center, lipgloss.Center)
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(lipgloss.Color(blue)).
+		Foreground(lipgloss.Color(blue)).
+		Align(lipgloss.Center, lipgloss.Center)
 
 	// ── Status bar ───────────────────────────────────────────────────────────
 	// No background on the line itself — only chips have backgrounds.
 	styleStatusLine = lipgloss.NewStyle().
-			Foreground(lipgloss.Color(overlay0))
+		Foreground(lipgloss.Color(overlay0))
 
 	styleStatusKey = lipgloss.NewStyle().
-			Background(lipgloss.Color(surface0)).
-			Foreground(lipgloss.Color(subtext1)).
-			Bold(true)
+		Background(lipgloss.Color(surface0)).
+		Foreground(lipgloss.Color(subtext1)).
+		Bold(true)
 
 	styleStatusHintLabel = lipgloss.NewStyle().
-				Foreground(lipgloss.Color(overlay0))
+		Foreground(lipgloss.Color(overlay0))
 
 	styleStatusState = lipgloss.NewStyle().
-				Background(lipgloss.Color(surface0)).
-				Foreground(lipgloss.Color(blue)).
-				Bold(true)
+		Background(lipgloss.Color(surface0)).
+		Foreground(lipgloss.Color(blue)).
+		Bold(true)
 
 	// ── Overlays ─────────────────────────────────────────────────────────────
 	styleOverlayBox = lipgloss.NewStyle().
-			Border(lipgloss.RoundedBorder()).
-			BorderForeground(lipgloss.Color(mauve)).
-			Background(lipgloss.Color(base)).
-			Padding(1, 2)
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(lipgloss.Color(mauve)).
+		Background(lipgloss.Color(base)).
+		Padding(1, 2)
 
 	styleOverlayTitle = lipgloss.NewStyle().
-				Bold(true).
-				Foreground(lipgloss.Color(mauve))
+		Bold(true).
+		Foreground(lipgloss.Color(mauve))
 
 	styleOverlayKey = lipgloss.NewStyle().
-			Background(lipgloss.Color(surface0)).
-			Foreground(lipgloss.Color(lavender)).
-			PaddingLeft(1).PaddingRight(1)
+		Background(lipgloss.Color(surface0)).
+		Foreground(lipgloss.Color(lavender)).
+		PaddingLeft(1).PaddingRight(1)
 
 	styleOverlayValue = lipgloss.NewStyle().
-				Foreground(lipgloss.Color(text))
+		Foreground(lipgloss.Color(text))
 
 	styleOverlayMuted = lipgloss.NewStyle().
-				Foreground(lipgloss.Color(overlay0))
+		Foreground(lipgloss.Color(overlay0))
 
 	// ── Search ───────────────────────────────────────────────────────────────
 	styleSearchPrompt = lipgloss.NewStyle().
-				Foreground(lipgloss.Color(yellow)).
-				Bold(true)
+		Foreground(lipgloss.Color(yellow)).
+		Bold(true)
 )
 
 // ── Top-level render ──────────────────────────────────────────────────────────

@@ -5,8 +5,8 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 
-	"github.com/eilianxiao/music-tui/internal/library"
-	"github.com/eilianxiao/music-tui/internal/lyrics"
+	"github.com/lonsty/music-tui/internal/library"
+	"github.com/lonsty/music-tui/internal/lyrics"
 )
 
 // ── View ─────────────────────────────────────────────────────────────────────
@@ -26,10 +26,10 @@ type overlay int
 
 const (
 	overlayNone     overlay = iota
-	overlayHelp              // ? key
-	overlaySearch            // / key
-	overlayInfo              // i key — track detail
-	overlaySettings          // , key — settings
+	overlayHelp             // ? key
+	overlaySearch           // / key
+	overlayInfo             // i key — track detail
+	overlaySettings         // , key — settings
 )
 
 // ── Tab ───────────────────────────────────────────────────────────────────────
@@ -39,7 +39,7 @@ type tabID int
 
 const (
 	tabLocal  tabID = iota
-	tabOnline         // placeholder — not yet implemented
+	tabOnline       // placeholder — not yet implemented
 )
 
 // ── Play mode ────────────────────────────────────────────────────────────────

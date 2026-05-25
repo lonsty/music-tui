@@ -12,7 +12,7 @@ import (
 	"github.com/gopxl/beep/v2/effects"
 	"github.com/gopxl/beep/v2/speaker"
 
-	"github.com/eilianxiao/music-tui/internal/library"
+	"github.com/lonsty/music-tui/internal/library"
 )
 
 const (

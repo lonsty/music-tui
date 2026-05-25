@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/eilianxiao/music-tui/internal/library"
+	"github.com/lonsty/music-tui/internal/library"
 )
 
 // ── LRC parser tests ──────────────────────────────────────────────────────────

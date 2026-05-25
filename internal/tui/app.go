@@ -12,11 +12,11 @@ import (
 	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
 
-	"github.com/eilianxiao/music-tui/internal/audio"
-	"github.com/eilianxiao/music-tui/internal/library"
-	"github.com/eilianxiao/music-tui/internal/lyrics"
-	"github.com/eilianxiao/music-tui/internal/lyrics/online"
-	"github.com/eilianxiao/music-tui/internal/store"
+	"github.com/lonsty/music-tui/internal/audio"
+	"github.com/lonsty/music-tui/internal/library"
+	"github.com/lonsty/music-tui/internal/lyrics"
+	"github.com/lonsty/music-tui/internal/lyrics/online"
+	"github.com/lonsty/music-tui/internal/store"
 )
 
 // SessionState holds the persisted state that is restored on the next launch.
@@ -65,12 +65,12 @@ type ChipState struct {
 // LyricsState holds the lyrics for the currently playing track.
 // It is embedded in App and accessed via a.lines, a.activeIdx, etc.
 type LyricsState struct {
-	lines     []lyrics.Line  // parsed LRC lines sorted by timestamp; nil = no lyrics
-	activeIdx int            // index of the currently highlighted line (-1 = none)
-	trackID   string         // Track.ID for which lines was loaded (stale-check)
+	lines     []lyrics.Line   // parsed LRC lines sorted by timestamp; nil = no lyrics
+	activeIdx int             // index of the currently highlighted line (-1 = none)
+	trackID   string          // Track.ID for which lines was loaded (stale-check)
 	provider  lyrics.Provider // chain of local + online providers; set in NewApp
-	loading   bool           // true while a background fetch is in-flight
-	synced    bool           // true when at least one line has a non-zero timestamp
+	loading   bool            // true while a background fetch is in-flight
+	synced    bool            // true when at least one line has a non-zero timestamp
 }
 
 // App is the root Bubble Tea model.
@@ -309,13 +309,13 @@ func (a *App) saveSession() {
 	// saved moments earlier by the q-key handler).
 	posMs := pos.Milliseconds()
 	pairs := map[string]string{
-		store.KeyVolume:         strconv.FormatFloat(a.volume, 'f', 4, 64),
-		store.KeyPlayMode:       strconv.Itoa(int(a.playMode)),
-		store.KeyRetroIdx:       strconv.Itoa(a.retroIdx),
-		store.KeyLastTrackPath:  lastTrackPath,
-		store.KeyWasPlaying:     wasPlaying,
-		store.KeyCursor:         strconv.Itoa(a.cursor),
-		store.KeyChip8Options:   a.chip8Options,
+		store.KeyVolume:        strconv.FormatFloat(a.volume, 'f', 4, 64),
+		store.KeyPlayMode:      strconv.Itoa(int(a.playMode)),
+		store.KeyRetroIdx:      strconv.Itoa(a.retroIdx),
+		store.KeyLastTrackPath: lastTrackPath,
+		store.KeyWasPlaying:    wasPlaying,
+		store.KeyCursor:        strconv.Itoa(a.cursor),
+		store.KeyChip8Options:  a.chip8Options,
 	}
 	if posMs > 0 || state != audio.StateStopped {
 		pairs[store.KeyLastPositionMs] = strconv.FormatInt(posMs, 10)
@@ -339,7 +339,6 @@ func (a *App) Init() tea.Cmd {
 	}
 	return tea.Batch(cmds...)
 }
-
 
 // Update implements tea.Model.
 func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {

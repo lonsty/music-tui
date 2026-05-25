@@ -1,7 +1,7 @@
 package tui
 
 import (
-	"github.com/eilianxiao/music-tui/internal/audio"
+	"github.com/lonsty/music-tui/internal/audio"
 )
 
 // ── Status bar ────────────────────────────────────────────────────────────────
