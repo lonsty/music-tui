@@ -46,26 +46,13 @@ jobs:
       - uses: mlugg/setup-zig@v2
 
       - name: Install build dependencies
-        run: |
-          sudo dpkg --add-architecture arm64
-          # Restrict ALL existing apt sources to amd64 only, so apt won't try
-          # to fetch arm64 from archive/security.ubuntu.com (not available there).
-          sudo find /etc/apt -name '*.list' -exec \
-            sed -i -E 's|^(deb[[:space:]]+)([^[])|deb [arch=amd64] \2|' {} \;
-          sudo find /etc/apt -name '*.sources' -exec \
-            sed -i 's/^Architectures:.*/Architectures: amd64/' {} \; 2>/dev/null || true
-          # Add arm64 from ports.ubuntu.com
-          CODENAME=$(lsb_release -cs)
-          printf 'deb [arch=arm64] http://ports.ubuntu.com/ubuntu-ports %s main restricted universe multiverse\n' \
-            "$CODENAME" "${CODENAME}-updates" "${CODENAME}-security" \
-            | sudo tee /etc/apt/sources.list.d/arm64-ports.list
-          sudo apt-get update -qq
-          sudo apt-get install -y libasound2-dev libasound2-dev:arm64
+        run: sudo apt-get install -y libasound2-dev
 
-      - name: Build
+      - name: Build (Linux amd64 native)
         run: |
-          chmod +x build.sh
-          SKIP_WINDOWS=1 ./build.sh
+          mkdir -p bin
+          CGO_ENABLED=1 go build -trimpath -ldflags="-s -w" \
+            -o bin/music-tui-linux-amd64 ./cmd/music-tui
 
       - uses: actions/upload-artifact@v4
         with:
