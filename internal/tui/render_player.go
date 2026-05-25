@@ -63,8 +63,17 @@ func (a *App) buildMiniPlayerContent(w, h int) string {
 	metaText := a.mqMeta.RenderCentered(metaAvail)
 	meta := stylePlayerArtist.Render(metaText)
 
-	// Lyric placeholder
-	lyric := styleLyricNormal.Align(lipgloss.Center).Width(w).Render("󰝚  暂无歌词")
+	// Current lyric line — active line text, "…" before first line, or placeholder.
+	var lyricText string
+	switch {
+	case a.activeIdx >= 0 && a.activeIdx < len(a.lines):
+		lyricText = a.lines[a.activeIdx].Text
+	case len(a.lines) > 0:
+		lyricText = "…"
+	default:
+		lyricText = "󰝚  暂无歌词"
+	}
+	lyric := styleLyricNormal.Align(lipgloss.Center).Width(w).Render(lyricText)
 
 	// Progress
 	pos := a.player.Position()
@@ -205,24 +214,88 @@ func (a *App) renderFullLyrics() string {
 	innerW := a.fullLyricsW()
 	innerH := a.fullBodyH()
 
-	// Header takes 2 lines inside the border.
-	headerLines := 2
+	const headerLines = 2
 	lyricsH := innerH - headerLines
 	if lyricsH < 1 {
 		lyricsH = 1
 	}
 
-	placeholder := lipgloss.JoinVertical(lipgloss.Center,
-		styleLyricNormal.Render("暂无歌词"),
-		"",
-		styleOverlayMuted.Render("在线歌词将在后续版本提供"),
-	)
-	lyricsContent := lipgloss.Place(innerW, lyricsH,
-		lipgloss.Center, lipgloss.Center, placeholder)
-
 	header := stylePanelTitle.Render("󰝚  Lyrics") + "\n" +
 		styleDivider.Render(strings.Repeat("─", innerW))
-	content := header + "\n" + lyricsContent
 
+	var lyricsContent string
+	if len(a.lines) == 0 {
+		placeholder := lipgloss.JoinVertical(lipgloss.Center,
+			styleLyricNormal.Render("暂无歌词"),
+			"",
+			styleOverlayMuted.Render("将同名 .lrc 文件放在音频旁边即可"),
+		)
+		lyricsContent = lipgloss.Place(innerW, lyricsH,
+			lipgloss.Center, lipgloss.Center, placeholder)
+	} else {
+		lyricsContent = a.renderLyricsScroll(innerW, lyricsH)
+	}
+
+	content := header + "\n" + lyricsContent
 	return stylePanelBorder.Width(innerW).Height(innerH).Render(content)
+}
+
+// renderLyricsScroll renders the lyric lines for the visible window,
+// highlighting the active line and keeping it vertically centred.
+// All lines are centred horizontally within the panel width.
+func (a *App) renderLyricsScroll(w, h int) string {
+	lines := a.lines
+	active := a.activeIdx
+	total := len(lines)
+
+	start, end := lyricsWindow(active, total, h)
+
+	var sb strings.Builder
+	for i := start; i < end; i++ {
+		text := truncate(lines[i].Text, w)
+		var rendered string
+		if i == active {
+			rendered = styleLyricActive.Width(w).Render(text)
+		} else {
+			rendered = styleLyricNormal.Width(w).Render(text)
+		}
+		sb.WriteString(rendered + "\n")
+	}
+
+	// Pad with blank lines so the panel always fills its allocated height.
+	blank := styleLyricNormal.Width(w).Render("")
+	for i := end - start; i < h; i++ {
+		sb.WriteString(blank + "\n")
+	}
+
+	return strings.TrimRight(sb.String(), "\n")
+}
+
+// lyricsWindow computes the [start, end) index range that places active near
+// the vertical centre of a window of maxRows rows.
+func lyricsWindow(active, total, maxRows int) (start, end int) {
+	if total == 0 || maxRows <= 0 {
+		return 0, 0
+	}
+	if active < 0 {
+		// No line active yet — show the beginning.
+		end = maxRows
+		if end > total {
+			end = total
+		}
+		return 0, end
+	}
+	start = active - maxRows/2
+	if start < 0 {
+		start = 0
+	}
+	end = start + maxRows
+	if end > total {
+		end = total
+		start = end - maxRows
+		if start < 0 {
+			start = 0
+		}
+	}
+	return start, end
 }

@@ -14,6 +14,7 @@ import (
 
 	"github.com/eilianxiao/music-tui/internal/audio"
 	"github.com/eilianxiao/music-tui/internal/library"
+	"github.com/eilianxiao/music-tui/internal/lyrics"
 	"github.com/eilianxiao/music-tui/internal/store"
 )
 
@@ -60,6 +61,14 @@ type ChipState struct {
 	chip8Options   string // extra CLI options forwarded to p2chip
 }
 
+// LyricsState holds the lyrics for the currently playing track.
+// It is embedded in App and accessed via a.lines, a.activeIdx, etc.
+type LyricsState struct {
+	lines     []lyrics.Line // parsed LRC lines sorted by timestamp; nil = no lyrics
+	activeIdx int           // index of the currently highlighted line (-1 = none yet)
+	trackID   string        // Track.ID for which lines was loaded (stale-check)
+}
+
 // App is the root Bubble Tea model.
 type App struct {
 	player   *audio.Player
@@ -75,6 +84,7 @@ type App struct {
 	PlaybackState
 	LibraryState
 	ChipState
+	LyricsState
 
 	// ── Search ───────────────────────────────────────────────────────────────
 	searchInput textinput.Model
@@ -194,6 +204,9 @@ func NewApp(player *audio.Player, st *store.Store, musicDir string, tracks []lib
 		ChipState: ChipState{
 			tmpDir:       tmpDir,
 			chip8Options: chip8Opts,
+		},
+		LyricsState: LyricsState{
+			activeIdx: -1,
 		},
 	}
 
@@ -361,11 +374,20 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		a.syncMarquees()
 		a.syncRowMarquee()
 
+		// Reset lyrics and kick off background load for the new track.
+		a.lines = nil
+		a.activeIdx = -1
+		a.trackID = ""
+
+		var cmds []tea.Cmd
 		// If we were in chip mode, automatically start converting the new track.
 		if wasChipMode {
-			return a, a.cmdToggleChip()
+			cmds = append(cmds, a.cmdToggleChip())
 		}
-		return a, nil
+		if msg.track != nil {
+			cmds = append(cmds, a.cmdLoadLyrics(*msg.track))
+		}
+		return a, tea.Batch(cmds...)
 
 	case noopMsg:
 		return a, nil
@@ -395,8 +417,18 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		a.chipBusy = false
 		return a, nil
 
+	case lyricsLoadedMsg:
+		// Discard stale results — track may have changed while loading.
+		if a.currentTrack != nil && msg.trackID == a.currentTrack.ID {
+			a.lines = msg.lines
+			a.activeIdx = -1
+			a.trackID = msg.trackID
+		}
+		return a, nil
+
 	case tickMsg:
 		a.tickMarquees()
+		a.syncLyricsActive()
 		return a, tick()
 
 	case trackDoneMsg:
@@ -656,4 +688,24 @@ func (a *App) tickMarquees() {
 	a.mqMeta.Tick(miniW)
 	a.mqArtist.Tick(fullW)
 	a.mqAlbum.Tick(fullW)
+}
+
+// syncLyricsActive updates activeIdx to the lyric line that should be
+// highlighted at the current playback position.
+// It finds the last line whose timestamp is ≤ the current position.
+func (a *App) syncLyricsActive() {
+	if len(a.lines) == 0 {
+		a.activeIdx = -1
+		return
+	}
+	pos := a.player.Position()
+	idx := -1
+	for i, l := range a.lines {
+		if l.Time <= pos {
+			idx = i
+		} else {
+			break
+		}
+	}
+	a.activeIdx = idx
 }

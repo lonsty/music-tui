@@ -6,6 +6,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 
 	"github.com/eilianxiao/music-tui/internal/library"
+	"github.com/eilianxiao/music-tui/internal/lyrics"
 )
 
 // ── View ─────────────────────────────────────────────────────────────────────
@@ -105,6 +106,13 @@ type chip8DoneMsg struct {
 // chipCrossfadeDoneMsg is sent after a chip-mode crossfade (on or off) completes.
 // chipMode is the new desired state: true = now playing 8-bit, false = back to original.
 type chipCrossfadeDoneMsg struct{ chipMode bool }
+
+// lyricsLoadedMsg is sent by cmdLoadLyrics when lyrics have been fetched.
+// lines is nil when no .lrc file exists for the track (not an error).
+type lyricsLoadedMsg struct {
+	trackID string
+	lines   []lyrics.Line
+}
 
 // tick fires a tickMsg after 500 ms.
 func tick() tea.Cmd {

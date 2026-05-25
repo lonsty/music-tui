@@ -103,6 +103,12 @@ var (
 				Foreground(lipgloss.Color(overlay1)).
 				Align(lipgloss.Center)
 
+	// styleLyricActive is used for the currently playing lyric line.
+	styleLyricActive = lipgloss.NewStyle().
+				Foreground(lipgloss.Color(mauve)).
+				Bold(true).
+				Align(lipgloss.Center)
+
 	// ── Cover art placeholder ─────────────────────────────────────────────────
 	styleCoverBorder = lipgloss.NewStyle().
 				Border(lipgloss.RoundedBorder()).
