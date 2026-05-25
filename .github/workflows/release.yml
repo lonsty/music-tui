@@ -48,10 +48,17 @@ jobs:
       - name: Install build dependencies
         run: |
           sudo dpkg --add-architecture arm64
-          sudo sed -i 's/^deb \(.*\)$/deb [arch=amd64,i386] \1/' /etc/apt/sources.list 2>/dev/null || true
-          echo "deb [arch=arm64] http://ports.ubuntu.com/ubuntu-ports $(lsb_release -cs) main restricted universe multiverse" | sudo tee /etc/apt/sources.list.d/arm64-ports.list
-          echo "deb [arch=arm64] http://ports.ubuntu.com/ubuntu-ports $(lsb_release -cs)-updates main restricted universe multiverse" | sudo tee -a /etc/apt/sources.list.d/arm64-ports.list
-          echo "deb [arch=arm64] http://ports.ubuntu.com/ubuntu-ports $(lsb_release -cs)-security main restricted universe multiverse" | sudo tee -a /etc/apt/sources.list.d/arm64-ports.list
+          # Restrict existing sources to amd64/i386 so apt won't try to fetch
+          # arm64 packages from archive.ubuntu.com / security.ubuntu.com
+          # (arm64 is only on ports.ubuntu.com for Ubuntu 24.04+).
+          sudo sed -i \
+            -e 's|^deb \(https\?://[^ ]*ubuntu\.com[^ ]*\) |deb [arch=amd64,i386] \1 |' \
+            /etc/apt/sources.list /etc/apt/sources.list.d/*.list 2>/dev/null || true
+          # Add arm64 sources from ports.ubuntu.com
+          CODENAME=$(lsb_release -cs)
+          printf 'deb [arch=arm64] http://ports.ubuntu.com/ubuntu-ports %s main restricted universe multiverse\n' \
+            "$CODENAME" "${CODENAME}-updates" "${CODENAME}-security" \
+            | sudo tee /etc/apt/sources.list.d/arm64-ports.list
           sudo apt-get update -qq
           sudo apt-get install -y libasound2-dev libasound2-dev:arm64
 
