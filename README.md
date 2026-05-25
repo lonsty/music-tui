@@ -134,6 +134,153 @@ git tag v1.0.0 && git push origin v1.0.0
 | `Tab` | 切换标签页（Local / Online） |
 | `q` / `Ctrl+C` | 退出并保存会话状态 |
 
+### 多媒体键映射 / Media Key Mapping
+
+终端程序无法直接接收系统媒体键（⏯ ⏭ ⏮）。music-tui 的做法是：将以下 F 键定义为"媒体键接收端"，由用户通过系统工具把媒体键重映射为对应的 F 键，按下媒体键时系统实际发出的是 F 键事件，终端转发给 music-tui。
+
+| F 键 | 功能 |
+|------|------|
+| `F6` | 上一曲 |
+| `F7` | 播放 / 暂停 |
+| `F8` | 停止 |
+| `F9` | 下一曲 |
+| `F11` | 音量减 |
+| `F12` | 音量加 |
+
+#### macOS — Karabiner-Elements（推荐）
+
+[Karabiner-Elements](https://karabiner-elements.pqrs.org/) 是 macOS 上最可靠的按键重映射工具，无需命令行配置。
+
+**方式一：图形界面（Simple Modifications）**
+
+1. 打开 Karabiner-Elements → **Simple Modifications** 标签
+2. 选择目标键盘，点击 **Add item**，添加以下映射：
+
+| From（按下的键） | To（发送的键） |
+|----------------|--------------|
+| `rewind` | `f6` |
+| `play_or_pause` | `f7` |
+| `fastforward` | `f9` |
+| `volume_down` | `f11` |
+| `volume_up` | `f12` |
+
+**方式二：JSON 配置文件**
+
+将以下内容保存为 `~/.config/karabiner/assets/complex_modifications/music-tui.json`，然后在 Karabiner-Elements → **Complex Modifications** → **Add rule** 中启用：
+
+```json
+{
+  "title": "music-tui media keys",
+  "rules": [
+    {
+      "description": "Map media keys to F6-F12 for music-tui",
+      "manipulators": [
+        {
+          "type": "basic",
+          "from": { "consumer_key_code": "rewind" },
+          "to": [{ "key_code": "f6" }]
+        },
+        {
+          "type": "basic",
+          "from": { "consumer_key_code": "play_or_pause" },
+          "to": [{ "key_code": "f7" }]
+        },
+        {
+          "type": "basic",
+          "from": { "consumer_key_code": "fastforward" },
+          "to": [{ "key_code": "f9" }]
+        },
+        {
+          "type": "basic",
+          "from": { "consumer_key_code": "volume_decrement" },
+          "to": [{ "key_code": "f11" }]
+        },
+        {
+          "type": "basic",
+          "from": { "consumer_key_code": "volume_increment" },
+          "to": [{ "key_code": "f12" }]
+        }
+      ]
+    }
+  ]
+}
+```
+
+> **注意**：此配置会将媒体键全局重映射为 F 键，macOS 系统自带的媒体控制（控制 Music.app 等）将不再响应。如需仅在终端聚焦时生效，可在 Complex Modifications 中为每条规则添加 `"conditions": [{"type": "frontmost_application_if", "bundle_identifiers": ["com.apple.Terminal", "com.googlecode.iterm2"]}]`。
+
+#### macOS — skhd
+
+[skhd](https://github.com/koekeishiya/skhd) 原生支持媒体键绑定，无需 Karabiner，更轻量。
+
+```sh
+brew install koekeishiya/formulae/skhd
+skhd --install-service && skhd --start-service
+```
+
+**授权辅助功能**（必须，否则 skhd 无法监听按键）：
+
+系统设置 → 隐私与安全 → 辅助功能 → 点击 `+` 添加 `/opt/homebrew/bin/skhd` → 开启开关
+
+在 `~/.skhdrc`（或 `~/.config/skhd/skhdrc`）中添加：
+
+```
+play       : osascript -e 'tell application "System Events" to key code 96'   # F7 播放/暂停
+previous   : osascript -e 'tell application "System Events" to key code 97'   # F6 上一曲
+next       : osascript -e 'tell application "System Events" to key code 101'  # F9 下一曲
+rewind     : osascript -e 'tell application "System Events" to key code 100'  # F8 停止
+sound_down : osascript -e 'tell application "System Events" to key code 103'  # F11 音量减
+sound_up   : osascript -e 'tell application "System Events" to key code 111'  # F12 音量加
+```
+
+重载配置：
+
+```sh
+skhd -r
+```
+
+> **注意**：skhd 拦截媒体键是全局生效的，系统其他应用（如 Music.app）将不再收到这些键。
+
+#### Linux — xbindkeys + xdotool
+
+```sh
+# 安装工具
+sudo apt install xbindkeys xdotool   # Debian/Ubuntu
+sudo dnf install xbindkeys xdotool   # Fedora
+
+# 生成默认配置
+xbindkeys --defaults > ~/.xbindkeysrc
+```
+
+在 `~/.xbindkeysrc` 中追加：
+
+```sh
+# music-tui 媒体键映射
+"xdotool key F7"
+  XF86AudioPlay
+
+"xdotool key F6"
+  XF86AudioPrev
+
+"xdotool key F9"
+  XF86AudioNext
+
+"xdotool key F8"
+  XF86AudioStop
+
+"xdotool key F11"
+  XF86AudioLowerVolume
+
+"xdotool key F12"
+  XF86AudioRaiseVolume
+```
+
+```sh
+# 重新加载配置（无需重启）
+pkill xbindkeys; xbindkeys
+```
+
+> 提示：直接在终端里用 `Space`/`n`/`p`/`+`/`-` 快捷键效果完全相同，更简便。
+
 ### 全屏模式
 
 | 键 | 功能 |

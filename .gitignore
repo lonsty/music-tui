@@ -2,9 +2,13 @@
 bin/
 music-tui
 playtest
+.idea/
 
 # macOS
 .DS_Store
 
 # Go test cache
 *.test
+
+examples/
+docs/

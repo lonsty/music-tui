@@ -5,6 +5,8 @@ import (
 	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
+
+	"github.com/eilianxiao/music-tui/internal/store"
 )
 
 // cmdQuit saves the session and stops playback before quitting.
@@ -16,11 +18,59 @@ func (a *App) cmdQuit() tea.Cmd {
 	)
 }
 
+// openSettings initialises and opens the settings overlay.
+func (a *App) openSettings() {
+	a.activeOvl = overlaySettings
+	a.settingsActive = 0
+	a.musicDirInput.SetValue(a.musicDir)
+	a.musicDirInput.Focus()
+	a.musicDirInput.CursorEnd()
+	a.settingsInput.SetValue(a.chip8Options)
+	a.settingsInput.Blur()
+}
+
+// closeSettings dismisses the settings overlay and unfocuses inputs.
+func (a *App) closeSettings() {
+	a.activeOvl = overlayNone
+	a.musicDirInput.Blur()
+	a.settingsInput.Blur()
+}
+
 // handleKey is the top-level keyboard dispatcher.
 func (a *App) handleKey(msg tea.KeyMsg) tea.Cmd {
 	// Global quit — works in every state.
 	if msg.String() == "ctrl+c" {
 		return a.cmdQuit()
+	}
+
+	// Media keys: handle globally regardless of view/overlay.
+	// Terminals do not forward OS-level media keys directly; users can map
+	// them to these F-key sequences via skhd (macOS) or xbindkeys (Linux).
+	//
+	//   F7  → Play / Pause      (maps to ⏯  or XF86AudioPlay)
+	//   F8  → Stop              (maps to ⏹  or XF86AudioStop)
+	//   F9  → Next track        (maps to ⏭  or XF86AudioNext)
+	//   F6  → Previous track    (maps to ⏮  or XF86AudioPrev)
+	//   F11 → Volume down       (maps to 🔉 or XF86AudioLowerVolume)
+	//   F12 → Volume up         (maps to 🔊 or XF86AudioRaiseVolume)
+	switch msg.String() {
+	case "f7":
+		return a.cmdTogglePause()
+	case "f8":
+		a.saveSession()
+		a.player.Stop()
+		a.currentTrack = nil
+		return nil
+	case "f9":
+		return a.cmdPlayNext()
+	case "f6":
+		return a.cmdPlayPrev()
+	case "f11":
+		a.adjustVolume(-volumeStep)
+		return nil
+	case "f12":
+		a.adjustVolume(+volumeStep)
+		return nil
 	}
 
 	// Fullscreen view has its own minimal key set.
@@ -114,12 +164,10 @@ func (a *App) handleNormalKey(msg tea.KeyMsg) tea.Cmd {
 
 	// ── Volume ────────────────────────────────────────────────────────────────
 	case "+", "=":
-		a.volume = clampVolume(a.volume + 0.1)
-		a.player.SetVolume(a.volume)
+		a.adjustVolume(+volumeStep)
 
 	case "-":
-		a.volume = clampVolume(a.volume - 0.1)
-		a.player.SetVolume(a.volume)
+		a.adjustVolume(-volumeStep)
 
 	// ── Views / overlays ──────────────────────────────────────────────────────
 	case "f":
@@ -137,13 +185,7 @@ func (a *App) handleNormalKey(msg tea.KeyMsg) tea.Cmd {
 		a.activeOvl = overlayHelp
 
 	case ",":
-		a.activeOvl = overlaySettings
-		a.settingsActive = 0
-		a.musicDirInput.SetValue(a.musicDir)
-		a.musicDirInput.Focus()
-		a.musicDirInput.CursorEnd()
-		a.settingsInput.SetValue(a.chip8Options)
-		a.settingsInput.Blur()
+		a.openSettings()
 
 	case "tab":
 		a.activeTab = (a.activeTab + 1) % 2
@@ -178,13 +220,7 @@ func (a *App) handleFullscreenKey(msg tea.KeyMsg) tea.Cmd {
 		return a.cmdToggleChip()
 
 	case ",":
-		a.activeOvl = overlaySettings
-		a.settingsActive = 0
-		a.musicDirInput.SetValue(a.musicDir)
-		a.musicDirInput.Focus()
-		a.musicDirInput.CursorEnd()
-		a.settingsInput.SetValue(a.chip8Options)
-		a.settingsInput.Blur()
+		a.openSettings()
 
 	case "r":
 		return a.cmdRetroUp()
@@ -192,15 +228,15 @@ func (a *App) handleFullscreenKey(msg tea.KeyMsg) tea.Cmd {
 		return a.cmdRetroDown()
 
 	case "+", "=":
-		a.volume = clampVolume(a.volume + 0.1)
-		a.player.SetVolume(a.volume)
+		a.adjustVolume(+volumeStep)
 
 	case "-":
-		a.volume = clampVolume(a.volume - 0.1)
-		a.player.SetVolume(a.volume)
+		a.adjustVolume(-volumeStep)
 
 	case "q":
 		return a.cmdQuit()
+
+// normalOpenSettings placeholder
 	}
 	return nil
 }
@@ -279,36 +315,30 @@ func (a *App) handleSettingsKey(msg tea.KeyMsg) tea.Cmd {
 			// Validate the directory exists before saving.
 			if info, err := os.Stat(newDir); err != nil || !info.IsDir() {
 				a.statusMsg = "󰅚  Directory not found: " + newDir
-				a.activeOvl = overlayNone
-				a.musicDirInput.Blur()
-				a.settingsInput.Blur()
+				a.closeSettings()
 				return nil
 			}
 			a.musicDir = newDir
 			if a.st != nil {
-				_ = a.st.SetSetting("music_dir", newDir)
+				_ = a.st.SetSetting(store.KeyMusicDir, newDir)
 			}
 		}
 		if optsChanged {
 			a.chip8Options = newOpts
 			if a.st != nil {
-				_ = a.st.SetSetting("chip8_options", newOpts)
+				_ = a.st.SetSetting(store.KeyChip8Options, newOpts)
 			}
 			// Invalidate the chip cache so new options apply next time.
 			a.chipPath = ""
 			a.chipOrigin = ""
 		}
 
-		a.activeOvl = overlayNone
-		a.musicDirInput.Blur()
-		a.settingsInput.Blur()
+		a.closeSettings()
 		return nil
 
 	case "esc":
 		// Discard and close.
-		a.activeOvl = overlayNone
-		a.musicDirInput.Blur()
-		a.settingsInput.Blur()
+		a.closeSettings()
 		return nil
 
 	case "tab", "shift+tab":
@@ -330,12 +360,16 @@ func (a *App) handleSettingsKey(msg tea.KeyMsg) tea.Cmd {
 		if a.musicDir == "" {
 			a.musicDir = strings.TrimSpace(a.musicDirInput.Placeholder)
 		}
-		if a.st != nil {
-			_ = a.st.SetSetting("music_dir", a.musicDir)
+		// Validate the directory exists before saving and reloading.
+		if info, err := os.Stat(a.musicDir); err != nil || !info.IsDir() {
+			a.statusMsg = "󰅚  Directory not found: " + a.musicDir
+			a.closeSettings()
+			return nil
 		}
-		a.activeOvl = overlayNone
-		a.musicDirInput.Blur()
-		a.settingsInput.Blur()
+		if a.st != nil {
+			_ = a.st.SetSetting(store.KeyMusicDir, a.musicDir)
+		}
+		a.closeSettings()
 		a.loading = true
 		a.statusMsg = "Reloading library…"
 		return a.cmdSyncLibrary()

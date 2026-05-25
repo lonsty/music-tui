@@ -6,7 +6,6 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
-	"strings"
 	"time"
 
 	id3 "github.com/bogem/id3v2/v2"
@@ -26,7 +25,7 @@ func ScanDir(dir string) ([]Track, error) {
 		if d.IsDir() {
 			return nil
 		}
-		if !isSupportedAudio(path) {
+		if !IsSupportedAudio(path) {
 			return nil
 		}
 
@@ -72,12 +71,6 @@ func ParseTrackWithCover(path, coverCacheDir string) (Track, error) {
 	return t, nil
 }
 
-// isSupportedAudio reports whether the file extension is a supported audio format.
-func isSupportedAudio(path string) bool {
-	ext := strings.ToLower(filepath.Ext(path))
-	return ext == ".mp3"
-}
-
 // parseTrack reads ID3 metadata and audio duration from an MP3 file.
 // CoverArt is populated in-memory; the caller decides whether to persist it.
 func parseTrack(path string) (Track, error) {
@@ -117,7 +110,7 @@ func parseTrack(path string) (Track, error) {
 				copy(coverArt, pic.Picture)
 			}
 		}
-		tag.Close()
+		_ = tag.Close()
 	}
 
 	duration := readMP3Duration(path)
@@ -146,13 +139,13 @@ func readMP3Duration(path string) time.Duration {
 	if err != nil {
 		return 0
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	streamer, format, err := mp3.Decode(f)
 	if err != nil {
 		return 0
 	}
-	defer streamer.Close()
+	defer func() { _ = streamer.Close() }()
 
 	return format.SampleRate.D(streamer.Len())
 }

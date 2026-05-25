@@ -51,6 +51,7 @@ const (
 	playModeLoop                       // repeat list indefinitely
 	playModeSingle                     // repeat current track
 	playModeRandom                     // pick a random next track
+	playModeCount                      // sentinel — must be the last constant
 )
 
 // playModeIcon returns the Nerd Font glyph for the given mode.
@@ -66,21 +67,6 @@ func playModeIcon(m playMode) string {
 		return "󰒝" // nf-md-shuffle
 	}
 	return "?"
-}
-
-// playModeName returns a short label for display.
-func playModeName(m playMode) string {
-	switch m {
-	case playModeSequential:
-		return "Sequential"
-	case playModeLoop:
-		return "Loop"
-	case playModeSingle:
-		return "Single"
-	case playModeRandom:
-		return "Random"
-	}
-	return ""
 }
 
 // ── Tea messages ─────────────────────────────────────────────────────────────
@@ -115,6 +101,10 @@ type chip8DoneMsg struct {
 	chipPath   string // path to the generated 8-bit mp3
 	err        error
 }
+
+// chipCrossfadeDoneMsg is sent after a chip-mode crossfade (on or off) completes.
+// chipMode is the new desired state: true = now playing 8-bit, false = back to original.
+type chipCrossfadeDoneMsg struct{ chipMode bool }
 
 // tick fires a tickMsg after 500 ms.
 func tick() tea.Cmd {

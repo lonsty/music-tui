@@ -29,6 +29,37 @@ type SessionState struct {
 	Chip8Options   string
 }
 
+// PlaybackState holds all current playback-related state.
+// It is embedded in App and accessed via a.volume, a.playMode, etc.
+type PlaybackState struct {
+	currentTrack *library.Track
+	currentIdx   int      // index of currentTrack in filtered (for next/prev)
+	volume       float64  // [0.0, 2.0]; 1.0 = unity gain
+	playMode     playMode // sequential / loop / single / random
+	retroIdx     int      // retro effect preset index (0 = off)
+}
+
+// LibraryState holds the local track library and search/filter state.
+// It is embedded in App and accessed via a.tracks, a.filtered, etc.
+type LibraryState struct {
+	tracks       []library.Track
+	filtered     []library.Track
+	shuffleOrder []int // indices into filtered, used when playMode == random
+	cursor       int
+}
+
+// ChipState holds the 8-bit chip conversion state.
+// It is embedded in App and accessed via a.chipMode, a.chipBusy, etc.
+type ChipState struct {
+	chipMode       bool   // currently playing the 8-bit converted version
+	chipBusy       bool   // conversion or crossfade in progress (locked)
+	chipConverting bool   // true only during p2chip conversion (not crossfade)
+	chipPath       string // path to the cached 8-bit mp3 (in tmpDir)
+	chipOrigin     string // Track.Path for which chipPath was generated
+	tmpDir         string // temp directory; created on startup, removed on exit
+	chip8Options   string // extra CLI options forwarded to p2chip
+}
+
 // App is the root Bubble Tea model.
 type App struct {
 	player   *audio.Player
@@ -39,27 +70,11 @@ type App struct {
 	// by cmdRestoreSession on the first Init tick and then zeroed out.
 	session *SessionState
 
-	// ── Library ──────────────────────────────────────────────────────────────
-	tracks       []library.Track
-	filtered     []library.Track
-	shuffleOrder []int // indices into filtered, used when playMode == random
-	cursor       int
-	currentTrack *library.Track
-	currentIdx   int // index of currentTrack in filtered (for next/prev)
-
-	// ── Playback ─────────────────────────────────────────────────────────────
-	volume    float64  // [0.0, 2.0]; 1.0 = unity gain
-	playMode  playMode // sequential / loop / single / random
-	retroIdx  int      // retro effect preset index (0 = off)
-
-	// ── 8-bit mode ───────────────────────────────────────────────────────────
-	chipMode       bool   // currently playing the 8-bit converted version
-	chipBusy       bool   // conversion or crossfade in progress (locked)
-	chipConverting bool   // true only during p2chip conversion (not crossfade)
-	chipPath       string // path to the cached 8-bit mp3 (in tmpDir)
-	chipOrigin     string // Track.Path for which chipPath was generated
-	tmpDir         string // temp directory; created on startup, removed on exit
-	chip8Options   string // extra CLI options forwarded to p2chip
+	// Embed functional sub-models for clean grouping.
+	// All fields remain accessible directly on *App (e.g. a.volume, a.cursor).
+	PlaybackState
+	LibraryState
+	ChipState
 
 	// ── Search ───────────────────────────────────────────────────────────────
 	searchInput textinput.Model
@@ -160,22 +175,26 @@ func NewApp(player *audio.Player, st *store.Store, musicDir string, tracks []lib
 		player:        player,
 		st:            st,
 		musicDir:      musicDir,
-		volume:        vol,
 		searchInput:   ti,
 		settingsInput: si,
 		musicDirInput: di,
 		progressBar:   prog,
 		loading:       false,
-		playMode:      mode,
-		retroIdx:      rIdx,
-		mqTitle:       NewMarquee("", "  •  "),
-		mqMeta:        NewMarquee("", "  •  "),
-		mqArtist:      NewMarquee("", "  •  "),
-		mqAlbum:       NewMarquee("", "  •  "),
-		mqRow:         NewMarquee("", "  •  "),
-		tmpDir:        tmpDir,
-		chip8Options:  chip8Opts,
+		mqTitle:       NewMarquee("", marqueeSep),
+		mqMeta:        NewMarquee("", marqueeSep),
+		mqArtist:      NewMarquee("", marqueeSep),
+		mqAlbum:       NewMarquee("", marqueeSep),
+		mqRow:         NewMarquee("", marqueeSep),
 		session:       sess,
+		PlaybackState: PlaybackState{
+			volume:   vol,
+			playMode: mode,
+			retroIdx: rIdx,
+		},
+		ChipState: ChipState{
+			tmpDir:       tmpDir,
+			chip8Options: chip8Opts,
+		},
 	}
 
 	// Apply volume to player immediately.
@@ -258,16 +277,16 @@ func (a *App) saveSession() {
 	// saved moments earlier by the q-key handler).
 	posMs := pos.Milliseconds()
 	pairs := map[string]string{
-		"volume":          strconv.FormatFloat(a.volume, 'f', 4, 64),
-		"play_mode":       strconv.Itoa(int(a.playMode)),
-		"retro_idx":       strconv.Itoa(a.retroIdx),
-		"last_track_path": lastTrackPath,
-		"was_playing":     wasPlaying,
-		"cursor":          strconv.Itoa(a.cursor),
-		"chip8_options":   a.chip8Options,
+		store.KeyVolume:         strconv.FormatFloat(a.volume, 'f', 4, 64),
+		store.KeyPlayMode:       strconv.Itoa(int(a.playMode)),
+		store.KeyRetroIdx:       strconv.Itoa(a.retroIdx),
+		store.KeyLastTrackPath:  lastTrackPath,
+		store.KeyWasPlaying:     wasPlaying,
+		store.KeyCursor:         strconv.Itoa(a.cursor),
+		store.KeyChip8Options:   a.chip8Options,
 	}
 	if posMs > 0 || state != audio.StateStopped {
-		pairs["last_position_ms"] = strconv.FormatInt(posMs, 10)
+		pairs[store.KeyLastPositionMs] = strconv.FormatInt(posMs, 10)
 	}
 	_ = a.st.SetSettings(pairs)
 }
@@ -289,17 +308,6 @@ func (a *App) Init() tea.Cmd {
 	return tea.Batch(cmds...)
 }
 
-// cmdScanLibrary scans the music directory in a goroutine.
-func (a *App) cmdScanLibrary() tea.Cmd {
-	dir := a.musicDir
-	return func() tea.Msg {
-		tracks, err := library.ScanDir(dir)
-		if err == nil {
-			library.SortByArtistAlbum(tracks)
-		}
-		return scanDoneMsg{tracks: tracks, err: err}
-	}
-}
 
 // Update implements tea.Model.
 func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -315,13 +323,18 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case scanDoneMsg:
 		a.loading = false
 		a.scanErr = msg.err
-		if msg.err == nil {
+		// Update tracks regardless of error: cmdSyncLibrary always returns
+		// whatever is in the DB even when syncErr is non-nil, so we show
+		// the existing library and surface the error in the status bar.
+		if msg.tracks != nil {
 			a.tracks = msg.tracks
 			a.filtered = msg.tracks
 			a.rebuildShuffle()
-			a.statusMsg = fmt.Sprintf("Loaded %d tracks", len(a.tracks))
+		}
+		if msg.err != nil {
+			a.statusMsg = "Sync error: " + msg.err.Error()
 		} else {
-			a.statusMsg = "Scan error: " + msg.err.Error()
+			a.statusMsg = fmt.Sprintf("Loaded %d tracks", len(a.tracks))
 		}
 		return a, nil
 
@@ -370,12 +383,17 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		a.chipOrigin = msg.originPath
 		a.chipConverting = false
 		pos := a.player.Position()
+		// Crossfade runs in a tea.Cmd goroutine; state mutations happen via
+		// chipCrossfadeDoneMsg so we never write App fields from a goroutine.
 		return a, func() tea.Msg {
 			_ = a.player.CrossfadeTo(msg.chipPath, pos)
-			a.chipMode = true
-			a.chipBusy = false
-			return noopMsg{}
+			return chipCrossfadeDoneMsg{chipMode: true}
 		}
+
+	case chipCrossfadeDoneMsg:
+		a.chipMode = msg.chipMode
+		a.chipBusy = false
+		return a, nil
 
 	case tickMsg:
 		a.tickMarquees()
@@ -435,6 +453,17 @@ const (
 	statusBarH = 1
 	borderH    = 2
 	borderW    = 2
+
+	// Layout proportions and thresholds.
+	miniPlayerMinWidth   = 100  // terminal width below which the mini player is hidden
+	trackListWidthRatio  = 0.55 // fraction of total width allocated to the track list
+	trackListMinWidth    = 20   // minimum track list width in columns
+	fullPlayerWidthRatio = 0.40 // fraction of total width allocated to the full-screen player panel
+	fullPlayerMinWidth   = 24   // minimum full-screen player width in columns
+	coverMinSize         = 4    // minimum cover art outerRows value
+
+	// marqueeSep is the separator inserted between repetitions of scrolling text.
+	marqueeSep = "  •  "
 )
 
 // bodyH is the available height for the main content panels.
@@ -456,16 +485,16 @@ func (a *App) panelInnerH() int {
 }
 
 // showMiniPlayer returns true when the terminal is wide enough.
-func (a *App) showMiniPlayer() bool { return a.W >= 100 }
+func (a *App) showMiniPlayer() bool { return a.W >= miniPlayerMinWidth }
 
 // trackListOuterW returns the outer (border-inclusive) width of the track list.
 func (a *App) trackListOuterW() int {
 	if !a.showMiniPlayer() {
 		return a.W
 	}
-	w := int(float64(a.W) * 0.55)
-	if w < 20 {
-		return 20
+	w := int(float64(a.W) * trackListWidthRatio)
+	if w < trackListMinWidth {
+		return trackListMinWidth
 	}
 	return w
 }
@@ -486,9 +515,9 @@ func (a *App) fullBodyH() int {
 	return h
 }
 func (a *App) fullPlayerOuterW() int {
-	w := int(float64(a.W) * 0.40)
-	if w < 24 {
-		return 24
+	w := int(float64(a.W) * fullPlayerWidthRatio)
+	if w < fullPlayerMinWidth {
+		return fullPlayerMinWidth
 	}
 	return w
 }
@@ -560,8 +589,8 @@ func (a *App) getCoverArt(maxOuterCols, maxOuterRows int) string {
 	if maxOuterRows > 0 && outerRows > maxOuterRows {
 		outerRows = maxOuterRows
 	}
-	if outerRows < 4 {
-		outerRows = 4
+	if outerRows < coverMinSize {
+		outerRows = coverMinSize
 	}
 	outerCols := outerRows * 2
 

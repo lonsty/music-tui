@@ -26,13 +26,13 @@ func main() {
 		fmt.Fprintf(os.Stderr, "failed to open database: %v\n", err)
 		os.Exit(1)
 	}
-	defer st.Close()
+	defer func() { _ = st.Close() }()
 
 	// ── Load persisted settings ───────────────────────────────────────────
-	musicDir, _ := st.GetSetting("music_dir")
+	musicDir, _ := st.GetSetting(store.KeyMusicDir)
 	if musicDir == "" {
 		musicDir = resolveMusicDir()
-		_ = st.SetSetting("music_dir", musicDir)
+		_ = st.SetSetting(store.KeyMusicDir, musicDir)
 	}
 
 	// ── Load tracks from DB ───────────────────────────────────────────────
@@ -97,26 +97,26 @@ func loadSession(st *store.Store) *tui.SessionState {
 		return f
 	}
 
-	lastTrack := get("last_track_path")
+	lastTrack := get(store.KeyLastTrackPath)
 	if lastTrack == "" {
 		// No previous session.
 		return &tui.SessionState{
-			Volume:       atof(get("volume"), 1.0),
-			PlayMode:     atoi(get("play_mode"), 0),
-			RetroIdx:     atoi(get("retro_idx"), 0),
-			Chip8Options: get("chip8_options"),
+			Volume:       atof(get(store.KeyVolume), 1.0),
+			PlayMode:     atoi(get(store.KeyPlayMode), 0),
+			RetroIdx:     atoi(get(store.KeyRetroIdx), 0),
+			Chip8Options: get(store.KeyChip8Options),
 		}
 	}
 
 	return &tui.SessionState{
 		LastTrackPath:  lastTrack,
-		LastPositionMs: int64(atoi(get("last_position_ms"), 0)),
-		WasPlaying:     get("was_playing") == "1",
-		Volume:         atof(get("volume"), 1.0),
-		PlayMode:       atoi(get("play_mode"), 0),
-		RetroIdx:       atoi(get("retro_idx"), 0),
-		Cursor:         atoi(get("cursor"), 0),
-		Chip8Options:   get("chip8_options"),
+		LastPositionMs: int64(atoi(get(store.KeyLastPositionMs), 0)),
+		WasPlaying:     get(store.KeyWasPlaying) == "1",
+		Volume:         atof(get(store.KeyVolume), 1.0),
+		PlayMode:       atoi(get(store.KeyPlayMode), 0),
+		RetroIdx:       atoi(get(store.KeyRetroIdx), 0),
+		Cursor:         atoi(get(store.KeyCursor), 0),
+		Chip8Options:   get(store.KeyChip8Options),
 	}
 }
 

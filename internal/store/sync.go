@@ -6,7 +6,6 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
-	"strings"
 
 	"github.com/eilianxiao/music-tui/internal/library"
 )
@@ -45,7 +44,7 @@ func SyncDir(
 		if d.IsDir() {
 			return nil
 		}
-		if isSupportedAudio(path) {
+		if library.IsSupportedAudio(path) {
 			paths = append(paths, path)
 		}
 		return nil
@@ -134,8 +133,5 @@ func SyncDir(
 	return added, updated, deleted, firstErr
 }
 
-// isSupportedAudio returns true for file extensions that music-tui can play.
-func isSupportedAudio(path string) bool {
-	ext := strings.ToLower(filepath.Ext(path))
-	return ext == ".mp3"
-}
+// isSupportedAudio is provided by library.IsSupportedAudio (library/formats.go).
+// This file previously had a duplicate; it has been removed.

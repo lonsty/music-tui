@@ -34,6 +34,11 @@ type Track struct {
 	// URL is the remote stream URL; only set for SourceNetease tracks.
 	URL    string
 	Source Source
+	// ProviderID identifies the TrackProvider that owns this track (e.g. "local",
+	// "netease").  It corresponds to the provider_id column in the database
+	// (migration version 3) and replaces the legacy Source enumeration for
+	// multi-source support.
+	ProviderID string
 	// CoverArt holds the raw image bytes (JPEG or PNG) from the ID3 APIC frame.
 	// Populated during in-memory scanning; nil when loaded from the database
 	// (use CoverPath to lazy-load the cached file instead).
@@ -78,4 +83,14 @@ func (t *Track) DisplayAlbumArtist() string {
 func (t *Track) Format() string {
 	ext := strings.TrimPrefix(filepath.Ext(t.Path), ".")
 	return strings.ToUpper(ext)
+}
+
+// MatchesQuery reports whether t matches a case-insensitive substring query
+// against Title, Artist, AlbumArtist, and Album fields.
+func MatchesQuery(t Track, query string) bool {
+	q := strings.ToLower(query)
+	return strings.Contains(strings.ToLower(t.DisplayTitle()), q) ||
+		strings.Contains(strings.ToLower(t.DisplayArtist()), q) ||
+		strings.Contains(strings.ToLower(t.AlbumArtist), q) ||
+		strings.Contains(strings.ToLower(t.Album), q)
 }

@@ -2,15 +2,14 @@
 package audio
 
 import (
+	"context"
 	"fmt"
 	"math"
-	"os"
 	"sync"
 	"time"
 
 	"github.com/gopxl/beep/v2"
 	"github.com/gopxl/beep/v2/effects"
-	"github.com/gopxl/beep/v2/mp3"
 	"github.com/gopxl/beep/v2/speaker"
 
 	"github.com/eilianxiao/music-tui/internal/library"
@@ -25,8 +24,11 @@ const (
 type State int
 
 const (
+	// StateStopped indicates the player is idle (no stream loaded or playback ended).
 	StateStopped State = iota
+	// StatePlaying indicates the player is actively streaming audio.
 	StatePlaying
+	// StatePaused indicates the player has a stream loaded but output is suspended.
 	StatePaused
 )
 
@@ -62,6 +64,8 @@ type retroProcessor struct {
 	holdPos      int
 }
 
+// Stream implements beep.Streamer.  It delegates to the wrapped Streamer,
+// then applies the IIR low-pass filter and sample-and-hold effect in-place.
 func (rp *retroProcessor) Stream(samples [][2]float64) (n int, ok bool) {
 	n, ok = rp.Streamer.Stream(samples)
 	if n == 0 || rp.holdLen <= 1 {
@@ -95,6 +99,7 @@ func (rp *retroProcessor) Stream(samples [][2]float64) (n int, ok bool) {
 	return
 }
 
+// Err implements beep.Streamer by forwarding to the wrapped Streamer.
 func (rp *retroProcessor) Err() error { return rp.Streamer.Err() }
 
 // retroParams returns the hold length and IIR alpha for a given preset and
@@ -165,33 +170,25 @@ func (p *Player) SetOnDone(fn func()) {
 
 // Play stops any current playback, then loads and starts the given track.
 func (p *Player) Play(track library.Track) error {
-	return p.playAt(track, 0)
+	return p.playAt(LocalSource{Path: track.Path}, 0)
 }
 
 // PlayAt starts the track at the given byte offset into the file, then seeks
 // to offsetDur before handing the stream to the speaker.  The volume stored
 // in the player is applied to the new stream immediately.
 func (p *Player) PlayAt(track library.Track, offsetDur time.Duration) error {
-	return p.playAt(track, offsetDur)
+	return p.playAt(LocalSource{Path: track.Path}, offsetDur)
 }
 
-func (p *Player) playAt(track library.Track, offsetDur time.Duration) error {
+func (p *Player) playAt(src StreamSource, offsetDur time.Duration) error {
 	old := p.stopCurrent()
 
-	f, err := os.Open(track.Path)
+	streamer, format, err := src.Open(context.Background())
 	if err != nil {
 		if old != nil {
-			old.Close()
+			_ = old.Close()
 		}
-		return fmt.Errorf("open %q: %w", track.Path, err)
-	}
-	streamer, format, err := mp3.Decode(f)
-	if err != nil {
-		f.Close()
-		if old != nil {
-			old.Close()
-		}
-		return fmt.Errorf("decode mp3 %q: %w", track.Path, err)
+		return err
 	}
 
 	// Seek before the stream reaches the speaker so no frames are lost.
@@ -202,11 +199,11 @@ func (p *Player) playAt(track library.Track, offsetDur time.Duration) error {
 		}
 	}
 
-	var src beep.Streamer = streamer
+	var beepSrc beep.Streamer = streamer
 	if format.SampleRate != defaultSampleRate {
-		src = beep.Resample(4, format.SampleRate, defaultSampleRate, streamer)
+		beepSrc = beep.Resample(4, format.SampleRate, defaultSampleRate, streamer)
 	}
-	retro := &retroProcessor{Streamer: src}
+	retro := &retroProcessor{Streamer: beepSrc}
 	ctrl := &beep.Ctrl{Streamer: retro, Paused: false}
 
 	p.mu.Lock()
@@ -237,7 +234,11 @@ func (p *Player) playAt(track library.Track, offsetDur time.Duration) error {
 	})))
 
 	if old != nil {
-		old.Close()
+		// Closing the old streamer after the new one is queued; any error
+		// here means the old file descriptor may leak, but playback is
+		// already on the new stream so we surface it only to avoid silently
+		// ignoring resource errors.
+		_ = old.Close()
 	}
 	return nil
 }
@@ -268,7 +269,7 @@ func (p *Player) stopCurrent() beep.StreamSeekCloser {
 // Stop halts playback and frees resources.
 func (p *Player) Stop() {
 	if old := p.stopCurrent(); old != nil {
-		old.Close()
+		_ = old.Close()
 	}
 }
 
@@ -505,20 +506,15 @@ func (p *Player) CrossfadeTo(newPath string, positionOffset time.Duration) error
 	// ── Stop current stream ───────────────────────────────────────────────
 	old := p.stopCurrent()
 	if old != nil {
-		old.Close()
+		_ = old.Close()
 	}
 
 	// ── Open and start new stream ─────────────────────────────────────────
-	f, err := os.Open(newPath)
+	streamer, format, err := LocalSource{Path: newPath}.Open(context.Background())
 	if err != nil {
-		return fmt.Errorf("crossfade open %q: %w", newPath, err)
+		return err
 	}
-	streamer, format, err := mp3.Decode(f)
-	if err != nil {
-		f.Close()
-		return fmt.Errorf("crossfade decode %q: %w", newPath, err)
-	}
-	// f is owned by streamer from this point; streamer.Close() will close it.
+	// streamer.Close() will close the underlying file.
 
 	// Seek to the target position (ignore errors — the file may be shorter).
 	targetSample := format.SampleRate.N(seekTo)
@@ -526,11 +522,11 @@ func (p *Player) CrossfadeTo(newPath string, positionOffset time.Duration) error
 		_ = streamer.Seek(targetSample)
 	}
 
-	var src beep.Streamer = streamer
+	var beepSrc beep.Streamer = streamer
 	if format.SampleRate != defaultSampleRate {
-		src = beep.Resample(4, format.SampleRate, defaultSampleRate, streamer)
+		beepSrc = beep.Resample(4, format.SampleRate, defaultSampleRate, streamer)
 	}
-	retro := &retroProcessor{Streamer: src}
+	retro := &retroProcessor{Streamer: beepSrc}
 	ctrl := &beep.Ctrl{Streamer: retro, Paused: false}
 	newVol := &effects.Volume{Streamer: ctrl, Base: 2, Volume: -10.0, Silent: false}
 

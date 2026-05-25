@@ -17,6 +17,14 @@ import (
 	"github.com/eilianxiao/music-tui/internal/store"
 )
 
+// chip8 command constants.
+const (
+	chip8Command       = "p2chip"
+	chip8DefaultSF2    = "nes"
+	chip8DefaultFormat = "mp3"
+	chip8Timeout       = 10 * time.Minute
+)
+
 // ── Play commands ─────────────────────────────────────────────────────────────
 
 // cmdRestoreSession loads the last-played track at the saved position and
@@ -141,7 +149,7 @@ func (a *App) cmdTogglePause() tea.Cmd {
 // order if switching into random mode.
 func (a *App) cmdNextPlayMode() tea.Cmd {
 	return func() tea.Msg {
-		a.playMode = (a.playMode + 1) % 4
+		a.playMode = (a.playMode + 1) % playModeCount
 		if a.playMode == playModeRandom {
 			a.rebuildShuffle()
 		}
@@ -232,6 +240,9 @@ func (a *App) applyFilter() {
 
 // ── Volume ────────────────────────────────────────────────────────────────────
 
+// volumeStep is the amount by which volume changes on each key press.
+const volumeStep = 0.1
+
 // clampVolume keeps v in [0.0, 2.0].
 func clampVolume(v float64) float64 {
 	if v < 0 {
@@ -241,6 +252,12 @@ func clampVolume(v float64) float64 {
 		return 2.0
 	}
 	return v
+}
+
+// adjustVolume changes the volume by delta, clamps it, and applies it to the player.
+func (a *App) adjustVolume(delta float64) {
+	a.volume = clampVolume(a.volume + delta)
+	a.player.SetVolume(a.volume)
 }
 
 // ── Library sync ──────────────────────────────────────────────────────────────
@@ -297,9 +314,9 @@ func (a *App) cmdToggleChip() tea.Cmd {
 		return func() tea.Msg {
 			pos := a.player.Position()
 			_ = a.player.CrossfadeTo(originPath, pos)
-			a.chipMode = false
-			a.chipBusy = false
-			return noopMsg{}
+			// State mutations happen in Update via chipCrossfadeDoneMsg,
+			// not here — tea.Cmd goroutines must not write App fields directly.
+			return chipCrossfadeDoneMsg{chipMode: false}
 		}
 	}
 
@@ -312,29 +329,27 @@ func (a *App) cmdToggleChip() tea.Cmd {
 		return func() tea.Msg {
 			pos := a.player.Position()
 			_ = a.player.CrossfadeTo(cachedPath, pos)
-			a.chipMode = true
-			a.chipBusy = false
-			return noopMsg{}
+			return chipCrossfadeDoneMsg{chipMode: true}
 		}
 	}
 
 	// No cache — run p2chip in the background.
 	a.chipConverting = true
-	outPath := filepath.Join(a.tmpDir, chip8CacheKey(track.Path)+".mp3")
+	outPath := filepath.Join(a.tmpDir, chip8CacheKey(track.Path)+"."+chip8DefaultFormat)
 	extraOpts := a.chip8Options // capture before goroutine
 	return func() tea.Msg {
-		args := []string{track.Path, outPath, "--format", "mp3"}
+		args := []string{track.Path, outPath, "--format", chip8DefaultFormat}
 		if extraOpts != "" {
 			parsed := shellSplit(extraOpts)
 			args = append(args, parsed...)
 		} else {
-			args = append(args, "--sf2", "nes")
+			args = append(args, "--sf2", chip8DefaultSF2)
 		}
-		// Use a 10-minute timeout so a stalled p2chip process doesn't block
+		// Use chip8Timeout so a stalled p2chip process doesn't block
 		// the chip state forever.
-		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
+		ctx, cancel := context.WithTimeout(context.Background(), chip8Timeout)
 		defer cancel()
-		cmd := exec.CommandContext(ctx, "p2chip", args...)
+		cmd := exec.CommandContext(ctx, chip8Command, args...)
 		if err := cmd.Run(); err != nil {
 			return chip8DoneMsg{err: fmt.Errorf("p2chip: %w", err)}
 		}

@@ -15,6 +15,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	_ "github.com/mattn/go-sqlite3" // SQLite driver
@@ -43,7 +44,7 @@ func Open(dbPath string) (*Store, error) {
 	db.SetMaxOpenConns(1)
 
 	if err := migrate(db); err != nil {
-		db.Close()
+		_ = db.Close()
 		return nil, fmt.Errorf("migrate: %w", err)
 	}
 
@@ -55,36 +56,105 @@ func (s *Store) Close() error {
 	return s.db.Close()
 }
 
-// migrate creates tables and indexes that do not yet exist.
+// migrate applies any pending schema migrations in order.
+//
+// Each migration is identified by a monotonically increasing version number.
+// Applied versions are recorded in the schema_migrations table so that each
+// migration runs exactly once.  New tables or ALTER TABLE statements should
+// be added as a new entry at the end of the migrations slice.
 func migrate(db *sql.DB) error {
-	_, err := db.Exec(`
-		CREATE TABLE IF NOT EXISTS settings (
-			key   TEXT PRIMARY KEY,
-			value TEXT NOT NULL
-		);
+	// Bootstrap the migrations tracker table first (idempotent).
+	if _, err := db.Exec(`
+		CREATE TABLE IF NOT EXISTS schema_migrations (
+			version INTEGER PRIMARY KEY
+		)`); err != nil {
+		return fmt.Errorf("create schema_migrations: %w", err)
+	}
 
-		CREATE TABLE IF NOT EXISTS tracks (
-			id            TEXT PRIMARY KEY,
-			path          TEXT NOT NULL UNIQUE,
-			title         TEXT NOT NULL DEFAULT '',
-			artist        TEXT NOT NULL DEFAULT '',
-			album_artist  TEXT NOT NULL DEFAULT '',
-			album         TEXT NOT NULL DEFAULT '',
-			year          TEXT NOT NULL DEFAULT '',
-			track_number  TEXT NOT NULL DEFAULT '',
-			genre         TEXT NOT NULL DEFAULT '',
-			comment       TEXT NOT NULL DEFAULT '',
-			duration_ms   INTEGER NOT NULL DEFAULT 0,
-			cover_path    TEXT NOT NULL DEFAULT '',
-			source        INTEGER NOT NULL DEFAULT 0,
-			mtime         INTEGER NOT NULL DEFAULT 0,
-			added_at      INTEGER NOT NULL DEFAULT 0
-		);
+	// ordered list of all migrations; append new entries here.
+	migrations := []struct {
+		version int
+		sql     string
+	}{
+		{1, `
+			CREATE TABLE IF NOT EXISTS settings (
+				key   TEXT PRIMARY KEY,
+				value TEXT NOT NULL
+			);
 
-		CREATE INDEX IF NOT EXISTS idx_tracks_sort
-			ON tracks(album_artist, year, album, track_number);
-	`)
-	return err
+			CREATE TABLE IF NOT EXISTS tracks (
+				id            TEXT PRIMARY KEY,
+				path          TEXT NOT NULL UNIQUE,
+				title         TEXT NOT NULL DEFAULT '',
+				artist        TEXT NOT NULL DEFAULT '',
+				album_artist  TEXT NOT NULL DEFAULT '',
+				album         TEXT NOT NULL DEFAULT '',
+				year          TEXT NOT NULL DEFAULT '',
+				track_number  TEXT NOT NULL DEFAULT '',
+				genre         TEXT NOT NULL DEFAULT '',
+				comment       TEXT NOT NULL DEFAULT '',
+				duration_ms   INTEGER NOT NULL DEFAULT 0,
+				cover_path    TEXT NOT NULL DEFAULT '',
+				source        INTEGER NOT NULL DEFAULT 0,
+				mtime         INTEGER NOT NULL DEFAULT 0,
+				added_at      INTEGER NOT NULL DEFAULT 0
+			);
+
+			CREATE INDEX IF NOT EXISTS idx_tracks_sort
+				ON tracks(album_artist, year, album, track_number);
+		`},
+		// version 2: playlists tables (歌单管理)
+		{2, `
+			CREATE TABLE IF NOT EXISTS playlists (
+				id         TEXT PRIMARY KEY,
+				name       TEXT NOT NULL,
+				created_at INTEGER NOT NULL DEFAULT 0
+			);
+
+			CREATE TABLE IF NOT EXISTS playlist_tracks (
+				playlist_id TEXT    NOT NULL,
+				track_id    TEXT    NOT NULL,
+				position    INTEGER NOT NULL DEFAULT 0,
+				PRIMARY KEY (playlist_id, track_id)
+			);
+		`},
+		// version 3: add provider_id column to tracks for multi-source support
+		{3, `
+			ALTER TABLE tracks ADD COLUMN provider_id TEXT NOT NULL DEFAULT 'local';
+		`},
+	}
+
+	for _, m := range migrations {
+		var applied int
+		err := db.QueryRow(
+			`SELECT COUNT(*) FROM schema_migrations WHERE version = ?`, m.version,
+		).Scan(&applied)
+		if err != nil {
+			return fmt.Errorf("check migration %d: %w", m.version, err)
+		}
+		if applied > 0 {
+			continue
+		}
+
+		tx, err := db.Begin()
+		if err != nil {
+			return fmt.Errorf("begin migration %d: %w", m.version, err)
+		}
+		if _, err := tx.Exec(m.sql); err != nil {
+			_ = tx.Rollback()
+			return fmt.Errorf("apply migration %d: %w", m.version, err)
+		}
+		if _, err := tx.Exec(
+			`INSERT INTO schema_migrations(version) VALUES(?)`, m.version,
+		); err != nil {
+			_ = tx.Rollback()
+			return fmt.Errorf("record migration %d: %w", m.version, err)
+		}
+		if err := tx.Commit(); err != nil {
+			return fmt.Errorf("commit migration %d: %w", m.version, err)
+		}
+	}
+	return nil
 }
 
 // ── Settings ──────────────────────────────────────────────────────────────────
@@ -125,7 +195,7 @@ func (s *Store) SetSettings(pairs map[string]string) error {
 		_ = tx.Rollback()
 		return err
 	}
-	defer stmt.Close()
+	defer func() { _ = stmt.Close() }()
 	for k, v := range pairs {
 		if _, err := stmt.Exec(k, v); err != nil {
 			_ = tx.Rollback()
@@ -155,7 +225,7 @@ func (s *Store) AllTracks() ([]library.Track, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var tracks []library.Track
 	for rows.Next() {
@@ -236,24 +306,50 @@ func (s *Store) PruneMissing(existingPaths map[string]struct{}) (int, error) {
 	for rows.Next() {
 		var p string
 		if err := rows.Scan(&p); err != nil {
-			rows.Close()
+			_ = rows.Close()
 			return 0, err
 		}
 		if _, ok := existingPaths[p]; !ok {
 			toDelete = append(toDelete, p)
 		}
 	}
-	rows.Close()
+	_ = rows.Close()
 	if err := rows.Err(); err != nil {
 		return 0, err
 	}
 
-	for _, p := range toDelete {
-		if err := s.DeleteTrack(p); err != nil {
-			return 0, err
-		}
+	if len(toDelete) == 0 {
+		return 0, nil
 	}
-	return len(toDelete), nil
+
+	// Batch DELETE in groups of batchSize to avoid hitting SQLite's
+	// variable-binding limit (SQLITE_LIMIT_VARIABLE_NUMBER = 999 by default).
+	const batchSize = 500
+	deleted := 0
+	for i := 0; i < len(toDelete); i += batchSize {
+		end := i + batchSize
+		if end > len(toDelete) {
+			end = len(toDelete)
+		}
+		batch := toDelete[i:end]
+
+		placeholders := strings.Repeat("?,", len(batch))
+		placeholders = placeholders[:len(placeholders)-1] // trim trailing comma
+		args := make([]any, len(batch))
+		for j, p := range batch {
+			args[j] = p
+		}
+		res, err := s.db.Exec(
+			"DELETE FROM tracks WHERE path IN ("+placeholders+")",
+			args...,
+		)
+		if err != nil {
+			return deleted, err
+		}
+		n, _ := res.RowsAffected()
+		deleted += int(n)
+	}
+	return deleted, nil
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
