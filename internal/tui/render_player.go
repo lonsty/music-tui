@@ -63,13 +63,19 @@ func (a *App) buildMiniPlayerContent(w, h int) string {
 	metaText := a.mqMeta.RenderCentered(metaAvail)
 	meta := stylePlayerArtist.Render(metaText)
 
-	// Current lyric line — active line text, "…" before first line, or placeholder.
+	// Current lyric line — three states:
+	//   loading:    provider fetch in-flight → show spinner text
+	//   no lyrics:  provider returned nil   → show placeholder
+	//   has lyrics: show active line or "…" before first timed line
 	var lyricText string
 	switch {
+	case a.loading:
+		lyricText = "󰔟  loading lyrics…"
 	case a.activeIdx >= 0 && a.activeIdx < len(a.lines):
 		lyricText = a.lines[a.activeIdx].Text
 	case len(a.lines) > 0:
-		lyricText = "…"
+		// Has lyrics but no active line yet (plain-text or before first stamp).
+		lyricText = a.lines[0].Text
 	default:
 		lyricText = "󰝚  暂无歌词"
 	}
@@ -224,7 +230,12 @@ func (a *App) renderFullLyrics() string {
 		styleDivider.Render(strings.Repeat("─", innerW))
 
 	var lyricsContent string
-	if len(a.lines) == 0 {
+	switch {
+	case a.loading:
+		spinner := styleLyricNormal.Render("󰔟  loading lyrics…")
+		lyricsContent = lipgloss.Place(innerW, lyricsH,
+			lipgloss.Center, lipgloss.Center, spinner)
+	case len(a.lines) == 0:
 		placeholder := lipgloss.JoinVertical(lipgloss.Center,
 			styleLyricNormal.Render("暂无歌词"),
 			"",
@@ -232,7 +243,7 @@ func (a *App) renderFullLyrics() string {
 		)
 		lyricsContent = lipgloss.Place(innerW, lyricsH,
 			lipgloss.Center, lipgloss.Center, placeholder)
-	} else {
+	default:
 		lyricsContent = a.renderLyricsScroll(innerW, lyricsH)
 	}
 

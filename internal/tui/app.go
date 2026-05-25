@@ -65,10 +65,12 @@ type ChipState struct {
 // LyricsState holds the lyrics for the currently playing track.
 // It is embedded in App and accessed via a.lines, a.activeIdx, etc.
 type LyricsState struct {
-	lines     []lyrics.Line // parsed LRC lines sorted by timestamp; nil = no lyrics
-	activeIdx int           // index of the currently highlighted line (-1 = none yet)
-	trackID   string        // Track.ID for which lines was loaded (stale-check)
+	lines     []lyrics.Line  // parsed LRC lines sorted by timestamp; nil = no lyrics
+	activeIdx int            // index of the currently highlighted line (-1 = none)
+	trackID   string         // Track.ID for which lines was loaded (stale-check)
 	provider  lyrics.Provider // chain of local + online providers; set in NewApp
+	loading   bool           // true while a background fetch is in-flight
+	synced    bool           // true when at least one line has a non-zero timestamp
 }
 
 // App is the root Bubble Tea model.
@@ -395,6 +397,8 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		a.lines = nil
 		a.activeIdx = -1
 		a.trackID = ""
+		a.synced = false
+		a.loading = msg.track != nil // loading until lyricsLoadedMsg arrives
 
 		var cmds []tea.Cmd
 		// If we were in chip mode, automatically start converting the new track.
@@ -440,7 +444,18 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			a.lines = msg.lines
 			a.activeIdx = -1
 			a.trackID = msg.trackID
+			// Determine whether any line carries a real timestamp.
+			// Pure plain-text lyrics (all Time=0) are shown statically
+			// without any active-line highlight.
+			a.synced = false
+			for _, l := range msg.lines {
+				if l.Time > 0 {
+					a.synced = true
+					break
+				}
+			}
 		}
+		a.loading = false
 		return a, nil
 
 	case tickMsg:
@@ -709,9 +724,12 @@ func (a *App) tickMarquees() {
 
 // syncLyricsActive updates activeIdx to the lyric line that should be
 // highlighted at the current playback position.
-// It finds the last line whose timestamp is ≤ the current position.
+//
+// For plain-text (unsynchronised) lyrics where all timestamps are zero,
+// activeIdx is kept at -1 so no line is highlighted — the entire list is
+// shown at uniform brightness.
 func (a *App) syncLyricsActive() {
-	if len(a.lines) == 0 {
+	if len(a.lines) == 0 || !a.synced {
 		a.activeIdx = -1
 		return
 	}
