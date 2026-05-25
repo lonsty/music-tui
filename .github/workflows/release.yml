@@ -48,13 +48,13 @@ jobs:
       - name: Install build dependencies
         run: |
           sudo dpkg --add-architecture arm64
-          # Restrict existing sources to amd64/i386 so apt won't try to fetch
-          # arm64 packages from archive.ubuntu.com / security.ubuntu.com
-          # (arm64 is only on ports.ubuntu.com for Ubuntu 24.04+).
-          sudo sed -i \
-            -e 's|^deb \(https\?://[^ ]*ubuntu\.com[^ ]*\) |deb [arch=amd64,i386] \1 |' \
-            /etc/apt/sources.list /etc/apt/sources.list.d/*.list 2>/dev/null || true
-          # Add arm64 sources from ports.ubuntu.com
+          # Restrict ALL existing apt sources to amd64 only, so apt won't try
+          # to fetch arm64 from archive/security.ubuntu.com (not available there).
+          sudo find /etc/apt -name '*.list' -exec \
+            sed -i -E 's|^(deb[[:space:]]+)([^[])|deb [arch=amd64] \2|' {} \;
+          sudo find /etc/apt -name '*.sources' -exec \
+            sed -i 's/^Architectures:.*/Architectures: amd64/' {} \; 2>/dev/null || true
+          # Add arm64 from ports.ubuntu.com
           CODENAME=$(lsb_release -cs)
           printf 'deb [arch=arm64] http://ports.ubuntu.com/ubuntu-ports %s main restricted universe multiverse\n' \
             "$CODENAME" "${CODENAME}-updates" "${CODENAME}-security" \
