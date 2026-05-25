@@ -399,3 +399,23 @@ func CoverCacheDir() (string, error) {
 	}
 	return dir, nil
 }
+
+// LyricsCacheDir returns the directory used for cached online lyrics,
+// creating it if necessary.
+//
+//	~/.cache/music-tui/lyrics/
+func LyricsCacheDir() (string, error) {
+	base := os.Getenv("XDG_CACHE_HOME")
+	if base == "" {
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return "", err
+		}
+		base = filepath.Join(home, ".cache")
+	}
+	dir := filepath.Join(base, "music-tui", "lyrics")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return "", err
+	}
+	return dir, nil
+}

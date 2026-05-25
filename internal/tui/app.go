@@ -15,6 +15,7 @@ import (
 	"github.com/eilianxiao/music-tui/internal/audio"
 	"github.com/eilianxiao/music-tui/internal/library"
 	"github.com/eilianxiao/music-tui/internal/lyrics"
+	"github.com/eilianxiao/music-tui/internal/lyrics/online"
 	"github.com/eilianxiao/music-tui/internal/store"
 )
 
@@ -67,6 +68,7 @@ type LyricsState struct {
 	lines     []lyrics.Line // parsed LRC lines sorted by timestamp; nil = no lyrics
 	activeIdx int           // index of the currently highlighted line (-1 = none yet)
 	trackID   string        // Track.ID for which lines was loaded (stale-check)
+	provider  lyrics.Provider // chain of local + online providers; set in NewApp
 }
 
 // App is the root Bubble Tea model.
@@ -168,6 +170,20 @@ func NewApp(player *audio.Player, st *store.Store, musicDir string, tracks []lib
 		tmpDir = os.TempDir()
 	}
 
+	// Build the lyrics provider chain: local files first, lrclib.net as fallback.
+	// CachedProvider wraps lrclib.net to avoid repeated network requests.
+	var lyricsProvider lyrics.Provider
+	lyricsProvider = lyrics.LocalLRCProvider{}
+	if cacheDir, err := store.LyricsCacheDir(); err == nil {
+		cachedOnline := lyrics.NewCachedProvider(online.NewLrcLibProvider(), cacheDir)
+		lyricsProvider = &lyrics.ChainProvider{
+			Providers: []lyrics.Provider{
+				lyrics.LocalLRCProvider{},
+				cachedOnline,
+			},
+		}
+	}
+
 	vol := 1.0
 	mode := playModeLoop
 	rIdx := 0
@@ -207,6 +223,7 @@ func NewApp(player *audio.Player, st *store.Store, musicDir string, tracks []lib
 		},
 		LyricsState: LyricsState{
 			activeIdx: -1,
+			provider:  lyricsProvider,
 		},
 	}
 

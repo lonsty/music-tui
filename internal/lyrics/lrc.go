@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"context"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"sort"
@@ -93,6 +94,27 @@ func tryLoad(path string) ([]Line, error) {
 
 // ── LRC parser ────────────────────────────────────────────────────────────────
 
+// ParseLRCString parses an LRC-formatted string and returns the resulting lines.
+// It is the public entry point for callers that already have the lyrics as a
+// string (e.g. fetched from an online API).
+func ParseLRCString(s string) []Line {
+	lines, _ := parseLRCReader(strings.NewReader(s))
+	return lines
+}
+
+// PlainTextToLines splits a plain-text lyrics string into static lines
+// (all with Time = 0).  Empty lines are dropped.
+func PlainTextToLines(s string) []Line {
+	var out []Line
+	for _, raw := range strings.Split(s, "\n") {
+		text := strings.TrimSpace(strings.TrimRight(raw, "\r"))
+		if text != "" {
+			out = append(out, Line{Time: 0, Text: text})
+		}
+	}
+	return out
+}
+
 // parseLRC parses an LRC file, supporting:
 //
 //  1. Standard LRC:       [mm:ss.xx]text
@@ -102,10 +124,15 @@ func tryLoad(path string) ([]Line, error) {
 //  5. Metadata tags:      [ar:…] [ti:…] silently ignored
 //  6. Plain-text:         no timestamps → lines returned with Time=0
 func parseLRC(f *os.File) ([]Line, error) {
+	return parseLRCReader(f)
+}
+
+// parseLRCReader is the shared implementation used by parseLRC and ParseLRCString.
+func parseLRCReader(r io.Reader) ([]Line, error) {
 	var timed []Line
 	var plainLines []string
 
-	scanner := bufio.NewScanner(f)
+	scanner := bufio.NewScanner(r)
 	for scanner.Scan() {
 		raw := strings.TrimSpace(scanner.Text())
 		if raw == "" {

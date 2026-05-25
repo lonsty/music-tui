@@ -14,7 +14,6 @@ import (
 
 	"github.com/eilianxiao/music-tui/internal/audio"
 	"github.com/eilianxiao/music-tui/internal/library"
-	"github.com/eilianxiao/music-tui/internal/lyrics"
 	"github.com/eilianxiao/music-tui/internal/store"
 )
 
@@ -263,14 +262,14 @@ func (a *App) adjustVolume(delta float64) {
 
 // ── Lyrics ────────────────────────────────────────────────────────────────────
 
-// cmdLoadLyrics asynchronously loads the .lrc file for track.
-// The result is delivered via lyricsLoadedMsg; if no .lrc exists, lines is nil.
+// cmdLoadLyrics asynchronously loads lyrics for track using the configured
+// provider chain (local files → cached lrclib.net).
+// The result is delivered via lyricsLoadedMsg; lines is nil when nothing found.
 func (a *App) cmdLoadLyrics(track library.Track) tea.Cmd {
 	id := track.ID
+	p := a.provider // capture; safe — provider is read-only after NewApp
 	return func() tea.Msg {
-		p := lyrics.LocalLRCProvider{}
 		lines, _ := p.Fetch(context.Background(), track)
-		// Errors are silently ignored: missing .lrc is the common case.
 		return lyricsLoadedMsg{trackID: id, lines: lines}
 	}
 }
