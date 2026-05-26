@@ -76,6 +76,26 @@ var (
 	styleTrackMeta = lipgloss.NewStyle().
 			Foreground(lipgloss.Color(overlay0))
 
+	// styleTrackRow* are the four row states in the track list.
+	// Pre-declared here to avoid per-row allocation in the render loop.
+	styleTrackRowDefault = lipgloss.NewStyle().
+				Foreground(lipgloss.Color(subtext0))
+	styleTrackRowSelected = lipgloss.NewStyle().
+				Background(lipgloss.Color(surface0)).
+				Foreground(lipgloss.Color(text)).
+				Bold(true)
+	// Playing rows: gradient covers the foreground; background + bold only.
+	styleTrackRowPlaying = lipgloss.NewStyle().
+				Bold(true)
+	// Playing + selected: same as playing but with the selection background.
+	styleTrackRowPlayingSelected = lipgloss.NewStyle().
+					Background(lipgloss.Color(surface0)).
+					Bold(true)
+	// Playing rows use a solid blue accent for the icon and duration columns.
+	styleTrackRowPlayingAccent = lipgloss.NewStyle().
+					Foreground(lipgloss.Color(blue)).
+					Bold(true)
+
 	// ── Mini / fullscreen player ─────────────────────────────────────────────
 	stylePlayerArtist = lipgloss.NewStyle().
 				Foreground(lipgloss.Color(subtext0)).
@@ -102,6 +122,24 @@ var (
 	styleLyricNormal = lipgloss.NewStyle().
 				Foreground(lipgloss.Color(overlay1)).
 				Align(lipgloss.Center)
+
+	// Lyric decoration styles used by renderActiveLyricLine,
+	// renderBrowseCursorLine, and renderLyricsPlain.
+	// Pre-declared to avoid per-call allocation on the 500ms render path.
+	styleLyricActiveText = lipgloss.NewStyle().
+				Foreground(lipgloss.Color(mauve)).
+				Bold(true)
+	styleLyricBrowseText = lipgloss.NewStyle().
+				Foreground(lipgloss.Color(text)).
+				Bold(true).
+				Align(lipgloss.Center)
+	styleLyricBrowseBorder = lipgloss.NewStyle().
+				Foreground(lipgloss.Color(overlay1))
+	styleLyricBrowseIcon = lipgloss.NewStyle().
+				Foreground(lipgloss.Color(subtext0))
+	styleLyricPlain = lipgloss.NewStyle().
+			Foreground(lipgloss.Color(subtext0)).
+			Align(lipgloss.Center)
 
 	// ── Cover art placeholder ─────────────────────────────────────────────────
 	styleCoverBorder = lipgloss.NewStyle().
@@ -184,11 +222,85 @@ func (a *App) render() string {
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
+// rgbStop holds a pre-parsed colour stop as normalised [0,1] float64 triples.
+// Pre-parsing hex strings once at init time avoids repeated string-to-float
+// conversions in the hot render path.
+type rgbStop struct{ r, g, b float64 }
+
+// parseHexStop converts a "#RRGGBB" hex string into an rgbStop.
+// Malformed input returns white {1,1,1} so gradients degrade gracefully.
+func parseHexStop(hex string) rgbStop {
+	c := strings.TrimPrefix(hex, "#")
+	if len(c) != 6 {
+		return rgbStop{1, 1, 1}
+	}
+	parseComp := func(s string) float64 {
+		v := 0
+		for _, ch := range s {
+			v <<= 4
+			switch {
+			case ch >= '0' && ch <= '9':
+				v += int(ch - '0')
+			case ch >= 'a' && ch <= 'f':
+				v += int(ch-'a') + 10
+			case ch >= 'A' && ch <= 'F':
+				v += int(ch-'A') + 10
+			}
+		}
+		return float64(v) / 255.0
+	}
+	return rgbStop{parseComp(c[0:2]), parseComp(c[2:4]), parseComp(c[4:6])}
+}
+
+// interpolateStops linearly interpolates between colour stops at position t ∈ [0,1].
+func interpolateStops(stops []rgbStop, t float64) rgbStop {
+	scaled := t * float64(len(stops)-1)
+	lo := int(scaled)
+	if lo >= len(stops)-1 {
+		return stops[len(stops)-1]
+	}
+	frac := scaled - float64(lo)
+	a, b := stops[lo], stops[lo+1]
+	return rgbStop{
+		a.r + (b.r-a.r)*frac,
+		a.g + (b.g-a.g)*frac,
+		a.b + (b.b-a.b)*frac,
+	}
+}
+
+// clampU8 clamps a normalised float64 to a uint8 byte value.
+func clampU8(v float64) uint8 {
+	if v <= 0 {
+		return 0
+	}
+	if v >= 1 {
+		return 255
+	}
+	return uint8(v * 255)
+}
+
+// gradientColors is the default gradient palette used for playing-track text.
+// blue → mauve → pink (Catppuccin Mocha).
+var gradientColors = []string{blue, mauve, pink}
+
+// gradientStops is the pre-parsed version of gradientColors.
+// Initialised once at program start; avoids repeated hex parsing on the hot path.
+var gradientStops = []rgbStop{
+	parseHexStop(blue),
+	parseHexStop(mauve),
+	parseHexStop(pink),
+}
+
 // gradientText applies a linear colour gradient across the display columns of s.
-// colors must contain at least two hex colour strings (e.g. "#89B4FA").
-// Each rune is coloured by interpolating between adjacent colour stops based on
+// colors must contain at least two "#RRGGBB" hex strings.
+// Each rune is coloured by interpolating between the adjacent colour stops at
 // its position in the total display-column count.
-// bold controls whether each rune is also rendered in bold.
+// bold controls whether the output is rendered in bold ANSI.
+//
+// Performance: colours are pre-parsed to []rgbStop before the rune loop.
+// The output is built using direct ANSI 24-bit colour escape codes rather than
+// creating a lipgloss.Style per rune, which eliminates the per-character heap
+// allocation that was the primary hot-path cost.
 func gradientText(s string, bold bool, colors ...string) string {
 	if len(s) == 0 || len(colors) < 2 {
 		return s
@@ -198,79 +310,72 @@ func gradientText(s string, bold bool, colors ...string) string {
 		return s
 	}
 
-	// Parse hex colours into RGB float64 triples.
-	type rgb struct{ r, g, b float64 }
-	stops := make([]rgb, len(colors))
-	for i, c := range colors {
-		c = strings.TrimPrefix(c, "#")
-		if len(c) != 6 {
-			// Malformed hex colour: fall back to white so the gradient degrades
-			// gracefully rather than producing black (zero-value of rgb).
-			stops[i] = rgb{1, 1, 1}
-			continue
+	// Use pre-parsed stops when the caller passes the default palette.
+	var stops []rgbStop
+	if len(colors) == len(gradientColors) &&
+		colors[0] == gradientColors[0] &&
+		colors[1] == gradientColors[1] &&
+		colors[2] == gradientColors[2] {
+		stops = gradientStops
+	} else {
+		stops = make([]rgbStop, len(colors))
+		for i, c := range colors {
+			stops[i] = parseHexStop(c)
 		}
-		parse := func(s string) float64 {
-			v := 0
-			for _, ch := range s {
-				v <<= 4
-				switch {
-				case ch >= '0' && ch <= '9':
-					v += int(ch - '0')
-				case ch >= 'a' && ch <= 'f':
-					v += int(ch-'a') + 10
-				case ch >= 'A' && ch <= 'F':
-					v += int(ch-'A') + 10
-				}
-			}
-			return float64(v) / 255.0
-		}
-		stops[i] = rgb{parse(c[0:2]), parse(c[2:4]), parse(c[4:6])}
-	}
-
-	interpolate := func(t float64) rgb {
-		// t ∈ [0,1]; map onto [0, len(stops)-1]
-		scaled := t * float64(len(stops)-1)
-		lo := int(scaled)
-		if lo >= len(stops)-1 {
-			return stops[len(stops)-1]
-		}
-		frac := scaled - float64(lo)
-		a, b := stops[lo], stops[lo+1]
-		return rgb{
-			a.r + (b.r-a.r)*frac,
-			a.g + (b.g-a.g)*frac,
-			a.b + (b.b-a.b)*frac,
-		}
-	}
-
-	clamp := func(v float64) uint8 {
-		if v < 0 {
-			return 0
-		}
-		if v > 1 {
-			return 255
-		}
-		return uint8(v * 255)
 	}
 
 	var out strings.Builder
+	// Pre-grow: each rune needs at most ~20 bytes of ANSI overhead + 4 bytes UTF-8.
+	out.Grow(len(s) * 24)
+
+	// ANSI SGR prefix constants.
+	const (
+		boldOn      = "\x1b[1m"
+		reset       = "\x1b[0m"
+		fgTrueColor = "\x1b[38;2;"
+	)
+
 	col := 0
 	for _, r := range s {
 		rw := strWidth(string(r))
-		t := float64(col) / float64(totalW-1)
-		if totalW == 1 {
-			t = 0
+		var t float64
+		if totalW > 1 {
+			t = float64(col) / float64(totalW-1)
 		}
-		c := interpolate(t)
-		hex := fmt.Sprintf("#%02X%02X%02X", clamp(c.r), clamp(c.g), clamp(c.b))
-		st := lipgloss.NewStyle().Foreground(lipgloss.Color(hex))
+		c := interpolateStops(stops, t)
+		r8, g8, b8 := clampU8(c.r), clampU8(c.g), clampU8(c.b)
+
+		// Write: ESC[38;2;R;G;Bm [ESC[1m] char ESC[0m
+		out.WriteString(fgTrueColor)
+		// Inline integer formatting to avoid fmt.Sprintf allocation.
+		writeUint8(&out, r8)
+		out.WriteByte(';')
+		writeUint8(&out, g8)
+		out.WriteByte(';')
+		writeUint8(&out, b8)
+		out.WriteByte('m')
 		if bold {
-			st = st.Bold(true)
+			out.WriteString(boldOn)
 		}
-		out.WriteString(st.Render(string(r)))
+		out.WriteRune(r)
+		out.WriteString(reset)
 		col += rw
 	}
 	return out.String()
+}
+
+// writeUint8 writes a uint8 value in decimal to b without any allocation.
+func writeUint8(b *strings.Builder, v uint8) {
+	if v >= 100 {
+		b.WriteByte('0' + v/100)
+		b.WriteByte('0' + (v/10)%10)
+		b.WriteByte('0' + v%10)
+	} else if v >= 10 {
+		b.WriteByte('0' + v/10)
+		b.WriteByte('0' + v%10)
+	} else {
+		b.WriteByte('0' + v)
+	}
 }
 
 // centeredGradientText applies the default gradient to text, strips surrounding
@@ -281,10 +386,6 @@ func centeredGradientText(text string, avail int) string {
 	pad := avail - strWidth(core)
 	return strings.Repeat(" ", pad/2) + grad + strings.Repeat(" ", pad-pad/2)
 }
-
-// gradientColors is the default gradient palette used for playing-track text.
-// blue → mauve → pink (Catppuccin Mocha).
-var gradientColors = []string{blue, mauve, pink}
 
 // absInt returns the absolute value of n.
 func absInt(n int) int {

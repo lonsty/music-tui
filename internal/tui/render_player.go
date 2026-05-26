@@ -419,18 +419,14 @@ func (a *App) renderLyricsPlain(w, h int) string {
 		}
 	}
 
-	stylePlain := lipgloss.NewStyle().
-		Foreground(lipgloss.Color(subtext0)).
-		Align(lipgloss.Center)
-
 	var sb strings.Builder
 	for row := 0; row < h; row++ {
 		idx := offset + row
 		if idx < total {
 			text := truncate(lines[idx].Text, w)
-			sb.WriteString(stylePlain.Width(w).Render(text) + "\n")
+			sb.WriteString(styleLyricPlain.Width(w).Render(text) + "\n")
 		} else {
-			sb.WriteString(stylePlain.Width(w).Render("") + "\n")
+			sb.WriteString(styleLyricPlain.Width(w).Render("") + "\n")
 		}
 	}
 
@@ -490,13 +486,11 @@ func lyricStyleForDistance(dist int, isActive bool) lipgloss.Style {
 //   - gap: lyricRuleGap (1) space between innermost ─ and text on each side.
 //   - short text is centred within the maxTextW slot via equal padding.
 func renderActiveLyricLine(text string, w, maxTextW int) string {
-	styleText := lipgloss.NewStyle().Foreground(lipgloss.Color(mauve)).Bold(true)
-
 	textW := strWidth(text)
 
 	ruleLen := (w - 2*lyricRuleMargin - 2*lyricRuleGap - maxTextW) / 2
 	if ruleLen < 2 {
-		return styleText.Width(w).Render(text)
+		return styleLyricActiveText.Width(w).Render(text)
 	}
 
 	rule := strings.Repeat("─", ruleLen)
@@ -507,7 +501,7 @@ func renderActiveLyricLine(text string, w, maxTextW int) string {
 	rightRule := gradientText(rule, false, subtext0, overlay2, overlay1, overlay0)
 
 	sp := strings.Repeat(" ", lyricRuleGap)
-	mid := styleText.Render(text)
+	mid := styleLyricActiveText.Render(text)
 
 	// Centre short text within maxTextW.
 	padTotal := maxTextW - textW
@@ -541,18 +535,11 @@ func renderActiveLyricLine(text string, w, maxTextW int) string {
 //	text — text (#CDD6F4, bright white), bold — clearly readable but not "playing".
 //
 // Note: styleIcon is defined for colour but its Render argument is empty ("");
-// the icon character (U+F144) is embedded in styleBorder.Render(" <icon>").
+// the icon character (U+F144) is embedded in styleLyricBrowseBorder.Render(" <icon>").
 // Nerd Font glyph width is assumed to be 1 terminal cell.
 //
 // maxTextW fixes the rule width to the widest lyric line.
 func renderBrowseCursorLine(lyric string, w, maxTextW int) string {
-	styleBorder := lipgloss.NewStyle().Foreground(lipgloss.Color(overlay1))
-	styleIcon := lipgloss.NewStyle().Foreground(lipgloss.Color(subtext0))
-	styleText := lipgloss.NewStyle().
-		Foreground(lipgloss.Color(text)). // bright white — distinct from mauve playing line
-		Bold(true).
-		Align(lipgloss.Center)
-
 	lyricW := strWidth(lyric)
 
 	// Available width after the left decoration for the rule+text block.
@@ -562,8 +549,8 @@ func renderBrowseCursorLine(lyric string, w, maxTextW int) string {
 
 	if ruleLen < 2 || w-lyricBrowseDecW < 4 {
 		// Not enough space: simple fallback.
-		return styleBorder.Render(" ") + " " + styleIcon.Render("") + " " +
-			styleText.Width(w-lyricBrowseDecW).Render(truncate(lyric, w-lyricBrowseDecW))
+		return styleLyricBrowseBorder.Render(" ") + " " + styleLyricBrowseIcon.Render("") + " " +
+			styleLyricBrowseText.Width(w-lyricBrowseDecW).Render(truncate(lyric, w-lyricBrowseDecW))
 	}
 
 	rule := strings.Repeat("─", ruleLen)
@@ -573,7 +560,7 @@ func renderBrowseCursorLine(lyric string, w, maxTextW int) string {
 	rightRule := gradientText(rule, false, subtext0, overlay2, overlay1, overlay0)
 
 	sp := strings.Repeat(" ", lyricRuleGap)
-	midText := styleText.Render(lyric)
+	midText := styleLyricBrowseText.Render(lyric)
 
 	padTotal := maxTextW - lyricW
 	padL := padTotal / 2
@@ -586,7 +573,7 @@ func renderBrowseCursorLine(lyric string, w, maxTextW int) string {
 		rightRule
 
 	// Left decoration replaces the left margin.
-	leftDec := styleBorder.Render(" ") + " " + styleIcon.Render("") + " "
+	leftDec := styleLyricBrowseBorder.Render(" ") + " " + styleLyricBrowseIcon.Render("") + " "
 
 	// Right margin.
 	rightMargin := strings.Repeat(" ", lyricRuleMargin)

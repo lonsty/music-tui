@@ -170,12 +170,11 @@ func (a *App) renderTrackList() string {
 			}
 		}
 
-		// For playing rows: colour the icon and right column blue so they
-		// match the gradient side visually (gradient only covers mid column).
-		styleBlue := lipgloss.NewStyle().Foreground(lipgloss.Color(blue)).Bold(true)
+		// For playing rows: colour the icon and right column with the playing
+		// accent so they match the gradient on the mid column visually.
 		var line string
 		if isPlaying {
-			line = styleBlue.Render(icon) + midPadded + styleBlue.Render(rightPadded)
+			line = styleTrackRowPlayingAccent.Render(icon) + midPadded + styleTrackRowPlayingAccent.Render(rightPadded)
 		} else {
 			line = icon + midPadded + rightPadded
 		}
@@ -183,19 +182,13 @@ func (a *App) renderTrackList() string {
 		var style lipgloss.Style
 		switch {
 		case isPlaying && isSelected:
-			// Gradient handles foreground; keep background + bold only.
-			style = lipgloss.NewStyle().
-				Background(lipgloss.Color(surface0)).Bold(true)
+			style = styleTrackRowPlayingSelected
 		case isPlaying:
-			// Gradient handles foreground; bold only.
-			style = lipgloss.NewStyle().Bold(true)
+			style = styleTrackRowPlaying
 		case isSelected:
-			style = lipgloss.NewStyle().
-				Background(lipgloss.Color(surface0)).
-				Foreground(lipgloss.Color(text)).Bold(true)
+			style = styleTrackRowSelected
 		default:
-			style = lipgloss.NewStyle().
-				Foreground(lipgloss.Color(subtext0))
+			style = styleTrackRowDefault
 		}
 
 		sb.WriteString(style.Render(line) + "\n")

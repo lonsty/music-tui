@@ -807,6 +807,10 @@ func (a *App) getCoverArt(maxOuterCols, maxOuterRows int) string {
 }
 
 // tickMarquees advances all Marquee scroll positions.
+// It does NOT update marquee text — that is handled by syncRowMarquee()
+// (called on cursor movement) and syncMarquees() (called on track change).
+// Keeping text updates out of the tick path avoids a rowMidText() allocation
+// every 500 ms regardless of whether the cursor or track has changed.
 func (a *App) tickMarquees() {
 	listW := a.trackListInnerW()
 	const leftFixW = 2
@@ -823,14 +827,6 @@ func (a *App) tickMarquees() {
 	fullW := a.fullPlayerInnerW() - 4
 	if fullW <= 0 {
 		fullW = 20
-	}
-
-	// Sync the selected-row marquee text each tick so it follows cursor moves.
-	if a.cursor < len(a.filtered) {
-		t := a.filtered[a.cursor]
-		a.mqRow.SetText(rowMidText(t))
-	} else {
-		a.mqRow.SetText("")
 	}
 
 	a.mqRow.Tick(midAvail)

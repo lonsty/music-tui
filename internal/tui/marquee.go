@@ -20,11 +20,14 @@ type Marquee struct {
 	text string // raw display text
 	sep  string // separator between repetitions, e.g. "  •  "
 
-	// loop is text+sep pre-computed for scrolling (avoids repeated alloc).
+	// loop is text+sep pre-computed for scrolling.
+	// loopBuf is loop+loop, also pre-computed so Render/RenderCentered can
+	// slice directly without allocating a temporary concatenation each call.
 	loop      string
-	loopW     int // display width of loop
-	offset    int // current scroll column (0 = leftmost)
-	pauseLeft int // ticks to pause before starting / after reset
+	loopBuf   string // loop + loop — pre-computed in SetText
+	loopW     int    // display width of loop
+	offset    int    // current scroll column (0 = leftmost)
+	pauseLeft int    // ticks to pause before starting / after reset
 }
 
 const (
@@ -41,6 +44,8 @@ func NewMarquee(text, sep string) *Marquee {
 }
 
 // SetText replaces the content and resets the scroll position.
+// It pre-computes loop and loopBuf so that Render and RenderCentered can
+// perform a direct slice without allocating a temporary string each call.
 func (m *Marquee) SetText(text string) {
 	if text == m.text {
 		return
@@ -48,6 +53,7 @@ func (m *Marquee) SetText(text string) {
 	m.text = text
 	m.loop = text + m.sep
 	m.loopW = strWidth(m.loop)
+	m.loopBuf = m.loop + m.loop // pre-compute double buffer
 	m.offset = 0
 	m.pauseLeft = marqueePauseTicks
 }
@@ -84,8 +90,8 @@ func (m *Marquee) Render(width int) string {
 
 	// Build a double-loop buffer so we can always slice `width` columns
 	// starting at m.offset without worrying about running off the end.
-	buf := m.loop + m.loop
-	return colSlice(buf, m.offset, width)
+	// loopBuf was pre-computed in SetText to avoid a per-call allocation.
+	return colSlice(m.loopBuf, m.offset, width)
 }
 
 // RenderCentered returns a string of exactly `width` display columns.
@@ -104,7 +110,7 @@ func (m *Marquee) RenderCentered(width int) string {
 		return strings.Repeat(" ", left) + m.text + strings.Repeat(" ", right)
 	}
 
-	buf := m.loop + m.loop
+	buf := m.loopBuf // pre-computed in SetText; no allocation here
 	return colSlice(buf, m.offset, width)
 }
 

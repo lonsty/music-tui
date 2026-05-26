@@ -390,7 +390,7 @@ func applyFormatPreference(tracks []library.Track, pref formatPreference) []libr
 	case formatPrefLosslessOnly:
 		// lossless threshold: quality score ≥ 30 (WAV=30, FLAC=40).
 		const losslessThreshold = 30
-		out := tracks[:0:0]
+		out := tracks[:0]
 		for _, t := range tracks {
 			if library.QualityOf(t.Format()) >= losslessThreshold {
 				out = append(out, t)
@@ -399,7 +399,7 @@ func applyFormatPreference(tracks []library.Track, pref formatPreference) []libr
 		return out
 
 	case formatPrefMP3Only:
-		out := tracks[:0:0]
+		out := tracks[:0]
 		for _, t := range tracks {
 			if strings.EqualFold(t.Format(), "MP3") {
 				out = append(out, t)
