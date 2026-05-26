@@ -251,62 +251,102 @@ func (a *App) renderFullLyrics() string {
 	return stylePanelBorder.Width(innerW).Height(innerH).Render(content)
 }
 
-// renderLyricsScroll renders the lyric lines for the visible window,
-// highlighting the active line and keeping it vertically centred.
-// All lines are centred horizontally within the panel width.
+// renderLyricsScroll renders the lyric lines with the active line fixed at the
+// vertical centre of the panel.  Lines above and below fade out as they move
+// away from the centre, creating a "spotlight" effect.
+//
+// Layout (h rows, centerRow = h/2):
+//
+//	row 0          → lines[active - centerRow]   (dimmed)
+//	…
+//	row centerRow  → lines[active]               (highlighted, mauve+bold)
+//	…
+//	row h-1        → lines[active + (h-1-centerRow)] (dimmed)
+//
+// Rows that map to out-of-range indices are rendered as blank lines in the
+// most dimmed colour so the panel always fills its allocated height.
+//
+// When active < 0 (plain-text / unsynchronised lyrics) the function delegates
+// to renderLyricsPlain which shows lines top-to-bottom without any highlight.
 func (a *App) renderLyricsScroll(w, h int) string {
 	lines := a.lines
 	active := a.activeIdx
 	total := len(lines)
 
-	start, end := lyricsWindow(active, total, h)
-
-	var sb strings.Builder
-	for i := start; i < end; i++ {
-		text := truncate(lines[i].Text, w)
-		var rendered string
-		if i == active {
-			rendered = styleLyricActive.Width(w).Render(text)
-		} else {
-			rendered = styleLyricNormal.Width(w).Render(text)
-		}
-		sb.WriteString(rendered + "\n")
+	if active < 0 {
+		return a.renderLyricsPlain(w, h)
 	}
 
-	// Pad with blank lines so the panel always fills its allocated height.
-	blank := styleLyricNormal.Width(w).Render("")
-	for i := end - start; i < h; i++ {
-		sb.WriteString(blank + "\n")
+	centerRow := h / 2
+	var sb strings.Builder
+
+	for row := 0; row < h; row++ {
+		idx := active + (row - centerRow)
+		dist := row - centerRow
+		if dist < 0 {
+			dist = -dist
+		}
+
+		if idx < 0 || idx >= total {
+			// Out-of-range: blank line in the most-dimmed colour.
+			sb.WriteString(lyricStyleForDistance(dist, false).Width(w).Render("") + "\n")
+			continue
+		}
+
+		text := truncate(lines[idx].Text, w)
+		isActive := idx == active
+		sb.WriteString(lyricStyleForDistance(dist, isActive).Width(w).Render(text) + "\n")
 	}
 
 	return strings.TrimRight(sb.String(), "\n")
 }
 
-// lyricsWindow computes the [start, end) index range that places active near
-// the vertical centre of a window of maxRows rows.
-func lyricsWindow(active, total, maxRows int) (start, end int) {
-	if total == 0 || maxRows <= 0 {
-		return 0, 0
-	}
-	if active < 0 {
-		// No line active yet — show the beginning.
-		end = maxRows
-		if end > total {
-			end = total
-		}
-		return 0, end
-	}
-	start = active - maxRows/2
-	if start < 0 {
-		start = 0
-	}
-	end = start + maxRows
-	if end > total {
-		end = total
-		start = end - maxRows
-		if start < 0 {
-			start = 0
+// renderLyricsPlain renders unsynchronised (plain-text) lyrics top-to-bottom
+// without any active-line highlight.  All lines use the same dimmed colour.
+func (a *App) renderLyricsPlain(w, h int) string {
+	lines := a.lines
+	total := len(lines)
+
+	var sb strings.Builder
+	plain := lyricStyleForDistance(len(lyricDistanceColors)-1, false)
+
+	for row := 0; row < h; row++ {
+		if row < total {
+			text := truncate(lines[row].Text, w)
+			sb.WriteString(plain.Width(w).Render(text) + "\n")
+		} else {
+			sb.WriteString(plain.Width(w).Render("") + "\n")
 		}
 	}
-	return start, end
+
+	return strings.TrimRight(sb.String(), "\n")
+}
+
+// lyricDistanceColors defines the colour palette used for the distance-based
+// fade effect.  Index 0 is the active line (brightest); each subsequent index
+// is one step dimmer.  All colours are from the Catppuccin Mocha palette.
+var lyricDistanceColors = []string{
+	mauve,    // 0 — active line
+	subtext1, // 1 — immediately adjacent
+	subtext0, // 2
+	overlay2, // 3
+	overlay1, // 4
+	overlay0, // 5+ — most distant / out-of-range
+}
+
+// lyricStyleForDistance returns a lipgloss.Style for a lyric line that is dist
+// rows away from the active line.  The active line (dist=0) is rendered bold;
+// all others are normal weight.
+func lyricStyleForDistance(dist int, isActive bool) lipgloss.Style {
+	maxIdx := len(lyricDistanceColors) - 1
+	if dist > maxIdx {
+		dist = maxIdx
+	}
+	s := lipgloss.NewStyle().
+		Foreground(lipgloss.Color(lyricDistanceColors[dist])).
+		Align(lipgloss.Center)
+	if isActive {
+		s = s.Bold(true)
+	}
+	return s
 }

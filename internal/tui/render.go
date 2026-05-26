@@ -100,14 +100,8 @@ var (
 		Foreground(lipgloss.Color(surface1))
 
 	styleLyricNormal = lipgloss.NewStyle().
-		Foreground(lipgloss.Color(overlay1)).
-		Align(lipgloss.Center)
-
-	// styleLyricActive is used for the currently playing lyric line.
-	styleLyricActive = lipgloss.NewStyle().
-		Foreground(lipgloss.Color(mauve)).
-		Bold(true).
-		Align(lipgloss.Center)
+				Foreground(lipgloss.Color(overlay1)).
+				Align(lipgloss.Center)
 
 	// ── Cover art placeholder ─────────────────────────────────────────────────
 	styleCoverBorder = lipgloss.NewStyle().
@@ -385,7 +379,8 @@ func wrapText(s string, maxW int) []string {
 }
 
 // rowMidText builds the middle-column text for a track list row:
-//   Album · Artist · Title
+//
+//	Album · Artist · Title
 //
 // Parts that are empty are omitted.  The result is used both for direct
 // display (non-selected rows) and as the Marquee source (selected row).
