@@ -331,21 +331,26 @@ func (a *App) renderLyricsScroll(w, h int) string {
 // renderLyricsPlain renders unsynchronised (plain-text) lyrics with automatic
 // progress-based scrolling.
 //
-// The visible window scrolls from the first line at position=0 to the last
-// line at position=duration, so every line is reachable over the course of
-// the track.  When the total number of lines fits within h rows the content
-// is shown from the top and no scrolling occurs.
+// The scroll is driven by the playback position such that the centre row of
+// the panel tracks the current line index proportionally to progress:
 //
-// All lines are rendered in subtext0 (medium brightness) — bright enough to
-// read comfortably but visually distinct from synchronised active lines.
+//   middleIdx = int(progress × (total - 1))
+//   offset    = clamp(middleIdx - h/2, 0, max(0, total - h))
+//
+// This means:
+//   - At progress=0 the first line is near the top.
+//   - At progress=1 the last line is at the centre of the panel, with the
+//     rows below it already visible — there is no "last line arrives late"
+//     problem because the tail content appears before the track ends.
+//
+// When total ≤ h the content fits without scrolling (offset=0).
+// All lines are rendered in subtext0 (medium brightness).
 func (a *App) renderLyricsPlain(w, h int) string {
 	lines := a.lines
 	total := len(lines)
 
-	// Compute scroll offset from playback progress.
-	scrollable := total - h
 	offset := 0
-	if scrollable > 0 {
+	if total > h {
 		pos := a.player.Position()
 		dur := a.player.Duration()
 		if dur > 0 {
@@ -353,7 +358,17 @@ func (a *App) renderLyricsPlain(w, h int) string {
 			if progress > 1 {
 				progress = 1
 			}
-			offset = int(progress * float64(scrollable))
+			// Middle row of the panel tracks the current line.
+			middleIdx := int(progress * float64(total-1))
+			offset = middleIdx - h/2
+			// Clamp to valid window.
+			maxOffset := total - h
+			if offset > maxOffset {
+				offset = maxOffset
+			}
+			if offset < 0 {
+				offset = 0
+			}
 		}
 	}
 
