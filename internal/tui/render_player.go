@@ -306,7 +306,13 @@ func (a *App) renderLyricsScroll(w, h int) string {
 
 		text := truncate(lines[idx].Text, w)
 		isActive := active >= 0 && idx == active
-		sb.WriteString(lyricStyleForDistance(dist, isActive).Width(w).Render(text) + "\n")
+		var rendered string
+		if isActive {
+			rendered = renderActiveLyricLine(text, w)
+		} else {
+			rendered = lyricStyleForDistance(dist, false).Width(w).Render(text)
+		}
+		sb.WriteString(rendered + "\n")
 	}
 
 	return strings.TrimRight(sb.String(), "\n")
@@ -335,14 +341,22 @@ func (a *App) renderLyricsPlain(w, h int) string {
 
 // lyricDistanceColors defines the colour palette used for the distance-based
 // fade effect.  Index 0 is the active line (brightest); each subsequent index
-// is one step dimmer.  All colours are from the Catppuccin Mocha palette.
+// is one step dimmer.  The gradient is stretched over 12 steps so the colour
+// transition is gradual rather than abrupt.  All colours are from the
+// Catppuccin Mocha palette.
 var lyricDistanceColors = []string{
 	mauve,    // 0 — active line
-	subtext1, // 1 — immediately adjacent
-	subtext0, // 2
-	overlay2, // 3
-	overlay1, // 4
-	overlay0, // 5+ — most distant / out-of-range
+	mauve,    // 1 — still very close
+	subtext1, // 2
+	subtext1, // 3
+	subtext0, // 4
+	subtext0, // 5
+	overlay2, // 6
+	overlay2, // 7
+	overlay1, // 8
+	overlay1, // 9
+	overlay0, // 10
+	overlay0, // 11+ — most distant / out-of-range
 }
 
 // lyricStyleForDistance returns a lipgloss.Style for a lyric line that is dist
@@ -360,4 +374,43 @@ func lyricStyleForDistance(dist int, isActive bool) lipgloss.Style {
 		s = s.Bold(true)
 	}
 	return s
+}
+
+// renderActiveLyricLine renders the currently playing lyric line with a pair
+// of dim horizontal rules on each side to visually anchor the centre position:
+//
+//	──── text ────
+//
+// The rules are coloured overlay0 (same as the most-distant lyric colour) so
+// they frame the bright active line without competing with it.  The text
+// itself is rendered in mauve+bold.  Total display width equals w.
+func renderActiveLyricLine(text string, w int) string {
+	const minRuleLen = 2  // minimum dashes on each side
+	const rulePad    = 1  // spaces between rule and text
+
+	styleText := lipgloss.NewStyle().
+		Foreground(lipgloss.Color(mauve)).
+		Bold(true)
+	styleRule := lipgloss.NewStyle().
+		Foreground(lipgloss.Color(overlay0))
+
+	textW := strWidth(text)
+
+	// Available width for both rules = total - text - 2*padding.
+	available := w - textW - 2*rulePad
+	if available < 2*minRuleLen {
+		// Not enough space for rules; fall back to plain centred text.
+		return styleText.Width(w).Render(text)
+	}
+
+	// Split available space evenly; left rule gets any remainder.
+	ruleR := available / 2
+	ruleL := available - ruleR
+
+	left  := styleRule.Render(strings.Repeat("─", ruleL))
+	right := styleRule.Render(strings.Repeat("─", ruleR))
+	mid   := styleText.Render(text)
+	space := strings.Repeat(" ", rulePad)
+
+	return left + space + mid + space + right
 }
