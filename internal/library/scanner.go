@@ -116,6 +116,11 @@ func parseTrack(path string) (Track, error) {
 		}
 	}
 
+	// Derive the format from the file extension and store it explicitly so
+	// the database can filter by format without parsing paths.
+	ext := strings.ToLower(filepath.Ext(path))
+	fileFormat := strings.ToUpper(strings.TrimPrefix(ext, "."))
+
 	duration := readDuration(path)
 
 	return Track{
@@ -129,6 +134,7 @@ func parseTrack(path string) (Track, error) {
 		Genre:       genre,
 		Comment:     comment,
 		Duration:    duration,
+		FileFormat:  fileFormat,
 		Path:        path,
 		Source:      SourceLocal,
 		CoverArt:    coverArt,

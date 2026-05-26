@@ -253,14 +253,19 @@ func (a *App) cmdRetroDown() tea.Cmd {
 
 // ── Search / filter ──────────────────────────────────────────────────────────
 
-// applyFilter rebuilds a.filtered from a.tracks using the current search query.
+// applyFilter rebuilds a.filtered from a.tracks using the current search query
+// and the active format preference.
 //
-// Prefix syntax:
+// Search prefix syntax:
 //
 //	s:KEY  — search artist (singer)
 //	a:KEY  — search album
 //	t:KEY  — search title
-//	KEY    — search all fields
+//	f:KEY  — filter by audio format (e.g. f:flac, f:mp3)
+//	KEY    — search all text fields
+//
+// After text filtering, applyFormatPreference is applied to deduplicate or
+// hide tracks based on the active formatPreference setting.
 func (a *App) applyFilter() {
 	raw := strings.TrimSpace(a.searchInput.Value())
 
@@ -275,14 +280,17 @@ func (a *App) applyFilter() {
 	case strings.HasPrefix(raw, "t:"):
 		field = "title"
 		q = strings.ToLower(strings.TrimPrefix(raw, "t:"))
+	case strings.HasPrefix(raw, "f:"):
+		field = "format"
+		q = strings.ToLower(strings.TrimPrefix(raw, "f:"))
 	default:
 		q = strings.ToLower(raw)
 	}
 
+	var candidate []library.Track
 	if q == "" {
-		a.filtered = a.tracks
+		candidate = a.tracks
 	} else {
-		var results []library.Track
 		for _, t := range a.tracks {
 			var match bool
 			switch field {
@@ -292,17 +300,21 @@ func (a *App) applyFilter() {
 				match = strings.Contains(strings.ToLower(t.Album), q)
 			case "title":
 				match = strings.Contains(strings.ToLower(t.DisplayTitle()), q)
+			case "format":
+				match = strings.Contains(strings.ToLower(t.Format()), q)
 			default:
 				match = strings.Contains(strings.ToLower(t.DisplayTitle()), q) ||
 					strings.Contains(strings.ToLower(t.DisplayArtist()), q) ||
 					strings.Contains(strings.ToLower(t.Album), q)
 			}
 			if match {
-				results = append(results, t)
+				candidate = append(candidate, t)
 			}
 		}
-		a.filtered = results
 	}
+
+	// Apply format-preference deduplication / filtering on top of the text results.
+	a.filtered = applyFormatPreference(candidate, a.formatPref)
 
 	a.rebuildShuffle()
 
@@ -326,6 +338,77 @@ func (a *App) applyFilter() {
 
 	if a.cursor >= len(a.filtered) {
 		a.cursor = max(0, len(a.filtered)-1)
+	}
+}
+
+// applyFormatPreference filters or deduplicates tracks according to pref.
+//
+//   - formatPrefAll: returns tracks unchanged.
+//   - formatPrefLosslessFirst: for each (artist, album, title) group keeps
+//     only the copy with the highest format quality score.  Tracks whose
+//     group has no other members are always included regardless of format.
+//   - formatPrefLosslessOnly: removes any track whose format quality score
+//     is below the lowest lossless threshold (WAV/FLAC score ≥ 30).
+//   - formatPrefMP3Only: keeps only MP3 tracks.
+//
+// The original ordering is preserved.
+func applyFormatPreference(tracks []library.Track, pref formatPreference) []library.Track {
+	switch pref {
+	case formatPrefAll:
+		return tracks
+
+	case formatPrefLosslessFirst:
+		// Group tracks by their dedup key: lowercase (artist · album · title).
+		// For each group, remember the index of the highest-quality track seen.
+		type entry struct {
+			idx     int
+			quality int
+		}
+		best := make(map[string]entry, len(tracks))
+		for i, t := range tracks {
+			key := strings.ToLower(t.DisplayArtist()) + "\x00" +
+				strings.ToLower(t.Album) + "\x00" +
+				strings.ToLower(t.DisplayTitle())
+			q := library.QualityOf(t.Format())
+			if prev, ok := best[key]; !ok || q > prev.quality {
+				best[key] = entry{idx: i, quality: q}
+			}
+		}
+		// Collect winners in original order using an index set.
+		keep := make(map[int]bool, len(best))
+		for _, e := range best {
+			keep[e.idx] = true
+		}
+		out := make([]library.Track, 0, len(best))
+		for i, t := range tracks {
+			if keep[i] {
+				out = append(out, t)
+			}
+		}
+		return out
+
+	case formatPrefLosslessOnly:
+		// lossless threshold: quality score ≥ 30 (WAV=30, FLAC=40).
+		const losslessThreshold = 30
+		out := tracks[:0:0]
+		for _, t := range tracks {
+			if library.QualityOf(t.Format()) >= losslessThreshold {
+				out = append(out, t)
+			}
+		}
+		return out
+
+	case formatPrefMP3Only:
+		out := tracks[:0:0]
+		for _, t := range tracks {
+			if strings.EqualFold(t.Format(), "MP3") {
+				out = append(out, t)
+			}
+		}
+		return out
+
+	default:
+		return tracks
 	}
 }
 

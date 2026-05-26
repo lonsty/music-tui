@@ -122,6 +122,12 @@ func migrate(db *sql.DB) error {
 		{3, `
 			ALTER TABLE tracks ADD COLUMN provider_id TEXT NOT NULL DEFAULT 'local';
 		`},
+		// version 4: add format column to tracks for format-preference filtering.
+		// The format is the upper-case audio codec string (e.g. "MP3", "FLAC").
+		// Stored explicitly so queries can filter without parsing file extensions.
+		{4, `
+			ALTER TABLE tracks ADD COLUMN format TEXT NOT NULL DEFAULT '';
+		`},
 	}
 
 	for _, m := range migrations {
@@ -213,7 +219,7 @@ func (s *Store) AllTracks() ([]library.Track, error) {
 	rows, err := s.db.Query(`
 		SELECT id, path, title, artist, album_artist, album,
 		       year, track_number, genre, comment,
-		       duration_ms, cover_path, source
+		       duration_ms, cover_path, source, format
 		FROM tracks
 		ORDER BY
 			LOWER(COALESCE(NULLIF(album_artist,''), artist, '')),
@@ -235,7 +241,7 @@ func (s *Store) AllTracks() ([]library.Track, error) {
 		if err := rows.Scan(
 			&t.ID, &t.Path, &t.Title, &t.Artist, &t.AlbumArtist, &t.Album,
 			&t.Year, &t.TrackNumber, &t.Genre, &t.Comment,
-			&durationMs, &t.CoverPath, &source,
+			&durationMs, &t.CoverPath, &source, &t.FileFormat,
 		); err != nil {
 			return nil, err
 		}
@@ -264,8 +270,8 @@ func (s *Store) UpsertTrack(t library.Track, mtime int64) error {
 		INSERT INTO tracks
 			(id, path, title, artist, album_artist, album,
 			 year, track_number, genre, comment,
-			 duration_ms, cover_path, source, mtime, added_at)
-		VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+			 duration_ms, cover_path, source, format, mtime, added_at)
+		VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
 		ON CONFLICT(path) DO UPDATE SET
 			id           = excluded.id,
 			title        = excluded.title,
@@ -279,12 +285,13 @@ func (s *Store) UpsertTrack(t library.Track, mtime int64) error {
 			duration_ms  = excluded.duration_ms,
 			cover_path   = excluded.cover_path,
 			source       = excluded.source,
+			format       = excluded.format,
 			mtime        = excluded.mtime
 	`,
 		t.ID, t.Path, t.Title, t.Artist, t.AlbumArtist, t.Album,
 		t.Year, t.TrackNumber, t.Genre, t.Comment,
 		t.Duration.Milliseconds(), t.CoverPath,
-		int(t.Source), mtime, time.Now().Unix(),
+		int(t.Source), t.FileFormat, mtime, time.Now().Unix(),
 	)
 	return err
 }

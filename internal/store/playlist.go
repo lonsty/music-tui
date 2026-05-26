@@ -130,7 +130,7 @@ func (s *Store) GetPlaylistTracks(playlistID string) ([]library.Track, error) {
 	rows, err := s.db.Query(`
 		SELECT t.id, t.path, t.title, t.artist, t.album_artist, t.album,
 		       t.year, t.track_number, t.genre, t.comment,
-		       t.duration_ms, t.cover_path, t.source
+		       t.duration_ms, t.cover_path, t.source, t.format
 		FROM playlist_tracks pt
 		INNER JOIN tracks t ON t.id = pt.track_id
 		WHERE pt.playlist_id = ?
@@ -149,7 +149,7 @@ func (s *Store) GetPlaylistTracks(playlistID string) ([]library.Track, error) {
 		if err := rows.Scan(
 			&t.ID, &t.Path, &t.Title, &t.Artist, &t.AlbumArtist, &t.Album,
 			&t.Year, &t.TrackNumber, &t.Genre, &t.Comment,
-			&durationMs, &t.CoverPath, &source,
+			&durationMs, &t.CoverPath, &source, &t.FileFormat,
 		); err != nil {
 			return nil, fmt.Errorf("scan playlist track row: %w", err)
 		}

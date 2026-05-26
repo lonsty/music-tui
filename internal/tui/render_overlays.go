@@ -214,6 +214,11 @@ func (a *App) renderSettingsOverlay() string {
 	}
 	langLine := "  " + langLabel + "  " + langView
 
+	// ── Format filter section ─────────────────────────────────────────────
+	fmtActive := a.settingsActive == 3
+	fmtLabel := labelStyle(fmtActive).Width(11).Render(T("settings_fmt_label"))
+	fmtLine := "  " + fmtLabel + "  " + styleOverlayValue.Render(formatPrefLabel(a.formatPref))
+
 	// ── Footer ────────────────────────────────────────────────────────────
 	enterKey := styleOverlayKey.Render(" Enter ")
 	escKey := styleOverlayKey.Render(" Esc ")
@@ -241,6 +246,10 @@ func (a *App) renderSettingsOverlay() string {
 		sectionLabel(T("settings_lang_label")),
 		"",
 		langLine,
+		"",
+		sectionLabel(T("settings_fmt_label")),
+		"",
+		fmtLine,
 		"",
 		footer,
 	}

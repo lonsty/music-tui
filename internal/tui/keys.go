@@ -388,6 +388,18 @@ func (a *App) handleSettingsKey(msg tea.KeyMsg) tea.Cmd {
 			return nil
 		}
 
+		// Format filter field (settingsActive == 3): cycle through preferences on Enter.
+		if a.settingsActive == 3 {
+			// Advance to next preference value, wrapping around.
+			a.formatPref = (a.formatPref + 1) % formatPrefCount
+			if a.st != nil {
+				_ = a.st.SetSetting(store.KeyFormatPreference, formatPrefKey(a.formatPref))
+			}
+			// Re-filter the library immediately so the track list updates.
+			a.applyFilter()
+			return nil
+		}
+
 		// Save dir + opts fields and close.
 		newDir := strings.TrimSpace(a.musicDirInput.Value())
 		newOpts := strings.TrimSpace(a.settingsInput.Value())
@@ -425,10 +437,10 @@ func (a *App) handleSettingsKey(msg tea.KeyMsg) tea.Cmd {
 		return nil
 
 	case "tab", "shift+tab":
-		// Cycle active field: 0 = dir, 1 = opts, 2 = language.
+		// Cycle active field: 0 = dir, 1 = opts, 2 = language, 3 = format filter.
 		a.musicDirInput.Blur()
 		a.settingsInput.Blur()
-		if a.settingsActive < 2 {
+		if a.settingsActive < 3 {
 			a.settingsActive++
 		} else {
 			a.settingsActive = 0
@@ -439,7 +451,7 @@ func (a *App) handleSettingsKey(msg tea.KeyMsg) tea.Cmd {
 		case 1:
 			a.settingsInput.Focus()
 		}
-		// settingsActive == 2 (language): no text input, handled via Enter.
+		// settingsActive 2 (language) and 3 (format): no text input, handled via Enter.
 		return nil
 
 	case "ctrl+r":

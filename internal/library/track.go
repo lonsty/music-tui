@@ -29,6 +29,12 @@ type Track struct {
 	Genre       string // TCON tag
 	Comment     string // COMM tag
 	Duration    time.Duration
+	// FileFormat is the upper-case audio format string (e.g. "MP3", "FLAC").
+	// It is stored in the database (migration v4) so queries can filter by
+	// format without parsing file extensions.  Use the Format() method to
+	// read this field; it falls back to deriving the value from Path when
+	// FileFormat is empty (e.g. for tracks loaded from older DB versions).
+	FileFormat string
 	// Path is the local filesystem path; only set for SourceLocal tracks.
 	Path string
 	// URL is the remote stream URL; only set for SourceNetease tracks.
@@ -79,8 +85,15 @@ func (t *Track) DisplayAlbumArtist() string {
 	return "Unknown Artist"
 }
 
-// Format returns the uppercased file format extension (e.g. "MP3", "FLAC").
+// Format returns the upper-case audio format for the track (e.g. "MP3", "FLAC").
+// It uses the stored FileFormat field when available, and falls back to
+// deriving the value from the file extension in Path.  This ensures correct
+// results for tracks loaded from older database versions that predate the
+// migration that added the format column.
 func (t *Track) Format() string {
+	if t.FileFormat != "" {
+		return t.FileFormat
+	}
 	ext := strings.TrimPrefix(filepath.Ext(t.Path), ".")
 	return strings.ToUpper(ext)
 }

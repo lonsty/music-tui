@@ -50,6 +50,7 @@ type LibraryState struct {
 	filtered     []library.Track
 	shuffleOrder []int // indices into filtered, used when playMode == random
 	cursor       int
+	formatPref   formatPreference // active format-display preference
 }
 
 // ChipState holds the 8-bit chip conversion state.
@@ -213,6 +214,14 @@ func NewApp(player *audio.Player, st *store.Store, musicDir string, tracks []lib
 		}
 	}
 
+	// Restore format preference from the database.
+	var fmtPref formatPreference
+	if st != nil {
+		if raw, _ := st.GetSetting(store.KeyFormatPreference); raw != "" {
+			fmtPref = parseFormatPref(raw)
+		}
+	}
+
 	ti := textinput.New()
 	ti.Placeholder = T("search_placeholder")
 	ti.CharLimit = 128
@@ -276,6 +285,9 @@ func NewApp(player *audio.Player, st *store.Store, musicDir string, tracks []lib
 			volume:   vol,
 			playMode: mode,
 			retroIdx: rIdx,
+		},
+		LibraryState: LibraryState{
+			formatPref: fmtPref,
 		},
 		ChipState: ChipState{
 			tmpDir:       tmpDir,

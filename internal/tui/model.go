@@ -61,6 +61,77 @@ const (
 	playModeCount                      // sentinel — must be the last constant
 )
 
+// ── Format preference ─────────────────────────────────────────────────────────
+
+// formatPreference controls which format versions of a track are shown in the
+// library when multiple copies exist in different formats (e.g. both .mp3 and
+// .flac for the same album).
+type formatPreference int
+
+const (
+	// formatPrefAll shows every file regardless of format (default).
+	// No deduplication is applied; the user sees all copies.
+	formatPrefAll formatPreference = iota
+
+	// formatPrefLosslessFirst deduplicates tracks that share the same
+	// (artist, album, title) triple.  For each group, only the highest-quality
+	// format version is retained (FLAC > WAV > OGG > MP3).  If only a lossy
+	// copy exists it is still shown.
+	formatPrefLosslessFirst
+
+	// formatPrefLosslessOnly shows only lossless tracks (FLAC, WAV).
+	// Lossy-only tracks (MP3, OGG) are hidden entirely.
+	formatPrefLosslessOnly
+
+	// formatPrefMP3Only shows only MP3 tracks.
+	formatPrefMP3Only
+
+	formatPrefCount // sentinel — must be the last constant
+)
+
+// formatPrefLabel returns a short display label for a formatPreference value.
+func formatPrefLabel(p formatPreference) string {
+	switch p {
+	case formatPrefLosslessFirst:
+		return T("fmt_pref_lossless_first")
+	case formatPrefLosslessOnly:
+		return T("fmt_pref_lossless_only")
+	case formatPrefMP3Only:
+		return T("fmt_pref_mp3_only")
+	default:
+		return T("fmt_pref_all")
+	}
+}
+
+// formatPrefKey returns the settings-DB string for a formatPreference value.
+func formatPrefKey(p formatPreference) string {
+	switch p {
+	case formatPrefLosslessFirst:
+		return "lossless_first"
+	case formatPrefLosslessOnly:
+		return "lossless_only"
+	case formatPrefMP3Only:
+		return "mp3_only"
+	default:
+		return "all"
+	}
+}
+
+// parseFormatPref converts a DB string back to a formatPreference value.
+// Unknown strings map to formatPrefAll.
+func parseFormatPref(s string) formatPreference {
+	switch s {
+	case "lossless_first":
+		return formatPrefLosslessFirst
+	case "lossless_only":
+		return formatPrefLosslessOnly
+	case "mp3_only":
+		return formatPrefMP3Only
+	default:
+		return formatPrefAll
+	}
+}
+
 // playModeIcon returns the Nerd Font glyph for the given mode.
 func playModeIcon(m playMode) string {
 	switch m {

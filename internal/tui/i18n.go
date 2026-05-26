@@ -87,7 +87,7 @@ var translations = map[Lang]map[string]string{
 		"action_chip":            "Toggle 8-bit chip mode  (converts + crossfades)",
 		"action_lofi":            "Lo-fi effect  lower / raise sample rate",
 		"action_settings":        "Settings  (music dir · p2chip options · Ctrl+R reload)",
-		"action_search":          "Search  (s: artist  a: album  t: title)",
+		"action_search":          "Search  (s: artist  a: album  t: title  f: format)",
 		"action_track_info":      "Track info",
 		"action_fullscreen":      "Toggle fullscreen",
 		"action_volume":          "Volume up / down",
@@ -128,6 +128,13 @@ var translations = map[Lang]map[string]string{
 		"settings_lang_en":      "English",
 		"settings_lang_zh":      "中文",
 
+		// ── Format preference ────────────────────────────────────────────────
+		"settings_fmt_label":      "Format filter",
+		"fmt_pref_all":            "All formats",
+		"fmt_pref_lossless_first": "Lossless first",
+		"fmt_pref_lossless_only":  "Lossless only",
+		"fmt_pref_mp3_only":       "MP3 only",
+
 		// ── Tabs ─────────────────────────────────────────────────────────────
 		"tab_local":          "Local",
 		"tab_online":         "Online",
@@ -138,7 +145,7 @@ var translations = map[Lang]map[string]string{
 		// ── App messages ─────────────────────────────────────────────────────
 		"track_removed":      "Playing track was removed from library",
 		"no_tracks_hint":     "No tracks — open Settings (,) and reload the library",
-		"search_placeholder": "Search… (s: artist  a: album  t: title)",
+		"search_placeholder": "Search… (s: artist  a: album  t: title  f: format)",
 	},
 	LangZH: {
 		// ── Player ───────────────────────────────────────────────────────────
@@ -186,7 +193,7 @@ var translations = map[Lang]map[string]string{
 		"action_chip":            "切换 8-bit 音效（转换 + 淡入淡出）",
 		"action_lofi":            "Lo-fi 效果  降低 / 提升采样率",
 		"action_settings":        "设置（音乐目录 · p2chip 选项 · Ctrl+R 重载）",
-		"action_search":          "搜索（s: 艺术家  a: 专辑  t: 标题）",
+		"action_search":          "搜索（s: 艺术家  a: 专辑  t: 标题  f: 格式）",
 		"action_track_info":      "曲目信息",
 		"action_fullscreen":      "切换全屏",
 		"action_volume":          "音量增加 / 减小",
@@ -227,6 +234,13 @@ var translations = map[Lang]map[string]string{
 		"settings_lang_en":      "English",
 		"settings_lang_zh":      "中文",
 
+		// ── Format preference ────────────────────────────────────────────────
+		"settings_fmt_label":      "格式筛选",
+		"fmt_pref_all":            "显示全部",
+		"fmt_pref_lossless_first": "无损优先",
+		"fmt_pref_lossless_only":  "仅无损",
+		"fmt_pref_mp3_only":       "仅 MP3",
+
 		// ── Tabs ─────────────────────────────────────────────────────────────
 		"tab_local":          "本地",
 		"tab_online":         "在线",
@@ -237,6 +251,6 @@ var translations = map[Lang]map[string]string{
 		// ── App messages ─────────────────────────────────────────────────────
 		"track_removed":      "当前播放曲目已从音乐库中移除",
 		"no_tracks_hint":     "没有曲目 — 打开设置（,）并重新加载音乐库",
-		"search_placeholder": "搜索… (s: 艺术家  a: 专辑  t: 标题)",
+		"search_placeholder": "搜索… (s: 艺术家  a: 专辑  t: 标题  f: 格式)",
 	},
 }

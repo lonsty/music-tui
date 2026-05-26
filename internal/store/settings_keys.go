@@ -24,4 +24,9 @@ const (
 	// KeyLanguage stores the UI display language ("en" or "zh").
 	// An empty value or "en" means English; "zh" means Simplified Chinese.
 	KeyLanguage = "language"
+	// KeyFormatPreference stores the audio format display preference.
+	// Valid values: "all" (default), "lossless_first", "lossless_only",
+	// "mp3_only".  Controls which format versions are shown in the track list
+	// when multiple copies of the same song exist in different formats.
+	KeyFormatPreference = "format_preference"
 )
