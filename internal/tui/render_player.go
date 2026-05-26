@@ -278,6 +278,16 @@ func (a *App) renderLyricsScroll(w, h int) string {
 		return a.renderLyricsPlain(w, h)
 	}
 
+	// Pre-compute the maximum displayed text width across all lines so that
+	// the active-line rules always have a consistent length regardless of
+	// which line is currently active.
+	maxTextW := 0
+	for _, l := range lines {
+		if tw := strWidth(l.Text); tw > maxTextW {
+			maxTextW = tw
+		}
+	}
+
 	// Synchronised lyrics before the first timestamp has been reached
 	// (active == -1): treat as if active were at index -1 so that all lyrics
 	// sit below the centre line, waiting to scroll up into view.
@@ -308,7 +318,7 @@ func (a *App) renderLyricsScroll(w, h int) string {
 		isActive := active >= 0 && idx == active
 		var rendered string
 		if isActive {
-			rendered = renderActiveLyricLine(text, w)
+			rendered = renderActiveLyricLine(text, w, maxTextW)
 		} else {
 			rendered = lyricStyleForDistance(dist, false).Width(w).Render(text)
 		}
@@ -376,41 +386,71 @@ func lyricStyleForDistance(dist int, isActive bool) lipgloss.Style {
 	return s
 }
 
-// renderActiveLyricLine renders the currently playing lyric line with a pair
-// of dim horizontal rules on each side to visually anchor the centre position:
+// renderActiveLyricLine renders the currently playing lyric line framed by a
+// pair of segmented horizontal rules:
 //
-//	──── text ────
+//	    ─── ── text ── ───
+//	    ↑outer ↑inner    ↑inner ↑outer
 //
-// The rules are coloured overlay0 (same as the most-distant lyric colour) so
-// they frame the bright active line without competing with it.  The text
-// itself is rendered in mauve+bold.  Total display width equals w.
-func renderActiveLyricLine(text string, w int) string {
-	const minRuleLen = 2  // minimum dashes on each side
-	const rulePad    = 1  // spaces between rule and text
+// Design rules:
+//   - margin: 4-column gap between the panel edge and the start of the rule.
+//   - fixed width: rule length is derived from maxTextW (the widest line in
+//     the lyric set) so it never changes between lines.
+//   - colour gradient (outer → inner → text):
+//       overlay0 (outer, dim) → overlay2 (inner, brighter) → mauve+bold (text)
+//   - each rule is split in half: outer half in overlay0, inner half in overlay2.
+//   - 1 space separates the inner rule from the text on each side.
+//   - the whole assembly is centred in w columns.
+func renderActiveLyricLine(text string, w, maxTextW int) string {
+	const margin  = 4 // columns reserved on each side between panel edge and rule
+	const gap     = 1 // spaces between inner rule end and text
 
-	styleText := lipgloss.NewStyle().
-		Foreground(lipgloss.Color(mauve)).
-		Bold(true)
-	styleRule := lipgloss.NewStyle().
-		Foreground(lipgloss.Color(overlay0))
+	styleText  := lipgloss.NewStyle().Foreground(lipgloss.Color(mauve)).Bold(true)
+	styleInner := lipgloss.NewStyle().Foreground(lipgloss.Color(overlay2))
+	styleOuter := lipgloss.NewStyle().Foreground(lipgloss.Color(overlay0))
 
 	textW := strWidth(text)
 
-	// Available width for both rules = total - text - 2*padding.
-	available := w - textW - 2*rulePad
-	if available < 2*minRuleLen {
-		// Not enough space for rules; fall back to plain centred text.
+	// Total content width = 2*margin + 2*ruleLen + 2*gap + maxTextW
+	// We want rule length fixed to the widest line.
+	// ruleLen = (w - 2*margin - 2*gap - maxTextW) / 2
+	ruleLen := (w - 2*margin - 2*gap - maxTextW) / 2
+	if ruleLen < 2 {
+		// Not enough room — fall back to plain centred text.
 		return styleText.Width(w).Render(text)
 	}
 
-	// Split available space evenly; left rule gets any remainder.
-	ruleR := available / 2
-	ruleL := available - ruleR
+	// Split each rule: outer half (dim) + inner half (bright).
+	// Inner half gets any extra column when ruleLen is odd.
+	outerLen := ruleLen / 2
+	innerLen := ruleLen - outerLen
 
-	left  := styleRule.Render(strings.Repeat("─", ruleL))
-	right := styleRule.Render(strings.Repeat("─", ruleR))
-	mid   := styleText.Render(text)
-	space := strings.Repeat(" ", rulePad)
+	leftOuter  := styleOuter.Render(strings.Repeat("─", outerLen))
+	leftInner  := styleInner.Render(strings.Repeat("─", innerLen))
+	rightInner := styleInner.Render(strings.Repeat("─", innerLen))
+	rightOuter := styleOuter.Render(strings.Repeat("─", outerLen))
+	sp         := strings.Repeat(" ", gap)
+	mid        := styleText.Render(text)
 
-	return left + space + mid + space + right
+	// Pad text side to maxTextW so short lines keep the rules at fixed position.
+	padTotal := maxTextW - textW
+	padL     := padTotal / 2
+	padR     := padTotal - padL
+	spacePadL := strings.Repeat(" ", padL)
+	spacePadR := strings.Repeat(" ", padR)
+
+	content := strings.Repeat(" ", margin) +
+		leftOuter + leftInner +
+		sp + spacePadL + mid + spacePadR + sp +
+		rightInner + rightOuter +
+		strings.Repeat(" ", margin)
+
+	// Centre the whole line if it is narrower than w (can happen when
+	// maxTextW is small and margin already accounts for the difference).
+	contentW := 2*margin + 2*ruleLen + 2*gap + maxTextW
+	if contentW < w {
+		pad := w - contentW
+		content = strings.Repeat(" ", pad/2) + content + strings.Repeat(" ", pad-pad/2)
+	}
+	return content
 }
