@@ -7,16 +7,6 @@ import (
 	"time"
 )
 
-// Source indicates where a track originates from.
-type Source int
-
-const (
-	// SourceLocal is a track stored on the local filesystem.
-	SourceLocal Source = iota
-	// SourceNetease is a track from NetEase Cloud Music.
-	SourceNetease
-)
-
 // Track represents a single music track with metadata.
 type Track struct {
 	ID          string
@@ -35,15 +25,14 @@ type Track struct {
 	// read this field; it falls back to deriving the value from Path when
 	// FileFormat is empty (e.g. for tracks loaded from older DB versions).
 	FileFormat string
-	// Path is the local filesystem path; only set for SourceLocal tracks.
+	// Path is the local filesystem path; only set for local provider tracks.
 	Path string
-	// URL is the remote stream URL; only set for SourceNetease tracks.
-	URL    string
-	Source Source
+	// URL is the remote stream URL; only set for streaming provider tracks.
+	URL string
 	// ProviderID identifies the TrackProvider that owns this track (e.g. "local",
 	// "netease").  It corresponds to the provider_id column in the database
-	// (migration version 3) and replaces the legacy Source enumeration for
-	// multi-source support.
+	// Added in migration version 3 for
+	// multi-source support; the legacy source INTEGER column is no longer used.
 	ProviderID string
 	// CoverArt holds the raw image bytes (JPEG or PNG) from the ID3 APIC frame.
 	// Populated during in-memory scanning; nil when loaded from the database

@@ -115,7 +115,6 @@ func loadSession(st *store.Store) *tui.SessionState {
 		Volume:         atof(get(store.KeyVolume), 1.0),
 		PlayMode:       atoi(get(store.KeyPlayMode), 0),
 		RetroIdx:       atoi(get(store.KeyRetroIdx), 0),
-		Cursor:         atoi(get(store.KeyCursor), 0),
 		Chip8Options:   get(store.KeyChip8Options),
 	}
 }

@@ -26,7 +26,7 @@ func init() {
 // TestPlayStop verifies Play→Pause→Resume→Stop without deadlock.
 func TestPlayStop(t *testing.T) {
 	p := testPlayer
-	track := library.Track{ID: testMP3, Path: testMP3, Source: library.SourceLocal}
+	track := library.Track{ID: testMP3, Path: testMP3}
 
 	if err := p.Play(track); err != nil {
 		t.Fatalf("Play: %v", err)
@@ -70,7 +70,7 @@ func TestPlayStop(t *testing.T) {
 // TestTogglePause verifies pause/resume cycling.
 func TestTogglePause(t *testing.T) {
 	p := testPlayer
-	track := library.Track{ID: testMP3, Path: testMP3, Source: library.SourceLocal}
+	track := library.Track{ID: testMP3, Path: testMP3}
 
 	if err := p.Play(track); err != nil {
 		t.Fatalf("Play: %v", err)

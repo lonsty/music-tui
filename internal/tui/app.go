@@ -29,7 +29,6 @@ type SessionState struct {
 	Volume         float64
 	PlayMode       int
 	RetroIdx       int
-	Cursor         int
 	Chip8Options   string
 }
 
@@ -272,14 +271,12 @@ func NewApp(player *audio.Player, st *store.Store, musicDir string, tracks []lib
 	vol := 1.0
 	mode := playModeLoop
 	rIdx := 0
-	cursor := 0
 	if sess != nil {
 		if sess.Volume > 0 {
 			vol = sess.Volume
 		}
 		mode = playMode(sess.PlayMode)
 		rIdx = sess.RetroIdx
-		cursor = sess.Cursor
 	}
 
 	app := &App{
@@ -330,7 +327,7 @@ func NewApp(player *audio.Player, st *store.Store, musicDir string, tracks []lib
 		// Apply format preference and any existing search query so the initial
 		// filtered list is consistent with the user's persisted settings.
 		app.applyFilter()
-		app.rebuildShuffle()
+		app.rebuildShuffleIDs()
 		app.statusMsg = fmt.Sprintf("Loaded %d tracks", len(tracks))
 		// Pre-populate currentTrack so the first rendered frame already shows
 		// the correct playing state (no flash/blank period while the async
@@ -351,10 +348,6 @@ func NewApp(player *audio.Player, st *store.Store, musicDir string, tracks []lib
 				app.syncRowMarquee()
 				break
 			}
-		} else if cursor > 0 {
-			// Restore the saved cursor position, clamped to the filtered list.
-			app.cursorPos = min(cursor, max(0, app.filteredLen()-1))
-			app.syncRowMarquee()
 		}
 	} else {
 		app.statusMsg = T("no_tracks_hint")
@@ -405,7 +398,6 @@ func (a *App) saveSession() {
 		store.KeyRetroIdx:     strconv.Itoa(a.retroIdx),
 		store.KeyLastTrackID:  lastTrackID,
 		store.KeyWasPlaying:   wasPlaying,
-		store.KeyCursor:       strconv.Itoa(a.cursorPos),
 		store.KeyChip8Options: a.chip8Options,
 	}
 	if posMs > 0 || state != audio.StateStopped {
@@ -453,7 +445,7 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// Re-apply the current search query and format preference so the
 			// filtered list stays consistent after a library reload.
 			a.applyFilter()
-			a.rebuildShuffle()
+			a.rebuildShuffleIDs()
 			// Re-anchor currentIdx to the playing track's ID so the position
 			// is correct after the library list is replaced.
 			// If the playing track is no longer in the library, stop playback.
@@ -775,12 +767,6 @@ func (a *App) rebuildShuffleIDs() {
 	rand.Shuffle(len(ids), func(i, j int) { ids[i], ids[j] = ids[j], ids[i] })
 	a.shuffleIDs = ids
 }
-
-// ── Shuffle helpers (legacy alias) ───────────────────────────────────────────
-
-// rebuildShuffle is an alias for rebuildShuffleIDs kept for call sites that
-// have not yet been migrated.
-func (a *App) rebuildShuffle() { a.rebuildShuffleIDs() }
 
 // ── Marquee helpers ───────────────────────────────────────────────────────────
 

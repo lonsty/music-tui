@@ -17,8 +17,6 @@ const (
 	KeyLastPositionMs = "last_position_ms"
 	// KeyWasPlaying indicates whether the player was active at last exit ("1" = yes).
 	KeyWasPlaying = "was_playing"
-	// KeyCursor is the cursor position in the track list at last exit.
-	KeyCursor = "cursor"
 	// KeyChip8Options holds extra CLI options forwarded to p2chip.
 	KeyChip8Options = "chip8_options"
 	// KeyLanguage stores the UI display language ("en" or "zh").

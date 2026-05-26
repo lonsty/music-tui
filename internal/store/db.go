@@ -128,6 +128,22 @@ func migrate(db *sql.DB) error {
 		{4, `
 			ALTER TABLE tracks ADD COLUMN format TEXT NOT NULL DEFAULT '';
 		`},
+		// version 5: drop the source INTEGER column, superseded by provider_id.
+		// provider_id (added in v3) carries the same information as a stable string
+		// identifier ("local", "netease", etc.).  source=0 (SourceLocal) maps to
+		// provider_id="local"; source=1 (SourceNetease) to "netease".
+		// SQLite does not support DROP COLUMN before 3.35.0, so we backfill
+		// provider_id from source for any rows that still carry the old default,
+		// then stop reading/writing the column — the column stays in the schema
+		// but is never touched by application code after this migration.
+		{5, `
+			UPDATE tracks
+			   SET provider_id = CASE source
+			                       WHEN 1 THEN 'netease'
+			                       ELSE 'local'
+			                     END
+			 WHERE provider_id = 'local' AND source != 0;
+		`},
 	}
 
 	for _, m := range migrations {
@@ -219,7 +235,7 @@ func (s *Store) AllTracks() ([]library.Track, error) {
 	rows, err := s.db.Query(`
 		SELECT id, path, title, artist, album_artist, album,
 		       year, track_number, genre, comment,
-		       duration_ms, cover_path, source, format
+		       duration_ms, cover_path, format
 		FROM tracks
 		ORDER BY
 			LOWER(COALESCE(NULLIF(album_artist,''), artist, '')),
@@ -237,16 +253,14 @@ func (s *Store) AllTracks() ([]library.Track, error) {
 	for rows.Next() {
 		var t library.Track
 		var durationMs int64
-		var source int
 		if err := rows.Scan(
 			&t.ID, &t.Path, &t.Title, &t.Artist, &t.AlbumArtist, &t.Album,
 			&t.Year, &t.TrackNumber, &t.Genre, &t.Comment,
-			&durationMs, &t.CoverPath, &source, &t.FileFormat,
+			&durationMs, &t.CoverPath, &t.FileFormat,
 		); err != nil {
 			return nil, err
 		}
 		t.Duration = time.Duration(durationMs) * time.Millisecond
-		t.Source = library.Source(source)
 		tracks = append(tracks, t)
 	}
 	return tracks, rows.Err()
@@ -270,8 +284,8 @@ func (s *Store) UpsertTrack(t library.Track, mtime int64) error {
 		INSERT INTO tracks
 			(id, path, title, artist, album_artist, album,
 			 year, track_number, genre, comment,
-			 duration_ms, cover_path, source, format, mtime, added_at)
-		VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+			 duration_ms, cover_path, format, mtime, added_at)
+		VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
 		ON CONFLICT(path) DO UPDATE SET
 			id           = excluded.id,
 			title        = excluded.title,
@@ -284,14 +298,13 @@ func (s *Store) UpsertTrack(t library.Track, mtime int64) error {
 			comment      = excluded.comment,
 			duration_ms  = excluded.duration_ms,
 			cover_path   = excluded.cover_path,
-			source       = excluded.source,
 			format       = excluded.format,
 			mtime        = excluded.mtime
 	`,
 		t.ID, t.Path, t.Title, t.Artist, t.AlbumArtist, t.Album,
 		t.Year, t.TrackNumber, t.Genre, t.Comment,
 		t.Duration.Milliseconds(), t.CoverPath,
-		int(t.Source), t.FileFormat, mtime, time.Now().Unix(),
+		t.FileFormat, mtime, time.Now().Unix(),
 	)
 	return err
 }

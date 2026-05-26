@@ -136,7 +136,6 @@ func parseTrack(path string) (Track, error) {
 		Duration:    duration,
 		FileFormat:  fileFormat,
 		Path:        path,
-		Source:      SourceLocal,
 		CoverArt:    coverArt,
 	}, nil
 }

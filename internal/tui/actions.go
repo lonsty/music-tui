@@ -242,7 +242,7 @@ func (a *App) cmdNextPlayMode() tea.Cmd {
 	return func() tea.Msg {
 		a.playMode = (a.playMode + 1) % playModeCount
 		if a.playMode == playModeRandom {
-			a.rebuildShuffle()
+			a.rebuildShuffleIDs()
 		}
 		return noopMsg{}
 	}
