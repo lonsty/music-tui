@@ -103,7 +103,7 @@ func (a *App) renderTrackList() string {
 		sb.WriteString(prompt + a.searchInput.View() + "\n")
 	} else {
 		title := stylePanelTitle.Render("󰋌  Library")
-		count := styleTrackMeta.Render(fmt.Sprintf("  %d tracks", len(a.filtered)))
+		count := styleTrackMeta.Render(fmt.Sprintf("  %d tracks", a.filteredLen()))
 		sb.WriteString(title + count + "\n")
 	}
 	sb.WriteString(styleDivider.Render(strings.Repeat("─", innerW)) + "\n")
@@ -114,11 +114,11 @@ func (a *App) renderTrackList() string {
 		maxRows = 0
 	}
 
-	start, end := visibleWindow(a.cursor, len(a.filtered), maxRows)
+	start, end := visibleWindow(a.cursorPos, a.filteredLen(), maxRows)
 
 	for i := start; i < end; i++ {
-		t := a.filtered[i]
-		isSelected := i == a.cursor
+		t := a.filteredTrack(i)
+		isSelected := i == a.cursorPos
 		isPlaying := a.currentTrack != nil && a.currentTrack.ID == t.ID
 
 		// ── Left: icon, fixed 2 display columns ───────────────────────────

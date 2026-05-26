@@ -23,7 +23,8 @@ import (
 
 // SessionState holds the persisted state that is restored on the next launch.
 type SessionState struct {
-	LastTrackPath  string
+	LastTrackID    string // preferred: stable ID (since v0.4)
+	LastTrackPath  string // fallback: file path (pre-v0.4 sessions)
 	LastPositionMs int64
 	WasPlaying     bool // if true, load the track but start paused
 	Volume         float64
@@ -37,19 +38,37 @@ type SessionState struct {
 // It is embedded in App and accessed via a.volume, a.playMode, etc.
 type PlaybackState struct {
 	currentTrack *library.Track
-	currentIdx   int      // index of currentTrack in filtered (for next/prev)
-	volume       float64  // [0.0, maxVolume]; 1.0 = unity gain
-	playMode     playMode // sequential / loop / single / random
-	retroIdx     int      // retro effect preset index (0 = off)
+	// currentIdx was removed.  The position of currentTrack in the filtered
+	// list is computed on demand via filteredIdx(currentTrack.ID) when needed
+	// (e.g. cmdPlayNext), which is O(N) but rare and correct after filter
+	// changes.  Storing a cached index caused subtle bugs when the filtered
+	// list was rebuilt without updating the index.
+	volume   float64  // [0.0, maxVolume]; 1.0 = unity gain
+	playMode playMode // sequential / loop / single / random
+	retroIdx int      // retro effect preset index (0 = off)
 }
 
-// LibraryState holds the local track library and search/filter state.
-// It is embedded in App and accessed via a.tracks, a.filtered, etc.
+// LibraryState holds the local track library and filter/cursor state.
+// It is embedded in App and accessed via a.tracks, a.filteredIdxs, etc.
+//
+// Design: a.tracks is the single source of truth for the track list.
+// a.filteredIdxs is a lightweight index table — a slice of positions into
+// a.tracks — rebuilt whenever the filter changes.  All UI code accesses
+// tracks via filtered() / filteredTrack(pos), which are zero-copy reads
+// of a.tracks[a.filteredIdxs[pos]].
+//
+// a.cursorPos is the position in a.filteredIdxs (not in a.tracks).  It is
+// O(1) to move and O(1) to read the corresponding track.  The cursor is
+// clamped to [0, len(filteredIdxs)-1] after every filter rebuild.
+//
+// a.shuffleIDs stores Track.ID values in shuffled order.  Unlike the old
+// []int approach, IDs remain valid after filter changes — the next-track
+// logic skips IDs that are not currently in filteredIdxs.
 type LibraryState struct {
 	tracks       []library.Track
-	filtered     []library.Track
-	shuffleOrder []int // indices into filtered, used when playMode == random
-	cursor       int
+	filteredIdxs []int            // positions in a.tracks that pass the current filter
+	shuffleIDs   []string         // Track.ID values in shuffled order (random play mode)
+	cursorPos    int              // position in filteredIdxs of the cursor-selected track
 	formatPref   formatPreference // active format-display preference
 }
 
@@ -314,30 +333,31 @@ func NewApp(player *audio.Player, st *store.Store, musicDir string, tracks []lib
 		app.applyFilter()
 		app.rebuildShuffle()
 		app.statusMsg = fmt.Sprintf("Loaded %d tracks", len(tracks))
-		// Restore cursor, clamped to valid range.
-		if cursor >= len(tracks) {
-			cursor = len(tracks) - 1
-		}
-		if cursor < 0 {
-			cursor = 0
-		}
-		app.cursor = cursor
-
 		// Pre-populate currentTrack so the first rendered frame already shows
 		// the correct playing state (no flash/blank period while the async
 		// restore Cmd is in flight).
-		if sess != nil && sess.LastTrackPath != "" {
-			for i, t := range tracks {
-				if t.Path == sess.LastTrackPath {
-					tc := t
-					app.currentTrack = &tc
-					app.currentIdx = i
-					app.cursor = i
-					app.syncMarquees()
-					app.syncRowMarquee() // populate mqRow for gradient list row
-					break
+		// Prefer ID lookup (stable since v0.4); fall back to path for legacy sessions.
+		if sess != nil && (sess.LastTrackID != "" || sess.LastTrackPath != "") {
+			for _, t := range app.tracks {
+				matchID := sess.LastTrackID != "" && t.ID == sess.LastTrackID
+				matchPath := sess.LastTrackID == "" && t.Path == sess.LastTrackPath
+				if !matchID && !matchPath {
+					continue
 				}
+				tc := t
+				app.currentTrack = &tc
+				// Position the cursor on the current track.
+				if pos := app.filteredPos(t.ID); pos >= 0 {
+					app.cursorPos = pos
+				}
+				app.syncMarquees()
+				app.syncRowMarquee()
+				break
 			}
+		} else if cursor > 0 {
+			// Restore the saved cursor position, clamped to the filtered list.
+			app.cursorPos = min(cursor, max(0, app.filteredLen()-1))
+			app.syncRowMarquee()
 		}
 	} else {
 		app.statusMsg = T("no_tracks_hint")
@@ -374,8 +394,10 @@ func (a *App) saveSession() {
 	}
 
 	lastTrackPath := ""
+	lastTrackID := ""
 	if a.currentTrack != nil {
 		lastTrackPath = a.currentTrack.Path
+		lastTrackID = a.currentTrack.ID
 	}
 
 	// Only write last_position_ms when the player is alive; skip the write
@@ -386,9 +408,10 @@ func (a *App) saveSession() {
 		store.KeyVolume:        strconv.FormatFloat(a.volume, 'f', 4, 64),
 		store.KeyPlayMode:      strconv.Itoa(int(a.playMode)),
 		store.KeyRetroIdx:      strconv.Itoa(a.retroIdx),
+		store.KeyLastTrackID:   lastTrackID,
 		store.KeyLastTrackPath: lastTrackPath,
 		store.KeyWasPlaying:    wasPlaying,
-		store.KeyCursor:        strconv.Itoa(a.cursor),
+		store.KeyCursor:        strconv.Itoa(a.cursorPos),
 		store.KeyChip8Options:  a.chip8Options,
 	}
 	if posMs > 0 || state != audio.StateStopped {
@@ -441,22 +464,14 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// is correct after the library list is replaced.
 			// If the playing track is no longer in the library, stop playback.
 			if a.currentTrack != nil {
-				newIdx := -1
-				for i, t := range a.filtered {
-					if t.ID == a.currentTrack.ID {
-						newIdx = i
-						break
-					}
-				}
-				if newIdx >= 0 {
-					a.currentIdx = newIdx
-					a.cursor = newIdx
+				if pos := a.filteredPos(a.currentTrack.ID); pos >= 0 {
+					// Track still exists — update cursor to its new position.
+					a.cursorPos = pos
 				} else {
 					// Track no longer exists — stop immediately.
 					a.player.Stop()
 					a.currentTrack = nil
-					a.currentIdx = 0
-					a.cursor = 0
+					a.cursorPos = 0
 					a.statusMsg = T("track_removed")
 				}
 			}
@@ -485,8 +500,12 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		a.chipConverting = false
 
 		a.currentTrack = msg.track
-		a.currentIdx = msg.idx
-		a.cursor = msg.idx
+		// Position the cursor on the newly playing track.
+		if msg.track != nil {
+			if pos := a.filteredPos(msg.track.ID); pos >= 0 {
+				a.cursorPos = pos
+			}
+		}
 		a.statusMsg = ""
 		a.syncMarquees()
 		a.syncRowMarquee()
@@ -707,30 +726,79 @@ func (a *App) fullLyricsOuterW() int { return a.W - a.fullPlayerOuterW() }
 func (a *App) fullPlayerInnerW() int { return a.fullPlayerOuterW() - borderW }
 func (a *App) fullLyricsW() int      { return a.fullLyricsOuterW() - borderW }
 
+// ── Filter / index helpers ────────────────────────────────────────────────────
+
+// filteredLen returns the number of tracks that pass the current filter.
+func (a *App) filteredLen() int { return len(a.filteredIdxs) }
+
+// filteredTrack returns the track at position pos in the filtered list.
+// Returns a zero Track if pos is out of range.
+func (a *App) filteredTrack(pos int) library.Track {
+	if pos < 0 || pos >= len(a.filteredIdxs) {
+		return library.Track{}
+	}
+	return a.tracks[a.filteredIdxs[pos]]
+}
+
+// filteredPos returns the position of the track with the given ID in the
+// filtered list, or -1 if it is not present.
+func (a *App) filteredPos(id string) int {
+	for i, idx := range a.filteredIdxs {
+		if a.tracks[idx].ID == id {
+			return i
+		}
+	}
+	return -1
+}
+
+// cursorTrack returns the track currently under the cursor.
+// Returns nil when the filtered list is empty.
+func (a *App) cursorTrack() *library.Track {
+	if len(a.filteredIdxs) == 0 {
+		return nil
+	}
+	pos := a.cursorPos
+	if pos < 0 {
+		pos = 0
+	}
+	if pos >= len(a.filteredIdxs) {
+		pos = len(a.filteredIdxs) - 1
+	}
+	t := a.tracks[a.filteredIdxs[pos]]
+	return &t
+}
+
 // ── Shuffle helpers ───────────────────────────────────────────────────────────
 
-// rebuildShuffle creates a fresh shuffled index order for a.filtered.
-func (a *App) rebuildShuffle() {
-	n := len(a.filtered)
-	order := make([]int, n)
-	for i := range order {
-		order[i] = i
+// rebuildShuffleIDs creates a fresh shuffled ID order from the current
+// filtered list.  IDs are stable across subsequent filter changes; the
+// cmdPlayNext logic skips any ID no longer present in filteredIdxs.
+func (a *App) rebuildShuffleIDs() {
+	ids := make([]string, len(a.filteredIdxs))
+	for i, idx := range a.filteredIdxs {
+		ids[i] = a.tracks[idx].ID
 	}
-	rand.Shuffle(n, func(i, j int) { order[i], order[j] = order[j], order[i] })
-	a.shuffleOrder = order
+	rand.Shuffle(len(ids), func(i, j int) { ids[i], ids[j] = ids[j], ids[i] })
+	a.shuffleIDs = ids
 }
+
+// ── Shuffle helpers (legacy alias) ───────────────────────────────────────────
+
+// rebuildShuffle is an alias for rebuildShuffleIDs kept for call sites that
+// have not yet been migrated.
+func (a *App) rebuildShuffle() { a.rebuildShuffleIDs() }
 
 // ── Marquee helpers ───────────────────────────────────────────────────────────
 
 // syncRowMarquee updates mqRow to match the current cursor position.
 // The text is the middle-column content: Album · Artist · Title.
 func (a *App) syncRowMarquee() {
-	if a.cursor >= len(a.filtered) {
+	t := a.cursorTrack()
+	if t == nil {
 		a.mqRow.SetText("")
 		return
 	}
-	t := a.filtered[a.cursor]
-	a.mqRow.SetText(rowMidText(t))
+	a.mqRow.SetText(rowMidText(*t))
 }
 
 // syncMarquees updates all Marquee texts from the current track.

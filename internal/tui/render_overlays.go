@@ -62,9 +62,8 @@ func (a *App) renderHelpOverlay() string {
 
 func (a *App) renderInfoOverlay() string {
 	t := a.currentTrack
-	if t == nil && a.cursor < len(a.filtered) {
-		tc := a.filtered[a.cursor]
-		t = &tc
+	if t == nil {
+		t = a.cursorTrack()
 	}
 
 	// styleOverlayKey has PaddingLeft(1)+PaddingRight(1), so Width(W) fits

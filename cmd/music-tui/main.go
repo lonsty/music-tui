@@ -98,7 +98,8 @@ func loadSession(st *store.Store) *tui.SessionState {
 	}
 
 	lastTrack := get(store.KeyLastTrackPath)
-	if lastTrack == "" {
+	lastTrackID := get(store.KeyLastTrackID)
+	if lastTrack == "" && lastTrackID == "" {
 		// No previous session.
 		return &tui.SessionState{
 			Volume:       atof(get(store.KeyVolume), 1.0),
@@ -109,6 +110,7 @@ func loadSession(st *store.Store) *tui.SessionState {
 	}
 
 	return &tui.SessionState{
+		LastTrackID:    lastTrackID,
 		LastTrackPath:  lastTrack,
 		LastPositionMs: int64(atoi(get(store.KeyLastPositionMs), 0)),
 		WasPlaying:     get(store.KeyWasPlaying) == "1",

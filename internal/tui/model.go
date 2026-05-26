@@ -162,9 +162,12 @@ type scanDoneMsg struct {
 }
 
 // playResultMsg is returned after a play attempt.
+// track is nil on error.  The position in the filtered list is intentionally
+// not included — the UI layer resolves position from track.ID on the Update
+// path, so the message is stable across filter changes that occur between
+// the Cmd goroutine launch and the message delivery.
 type playResultMsg struct {
-	track *library.Track // nil on error
-	idx   int
+	track *library.Track
 	err   error
 }
 

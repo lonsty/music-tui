@@ -102,42 +102,42 @@ func (a *App) handleNormalKey(msg tea.KeyMsg) tea.Cmd {
 
 	// ── Navigation ──────────────────────────────────────────────────────────
 	case "j", "down":
-		if a.cursor < len(a.filtered)-1 {
-			a.cursor++
+		if a.cursorPos < a.filteredLen()-1 {
+			a.cursorPos++
 			a.syncRowMarquee()
 		}
 
 	case "k", "up":
-		if a.cursor > 0 {
-			a.cursor--
+		if a.cursorPos > 0 {
+			a.cursorPos--
 			a.syncRowMarquee()
 		}
 
 	case "g":
-		a.cursor = 0
+		a.cursorPos = 0
 		a.syncRowMarquee()
 
 	case "G":
-		if len(a.filtered) > 0 {
-			a.cursor = len(a.filtered) - 1
+		if a.filteredLen() > 0 {
+			a.cursorPos = a.filteredLen() - 1
 			a.syncRowMarquee()
 		}
 
 	// ── Playback ─────────────────────────────────────────────────────────────
 	case "enter":
 		// Second Enter on the currently-playing track → open fullscreen.
-		if a.currentTrack != nil &&
-			a.cursor < len(a.filtered) &&
-			a.filtered[a.cursor].ID == a.currentTrack.ID {
-			a.currentView = viewFullscreen
-			return nil
+		if a.currentTrack != nil {
+			if ct := a.cursorTrack(); ct != nil && ct.ID == a.currentTrack.ID {
+				a.currentView = viewFullscreen
+				return nil
+			}
 		}
 		// Otherwise play the selected track.
 		a.lastEnterID = ""
-		if a.cursor < len(a.filtered) {
-			a.lastEnterID = a.filtered[a.cursor].ID
+		if ct := a.cursorTrack(); ct != nil {
+			a.lastEnterID = ct.ID
 		}
-		return a.cmdPlayTrack(a.cursor)
+		return a.cmdPlayTrack(a.cursorPos)
 
 	case " ":
 		return a.cmdTogglePause()
@@ -314,8 +314,8 @@ func (a *App) handleSearchKey(msg tea.KeyMsg) tea.Cmd {
 		// Play cursor track and close search.
 		a.activeOvl = overlayNone
 		a.searchInput.Blur()
-		if len(a.filtered) > 0 {
-			return a.cmdPlayTrack(a.cursor)
+		if a.filteredLen() > 0 {
+			return a.cmdPlayTrack(a.cursorPos)
 		}
 		return nil
 
@@ -329,15 +329,15 @@ func (a *App) handleSearchKey(msg tea.KeyMsg) tea.Cmd {
 	// Allow cursor navigation while search is open — use arrow keys only,
 	// so j/k remain available as text input characters.
 	case "down":
-		if a.cursor < len(a.filtered)-1 {
-			a.cursor++
+		if a.cursorPos < a.filteredLen()-1 {
+			a.cursorPos++
 			a.syncRowMarquee()
 		}
 		return nil
 
 	case "up":
-		if a.cursor > 0 {
-			a.cursor--
+		if a.cursorPos > 0 {
+			a.cursorPos--
 			a.syncRowMarquee()
 		}
 		return nil

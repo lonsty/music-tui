@@ -46,122 +46,146 @@ func (a *App) cmdRestoreSession() tea.Cmd {
 	sess := a.session
 	a.session = nil // consume
 
-	idx := -1
-	for i, t := range a.filtered {
-		if t.Path == sess.LastTrackPath {
-			idx = i
+	// Search the full library (a.tracks), not the filtered list, because the
+	// last-played track might currently be hidden by the format preference.
+	// Prefer the stable ID (stored since v0.4); fall back to path for older
+	// session files that pre-date the ID field.
+	var found *library.Track
+	for i := range a.tracks {
+		t := &a.tracks[i]
+		if sess.LastTrackID != "" && t.ID == sess.LastTrackID {
+			tc := *t
+			found = &tc
+			break
+		}
+		if sess.LastTrackID == "" && t.Path == sess.LastTrackPath {
+			tc := *t
+			found = &tc
 			break
 		}
 	}
-	if idx < 0 {
+	if found == nil {
 		return nil
 	}
 
-	track := a.filtered[idx]
+	track := *found
 	offsetDur := time.Duration(sess.LastPositionMs) * time.Millisecond
 
 	return func() tea.Msg {
-		// PlaySourceAt opens the stream and seeks before handing to the
-		// speaker, so the position is accurate from the very first frame.
 		src, err := a.resolveSource(context.Background(), track)
 		if err != nil {
-			return playResultMsg{err: err, idx: idx}
+			return playResultMsg{err: err}
 		}
 		if err := a.player.PlaySourceAt(src, offsetDur); err != nil {
-			return playResultMsg{err: err, idx: idx}
+			return playResultMsg{err: err}
 		}
-		// Start paused — user presses Space to resume.
 		a.player.Pause()
 		t := track
-		return playResultMsg{track: &t, idx: idx}
+		return playResultMsg{track: &t}
 	}
 }
 
-// cmdPlayTrack returns a Cmd that plays filtered[idx].
+// cmdPlayTrack returns a Cmd that plays the track at position pos in the
+// current filtered list.
 // All App-state mutations happen via playResultMsg in Update — never in the Cmd.
-//
-// The audio source is resolved via providerMap: if the track's ProviderID has
-// a registered TrackProvider, that provider's StreamSource() is used; otherwise
-// the track falls back to LocalSource{Path: track.Path}.
-func (a *App) cmdPlayTrack(idx int) tea.Cmd {
-	if idx < 0 || idx >= len(a.filtered) {
+func (a *App) cmdPlayTrack(pos int) tea.Cmd {
+	if pos < 0 || pos >= a.filteredLen() {
 		return nil
 	}
-	track := a.filtered[idx] // value copy — safe across goroutine boundary
+	track := a.filteredTrack(pos) // value copy — safe across goroutine boundary
 	return func() tea.Msg {
 		src, err := a.resolveSource(context.Background(), track)
 		if err != nil {
-			return playResultMsg{err: err, idx: idx}
+			return playResultMsg{err: err}
 		}
 		if err := a.player.PlaySource(src); err != nil {
-			return playResultMsg{err: err, idx: idx}
+			return playResultMsg{err: err}
 		}
 		t := track
-		return playResultMsg{track: &t, idx: idx}
+		return playResultMsg{track: &t}
 	}
 }
 
 // cmdPlayNext picks the next track according to the current playMode.
 func (a *App) cmdPlayNext() tea.Cmd {
-	if len(a.filtered) == 0 {
+	n := a.filteredLen()
+	if n == 0 {
 		return nil
 	}
 
-	// If the current track is not in filtered (e.g. a search hid it),
-	// clamp the base index so next/prev stays within bounds.
-	baseIdx := a.currentIdx
-	if baseIdx < 0 || baseIdx >= len(a.filtered) {
-		baseIdx = 0
+	// Resolve the current playing position.  If the playing track is not in the
+	// filtered list (e.g. a search hid it), fall back to position 0.
+	basePos := 0
+	if a.currentTrack != nil {
+		if p := a.filteredPos(a.currentTrack.ID); p >= 0 {
+			basePos = p
+		}
 	}
-	var next int
+
+	var nextPos int
 	switch a.playMode {
 	case playModeSingle:
-		next = baseIdx
+		nextPos = basePos
 
 	case playModeRandom:
-		if len(a.shuffleOrder) == 0 {
-			a.rebuildShuffle()
+		if len(a.shuffleIDs) == 0 {
+			a.rebuildShuffleIDs()
 		}
-		// Find baseIdx position in shuffle order and advance.
-		pos := 0
-		for i, v := range a.shuffleOrder {
-			if v == baseIdx {
-				pos = i
+		// Find the current track's position in shuffleIDs and advance.
+		// Skip IDs that are no longer in the filtered list.
+		curID := ""
+		if a.currentTrack != nil {
+			curID = a.currentTrack.ID
+		}
+		shufflePos := 0
+		for i, id := range a.shuffleIDs {
+			if id == curID {
+				shufflePos = i
 				break
 			}
 		}
-		pos = (pos + 1) % len(a.shuffleOrder)
-		if pos == 0 {
-			// Reshuffle when we wrap around so consecutive plays differ.
-			rand.Shuffle(len(a.shuffleOrder), func(i, j int) {
-				a.shuffleOrder[i], a.shuffleOrder[j] = a.shuffleOrder[j], a.shuffleOrder[i]
+		// Advance, wrapping with a reshuffle.
+		shufflePos = (shufflePos + 1) % len(a.shuffleIDs)
+		if shufflePos == 0 {
+			rand.Shuffle(len(a.shuffleIDs), func(i, j int) {
+				a.shuffleIDs[i], a.shuffleIDs[j] = a.shuffleIDs[j], a.shuffleIDs[i]
 			})
 		}
-		next = a.shuffleOrder[pos]
+		// Walk forward until we find an ID present in the filtered list.
+		for i := 0; i < len(a.shuffleIDs); i++ {
+			id := a.shuffleIDs[(shufflePos+i)%len(a.shuffleIDs)]
+			if p := a.filteredPos(id); p >= 0 {
+				nextPos = p
+				break
+			}
+		}
 
 	case playModeLoop:
-		next = (baseIdx + 1) % len(a.filtered)
+		nextPos = (basePos + 1) % n
 
 	default: // playModeSequential
-		next = baseIdx + 1
-		if next >= len(a.filtered) {
+		nextPos = basePos + 1
+		if nextPos >= n {
 			return nil // reached end, stop
 		}
 	}
 
-	return a.cmdPlayTrack(next)
+	return a.cmdPlayTrack(nextPos)
 }
 
 // cmdPlayPrev picks the previous track (ignores playModeRandom — always linear).
 func (a *App) cmdPlayPrev() tea.Cmd {
-	if len(a.filtered) == 0 {
+	n := a.filteredLen()
+	if n == 0 {
 		return nil
 	}
-	baseIdx := a.currentIdx
-	if baseIdx < 0 || baseIdx >= len(a.filtered) {
-		baseIdx = 0
+	basePos := 0
+	if a.currentTrack != nil {
+		if p := a.filteredPos(a.currentTrack.ID); p >= 0 {
+			basePos = p
+		}
 	}
-	prev := (baseIdx - 1 + len(a.filtered)) % len(a.filtered)
+	prev := (basePos - 1 + n) % n
 	return a.cmdPlayTrack(prev)
 }
 
@@ -313,31 +337,31 @@ func (a *App) applyFilter() {
 		}
 	}
 
-	// Apply format-preference deduplication / filtering on top of the text results.
-	a.filtered = applyFormatPreference(candidate, a.formatPref)
-
-	a.rebuildShuffle()
-
-	// Re-anchor currentIdx so next/prev navigation stays correct after the
-	// filtered list changes.  The cursor clamp is a separate concern.
-	if a.currentTrack != nil {
-		newIdx := -1
-		for i, t := range a.filtered {
-			if t.ID == a.currentTrack.ID {
-				newIdx = i
-				break
-			}
-		}
-		if newIdx >= 0 {
-			a.currentIdx = newIdx
-		}
-		// If the playing track is not in the filtered list, currentIdx is left
-		// unchanged (it points outside filtered); cmdPlayNext/Prev will handle
-		// the boundary naturally since they operate on len(a.filtered).
+	// Build the filtered index table from the candidate slice.
+	// candidate is already a subset of a.tracks (same Track values), so we
+	// look up each candidate's position in a.tracks by ID.
+	idToTrackPos := make(map[string]int, len(a.tracks))
+	for i := range a.tracks {
+		idToTrackPos[a.tracks[i].ID] = i
 	}
 
-	if a.cursor >= len(a.filtered) {
-		a.cursor = max(0, len(a.filtered)-1)
+	preferred := applyFormatPreference(candidate, a.formatPref)
+	newIdxs := make([]int, 0, len(preferred))
+	for _, t := range preferred {
+		if pos, ok := idToTrackPos[t.ID]; ok {
+			newIdxs = append(newIdxs, pos)
+		}
+	}
+	a.filteredIdxs = newIdxs
+
+	// Invalidate shuffle so it is rebuilt from the new filtered list on next use.
+	a.shuffleIDs = nil
+
+	// Clamp cursor to the new filtered length.
+	if len(a.filteredIdxs) == 0 {
+		a.cursorPos = 0
+	} else if a.cursorPos >= len(a.filteredIdxs) {
+		a.cursorPos = len(a.filteredIdxs) - 1
 	}
 }
 
