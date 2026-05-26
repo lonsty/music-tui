@@ -167,10 +167,14 @@ var (
 				Bold(true)
 
 	// ── Overlays ─────────────────────────────────────────────────────────────
+	// styleOverlayBox uses only a border and padding — no background fill.
+	// Setting a background colour inside a terminal that already has its own
+	// background causes a solid colour block that clashes on transparent or
+	// image-background terminals.  The rounded mauve border provides sufficient
+	// visual separation without a background.
 	styleOverlayBox = lipgloss.NewStyle().
 			Border(lipgloss.RoundedBorder()).
 			BorderForeground(lipgloss.Color(mauve)).
-			Background(lipgloss.Color(base)).
 			Padding(1, 2)
 
 	styleOverlayTitle = lipgloss.NewStyle().
