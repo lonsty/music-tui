@@ -6,6 +6,14 @@ import (
 
 // ── Status bar ────────────────────────────────────────────────────────────────
 
+// stateLabels maps audio.State to the chip-label text (including surrounding
+// spaces for visual padding inside the status chip).
+var stateLabels = map[audio.State]string{
+	audio.StateStopped: "  Stopped ",
+	audio.StatePlaying: "  Playing ",
+	audio.StatePaused:  "  Paused  ",
+}
+
 func (a *App) renderStatusBar() string {
 	if a.loading {
 		return styleStatusLine.Render("  󰔟  Scanning library…")
@@ -26,11 +34,7 @@ func (a *App) renderStatusBar() string {
 		displayState = audio.StatePlaying
 	}
 
-	stateLabel := map[audio.State]string{
-		audio.StateStopped: "  Stopped ",
-		audio.StatePlaying: "  Playing ",
-		audio.StatePaused:  "  Paused  ",
-	}[displayState]
+	stateLabel := stateLabels[displayState]
 	stateChip := styleStatusState.Render(stateLabel)
 
 	// Build hint chips: [key] label

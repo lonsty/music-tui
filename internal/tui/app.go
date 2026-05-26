@@ -36,7 +36,7 @@ type SessionState struct {
 type PlaybackState struct {
 	currentTrack *library.Track
 	currentIdx   int      // index of currentTrack in filtered (for next/prev)
-	volume       float64  // [0.0, 2.0]; 1.0 = unity gain
+	volume       float64  // [0.0, maxVolume]; 1.0 = unity gain
 	playMode     playMode // sequential / loop / single / random
 	retroIdx     int      // retro effect preset index (0 = off)
 }
@@ -65,13 +65,13 @@ type ChipState struct {
 // LyricsState holds the lyrics for the currently playing track.
 // It is embedded in App and accessed via a.lines, a.activeIdx, etc.
 type LyricsState struct {
-	lines     []lyrics.Line   // parsed LRC lines sorted by timestamp; nil = no lyrics
-	activeIdx int             // index of the currently highlighted line (-1 = none)
-	prevActiveIdx int         // activeIdx from the previous tick, for change detection
-	trackID   string          // Track.ID for which lines was loaded (stale-check)
-	provider  lyrics.Provider // chain of local + online providers; set in NewApp
-	loading   bool            // true while a background fetch is in-flight
-	synced    bool            // true when at least one line has a non-zero timestamp
+	lines         []lyrics.Line   // parsed LRC lines sorted by timestamp; nil = no lyrics
+	activeIdx     int             // index of the currently highlighted line (-1 = none)
+	prevActiveIdx int             // activeIdx from the previous tick, for change detection
+	trackID       string          // Track.ID for which lines was loaded (stale-check)
+	provider      lyrics.Provider // chain of local + online providers; set in NewApp
+	lyricsLoading bool            // true while a background fetch is in-flight
+	synced        bool            // true when at least one line has a non-zero timestamp
 
 	// Manual browse state (fullscreen lyrics panel only).
 	//
@@ -80,7 +80,7 @@ type LyricsState struct {
 	// Once set by ↑/↓ it does NOT move with activeIdx — the playing line
 	// scrolls past independently while the cursor stays put.
 	//
-	// browseTicks counts 500ms ticks since the last manual scroll.
+	// browseTicks counts tickInterval ticks since the last manual scroll.
 	// When browseTicks reaches browseFadeOutTicks, browseExpired is set to
 	// true.  The cursor is NOT immediately reset; instead, the next time
 	// activeIdx advances to a new line, the cursor smoothly snaps back to
@@ -440,7 +440,7 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		a.prevActiveIdx = -1
 		a.trackID = ""
 		a.synced = false
-		a.loading = msg.track != nil // loading until lyricsLoadedMsg arrives
+		a.lyricsLoading = msg.track != nil // loading until lyricsLoadedMsg arrives
 		a.browseCenterIdx = -1
 		a.browseTicks = 0
 		a.browseExpired = false
@@ -500,7 +500,7 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 			}
 		}
-		a.loading = false
+		a.lyricsLoading = false
 		return a, nil
 
 	case tickMsg:
@@ -573,7 +573,7 @@ const (
 	borderW    = 2
 
 	// Layout proportions and thresholds.
-	miniPlayerMinWidth   = 100  // terminal width below which the mini player is hidden
+	miniPlayerMinWidth   = 60   // terminal width below which the mini player is hidden
 	trackListWidthRatio  = 0.55 // fraction of total width allocated to the track list
 	trackListMinWidth    = 20   // minimum track list width in columns
 	fullPlayerWidthRatio = 0.40 // fraction of total width allocated to the full-screen player panel

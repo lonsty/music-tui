@@ -36,6 +36,7 @@ func (a *App) renderHelpOverlay() string {
 	}
 
 	title := styleOverlayTitle.Render("󰋼  Keyboard shortcuts")
+	// 44 = 2(indent) + 14(key chip width) + 2(gap) + 26(longest action text fit)
 	div := styleOverlayMuted.Render(strings.Repeat("─", 44))
 
 	var rows []string
@@ -74,6 +75,7 @@ func (a *App) renderInfoOverlay() string {
 	const indent = "                  " // 18 spaces: 2 + 14 + 2
 
 	title := styleOverlayTitle.Render("󰋽  Track Info")
+	// +6 = "  "(2 prefix spaces) + "  "(2 key-value gap spaces) + 2(visual margin).
 	div := styleOverlayMuted.Render(strings.Repeat("─", labelW+valueW+6))
 
 	// row renders a single label+value pair.
@@ -102,17 +104,17 @@ func (a *App) renderInfoOverlay() string {
 	rows = append(rows, title, div, "")
 	if t != nil {
 		for _, lines := range [][]string{
-			row("Title",        t.DisplayTitle()),
-			row("Artist",       t.DisplayArtist()),
+			row("Title", t.DisplayTitle()),
+			row("Artist", t.DisplayArtist()),
 			row("Album Artist", t.AlbumArtist),
-			row("Album",        t.Album),
-			row("Year",         t.Year),
-			row("Track",        t.TrackNumber),
-			row("Genre",        t.Genre),
-			row("Comment",      t.Comment),
-			row("Duration",     formatDuration(t.Duration)),
-			row("Format",       t.Format()),
-			row("Path",         t.Path),
+			row("Album", t.Album),
+			row("Year", t.Year),
+			row("Track", t.TrackNumber),
+			row("Genre", t.Genre),
+			row("Comment", t.Comment),
+			row("Duration", formatDuration(t.Duration)),
+			row("Format", t.Format()),
+			row("Path", t.Path),
 		} {
 			rows = append(rows, lines...)
 		}
@@ -129,13 +131,17 @@ func (a *App) renderInfoOverlay() string {
 // ── Settings overlay ──────────────────────────────────────────────────────────
 
 func (a *App) renderSettingsOverlay() string {
+	// lineW is the content width of the settings overlay (excluding styleOverlayBox padding).
+	// 52 = 11(label chip Width) + 4(indent+gap) + 37(input field Width) chosen to fit
+	// the longest input value without horizontal scrolling.
 	const lineW = 52
 
 	title := styleOverlayTitle.Render("  Settings")
 	topDiv := styleOverlayMuted.Render(strings.Repeat("─", lineW))
 
 	sectionLabel := func(label string) string {
-		fill := lineW - len(label) - 4
+		// -4 = "── "(3 prefix runes) + " "(1 trailing space before the fill dashes).
+		fill := lineW - strWidth(label) - 4
 		if fill < 0 {
 			fill = 0
 		}

@@ -50,54 +50,54 @@ var (
 	// Single-line tabs: active tab has a distinct background + underline;
 	// inactive tabs are dim. No separator row — tabBarH = 1.
 	styleTabActive = lipgloss.NewStyle().
-		Bold(true).
-		Foreground(lipgloss.Color(mauve)).
-		Background(lipgloss.Color(surface0)).
-		Underline(true).
-		PaddingLeft(2).PaddingRight(2)
+			Bold(true).
+			Foreground(lipgloss.Color(mauve)).
+			Background(lipgloss.Color(surface0)).
+			Underline(true).
+			PaddingLeft(2).PaddingRight(2)
 
 	styleTabInactive = lipgloss.NewStyle().
-		Foreground(lipgloss.Color(overlay0)).
-		PaddingLeft(2).PaddingRight(2)
+				Foreground(lipgloss.Color(overlay0)).
+				PaddingLeft(2).PaddingRight(2)
 
 	styleTabBar = lipgloss.NewStyle().
-		Background(lipgloss.Color(mantle))
+			Background(lipgloss.Color(mantle))
 
 	// ── Panels ───────────────────────────────────────────────────────────────
 	stylePanelBorder = lipgloss.NewStyle().
-		Border(lipgloss.RoundedBorder()).
-		BorderForeground(lipgloss.Color(surface1))
+				Border(lipgloss.RoundedBorder()).
+				BorderForeground(lipgloss.Color(surface1))
 
 	stylePanelTitle = lipgloss.NewStyle().
-		Bold(true).
-		Foreground(lipgloss.Color(lavender))
+			Bold(true).
+			Foreground(lipgloss.Color(lavender))
 
 	// ── Track list ───────────────────────────────────────────────────────────
 	styleTrackMeta = lipgloss.NewStyle().
-		Foreground(lipgloss.Color(overlay0))
+			Foreground(lipgloss.Color(overlay0))
 
 	// ── Mini / fullscreen player ─────────────────────────────────────────────
 	stylePlayerArtist = lipgloss.NewStyle().
-		Foreground(lipgloss.Color(subtext0)).
-		Align(lipgloss.Center)
+				Foreground(lipgloss.Color(subtext0)).
+				Align(lipgloss.Center)
 
 	stylePlayerAlbum = lipgloss.NewStyle().
-		Foreground(lipgloss.Color(overlay1)).
-		Align(lipgloss.Center)
+				Foreground(lipgloss.Color(overlay1)).
+				Align(lipgloss.Center)
 
 	styleTime = lipgloss.NewStyle().
-		Foreground(lipgloss.Color(overlay0))
+			Foreground(lipgloss.Color(overlay0))
 
 	styleControls = lipgloss.NewStyle().
-		Foreground(lipgloss.Color(subtext1)).
-		Align(lipgloss.Center)
+			Foreground(lipgloss.Color(subtext1)).
+			Align(lipgloss.Center)
 
 	styleModeIcon = lipgloss.NewStyle().
-		Foreground(lipgloss.Color(mauve)).
-		Bold(true)
+			Foreground(lipgloss.Color(mauve)).
+			Bold(true)
 
 	styleDivider = lipgloss.NewStyle().
-		Foreground(lipgloss.Color(surface1))
+			Foreground(lipgloss.Color(surface1))
 
 	styleLyricNormal = lipgloss.NewStyle().
 				Foreground(lipgloss.Color(overlay1)).
@@ -105,55 +105,55 @@ var (
 
 	// ── Cover art placeholder ─────────────────────────────────────────────────
 	styleCoverBorder = lipgloss.NewStyle().
-		Border(lipgloss.RoundedBorder()).
-		BorderForeground(lipgloss.Color(blue)).
-		Foreground(lipgloss.Color(blue)).
-		Align(lipgloss.Center, lipgloss.Center)
+				Border(lipgloss.RoundedBorder()).
+				BorderForeground(lipgloss.Color(blue)).
+				Foreground(lipgloss.Color(blue)).
+				Align(lipgloss.Center, lipgloss.Center)
 
 	// ── Status bar ───────────────────────────────────────────────────────────
 	// No background on the line itself — only chips have backgrounds.
 	styleStatusLine = lipgloss.NewStyle().
-		Foreground(lipgloss.Color(overlay0))
+			Foreground(lipgloss.Color(overlay0))
 
 	styleStatusKey = lipgloss.NewStyle().
-		Background(lipgloss.Color(surface0)).
-		Foreground(lipgloss.Color(subtext1)).
-		Bold(true)
+			Background(lipgloss.Color(surface0)).
+			Foreground(lipgloss.Color(subtext1)).
+			Bold(true)
 
 	styleStatusHintLabel = lipgloss.NewStyle().
-		Foreground(lipgloss.Color(overlay0))
+				Foreground(lipgloss.Color(overlay0))
 
 	styleStatusState = lipgloss.NewStyle().
-		Background(lipgloss.Color(surface0)).
-		Foreground(lipgloss.Color(blue)).
-		Bold(true)
+				Background(lipgloss.Color(surface0)).
+				Foreground(lipgloss.Color(blue)).
+				Bold(true)
 
 	// ── Overlays ─────────────────────────────────────────────────────────────
 	styleOverlayBox = lipgloss.NewStyle().
-		Border(lipgloss.RoundedBorder()).
-		BorderForeground(lipgloss.Color(mauve)).
-		Background(lipgloss.Color(base)).
-		Padding(1, 2)
+			Border(lipgloss.RoundedBorder()).
+			BorderForeground(lipgloss.Color(mauve)).
+			Background(lipgloss.Color(base)).
+			Padding(1, 2)
 
 	styleOverlayTitle = lipgloss.NewStyle().
-		Bold(true).
-		Foreground(lipgloss.Color(mauve))
+				Bold(true).
+				Foreground(lipgloss.Color(mauve))
 
 	styleOverlayKey = lipgloss.NewStyle().
-		Background(lipgloss.Color(surface0)).
-		Foreground(lipgloss.Color(lavender)).
-		PaddingLeft(1).PaddingRight(1)
+			Background(lipgloss.Color(surface0)).
+			Foreground(lipgloss.Color(lavender)).
+			PaddingLeft(1).PaddingRight(1)
 
 	styleOverlayValue = lipgloss.NewStyle().
-		Foreground(lipgloss.Color(text))
+				Foreground(lipgloss.Color(text))
 
 	styleOverlayMuted = lipgloss.NewStyle().
-		Foreground(lipgloss.Color(overlay0))
+				Foreground(lipgloss.Color(overlay0))
 
 	// ── Search ───────────────────────────────────────────────────────────────
 	styleSearchPrompt = lipgloss.NewStyle().
-		Foreground(lipgloss.Color(yellow)).
-		Bold(true)
+				Foreground(lipgloss.Color(yellow)).
+				Bold(true)
 )
 
 // ── Top-level render ──────────────────────────────────────────────────────────
@@ -204,6 +204,8 @@ func gradientText(s string, bold bool, colors ...string) string {
 	for i, c := range colors {
 		c = strings.TrimPrefix(c, "#")
 		if len(c) != 6 {
+			// Malformed hex colour: fall back to white so the gradient degrades
+			// gracefully rather than producing black (zero-value of rgb).
 			stops[i] = rgb{1, 1, 1}
 			continue
 		}
@@ -283,6 +285,14 @@ func centeredGradientText(text string, avail int) string {
 // gradientColors is the default gradient palette used for playing-track text.
 // blue → mauve → pink (Catppuccin Mocha).
 var gradientColors = []string{blue, mauve, pink}
+
+// absInt returns the absolute value of n.
+func absInt(n int) int {
+	if n < 0 {
+		return -n
+	}
+	return n
+}
 
 // strWidth returns the terminal display width of s (handles CJK, Nerd Font, etc.)
 // using the same wcwidth table that lipgloss uses internally.

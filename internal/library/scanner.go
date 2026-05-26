@@ -78,11 +78,11 @@ func parseTrack(path string) (Track, error) {
 	var coverArt []byte
 
 	if tag, err := id3.Open(path, id3.Options{Parse: true}); err == nil {
-		title  = tag.Title()
+		title = tag.Title()
 		artist = tag.Artist()
-		album  = tag.Album()
-		year   = tag.Year()
-		genre  = tag.Genre()
+		album = tag.Album()
+		year = tag.Year()
+		genre = tag.Genre()
 
 		// TPE2 — album artist
 		if f := tag.GetTextFrame("TPE2"); f.Text != "" {

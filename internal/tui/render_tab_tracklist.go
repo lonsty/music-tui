@@ -126,7 +126,7 @@ func (a *App) renderTrackList() string {
 		// space pair also occupies exactly 2.  We hard-code the width rather
 		// than relying on strWidth which may mis-measure private-use glyphs.
 		const leftFixW = 2
-		icon := "  "   // 2 spaces (no-play state)
+		icon := "  " // 2 spaces (no-play state)
 		if isPlaying {
 			icon = "󰎆 " // glyph(1 col) + 1 space = 2 cols
 		}

@@ -11,6 +11,10 @@ import (
 
 // ── View ─────────────────────────────────────────────────────────────────────
 
+// tickInterval is the period between progress-refresh ticks.
+// It is also the time unit for browseFadeOutTicks in actions.go.
+const tickInterval = 500 * time.Millisecond
+
 // view represents the top-level screen being shown.
 type view int
 
@@ -114,9 +118,9 @@ type lyricsLoadedMsg struct {
 	lines   []lyrics.Line
 }
 
-// tick fires a tickMsg after 500 ms.
+// tick fires a tickMsg after tickInterval.
 func tick() tea.Cmd {
-	return tea.Tick(500*time.Millisecond, func(t time.Time) tea.Msg {
+	return tea.Tick(tickInterval, func(t time.Time) tea.Msg {
 		return tickMsg(t)
 	})
 }

@@ -148,9 +148,9 @@ func (a *App) cmdPlayPrev() tea.Cmd {
 // seekStep is the seek distance applied by < and >.
 const seekStep = 5 * time.Second
 
-// browseFadeOutTicks is the number of 500ms ticks after the last manual lyric
+// browseFadeOutTicks is the number of tickInterval ticks after the last manual lyric
 // scroll before the browse cursor automatically resets to follow playback.
-// 10 ticks × 500ms = 5 seconds.
+// 10 ticks × tickInterval = 5 seconds.
 const browseFadeOutTicks = 10
 
 // cmdSeek moves the playback position by delta relative to the current
@@ -312,13 +312,16 @@ func (a *App) applyFilter() {
 // volumeStep is the amount by which volume changes on each key press.
 const volumeStep = 0.1
 
-// clampVolume keeps v in [0.0, 2.0].
+// maxVolume is the upper limit of the volume knob (2.0 = +6 dB boost above unity gain).
+const maxVolume = 2.0
+
+// clampVolume keeps v in [0.0, maxVolume].
 func clampVolume(v float64) float64 {
 	if v < 0 {
 		return 0
 	}
-	if v > 2.0 {
-		return 2.0
+	if v > maxVolume {
+		return maxVolume
 	}
 	return v
 }

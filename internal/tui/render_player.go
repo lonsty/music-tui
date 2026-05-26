@@ -9,6 +9,27 @@ import (
 	"github.com/lonsty/music-tui/internal/audio"
 )
 
+// ── Lyric line decoration constants ──────────────────────────────────────────
+
+// lyricsLoadingText is shown while the lyrics provider fetch is in-flight.
+const lyricsLoadingText = "󰔟  loading lyrics…"
+
+// lyricsNoneText is shown in the mini player when no lyrics are available.
+const lyricsNoneText = "󰝚  No lyrics"
+
+// lyricRuleMargin is the number of blank columns between the panel edge and
+// the outermost ─ character of the active/cursor line decoration.
+const lyricRuleMargin = 4
+
+// lyricRuleGap is the number of space characters between the innermost ─
+// and the lyric text on each side.
+const lyricRuleGap = 1
+
+// lyricBrowseDecW is the display width of the browse-cursor left decoration:
+// space(1) + U+F144 nf-fa-play icon(1) + space(1) + space(1) = 4 cols.
+// Assumes the Nerd Font glyph renders as 1 terminal cell wide.
+const lyricBrowseDecW = 4
+
 // ── Mini player ───────────────────────────────────────────────────────────────
 
 func (a *App) renderMiniPlayer() string {
@@ -69,15 +90,15 @@ func (a *App) buildMiniPlayerContent(w, h int) string {
 	//   has lyrics: show active line or "…" before first timed line
 	var lyricText string
 	switch {
-	case a.loading:
-		lyricText = "󰔟  loading lyrics…"
+	case a.lyricsLoading:
+		lyricText = lyricsLoadingText
 	case a.activeIdx >= 0 && a.activeIdx < len(a.lines):
 		lyricText = a.lines[a.activeIdx].Text
 	case len(a.lines) > 0:
 		// Has lyrics but no active line yet (plain-text or before first stamp).
 		lyricText = a.lines[0].Text
 	default:
-		lyricText = "󰝚  No lyrics"
+		lyricText = lyricsNoneText
 	}
 	lyric := styleLyricNormal.Align(lipgloss.Center).Width(w).Render(lyricText)
 
@@ -85,7 +106,9 @@ func (a *App) buildMiniPlayerContent(w, h int) string {
 	pos := a.player.Position()
 	dur := a.player.Duration()
 	pct := progressPct(pos, dur)
-	a.progressBar.Width = w - 4 // -4: progress bar horizontal padding compensation
+	// -4 = charmbracelet/progress adds 1-col padding each side (-2)
+	//      + lipgloss.Center wrapper adds 1 col each side (-2).
+	a.progressBar.Width = w - 4
 	bar := lipgloss.NewStyle().Width(w).Align(lipgloss.Center).
 		Render(a.progressBar.ViewAs(pct))
 	timeStr := styleTime.Width(w).Align(lipgloss.Center).
@@ -123,7 +146,7 @@ func (a *App) buildControls(w int) string {
 	if a.volume == 0 {
 		volIcon = "󰖁"
 	}
-	volPct := int(a.volume / 2.0 * 100)
+	volPct := int(a.volume / maxVolume * 100)
 
 	ctrl := fmt.Sprintf("󰒮  %s  󰒭    %s  %s %d%%",
 		playIcon, modeIcon, volIcon, volPct)
@@ -190,7 +213,9 @@ func (a *App) buildFullPlayerContent(w, h int) string {
 	pos := a.player.Position()
 	dur := a.player.Duration()
 	pct := progressPct(pos, dur)
-	a.progressBar.Width = w - 6 // -6: fullscreen player horizontal padding compensation
+	// -6 = same as mini player (-4) plus the fullscreen player panel has 1 extra col
+	//      of interior padding on each side compared to the mini panel (-2 more).
+	a.progressBar.Width = w - 6
 	barLine := lipgloss.NewStyle().Width(w).Align(lipgloss.Center).
 		Render(a.progressBar.ViewAs(pct))
 	timeLine := styleTime.Width(w).Align(lipgloss.Center).
@@ -231,12 +256,14 @@ func (a *App) renderFullLyrics() string {
 
 	var lyricsContent string
 	switch {
-	case a.loading:
-		spinner := styleLyricNormal.Render("󰔟  loading lyrics…")
+	case a.lyricsLoading:
+		spinner := styleLyricNormal.Render(lyricsLoadingText)
 		lyricsContent = lipgloss.Place(innerW, lyricsH,
 			lipgloss.Center, lipgloss.Center, spinner)
 	case len(a.lines) == 0:
 		placeholder := lipgloss.JoinVertical(lipgloss.Center,
+			// lyricsNoneText includes the icon prefix; strip it for the fullscreen
+			// placeholder since the panel header already shows the lyrics icon.
 			styleLyricNormal.Render("No lyrics"),
 			"",
 			styleOverlayMuted.Render("Place a .lrc file next to the audio file"),
@@ -255,7 +282,8 @@ func (a *App) renderFullLyrics() string {
 // vertical centre of the panel.  Lines above and below fade out as they move
 // away from the centre, creating a "spotlight" effect.
 //
-// Layout (h rows, centerRow = h/2):
+// Layout (h rows, centerRow = h/2 integer division):
+// For odd h, there is one more row below centre than above.
 //
 //	row 0          → lines[active - centerRow]   (dimmed)
 //	…
@@ -308,10 +336,7 @@ func (a *App) renderLyricsScroll(w, h int) string {
 
 	for row := 0; row < h; row++ {
 		idx := centerIdx + (row - centerRow)
-		dist := row - centerRow
-		if dist < 0 {
-			dist = -dist
-		}
+		dist := absInt(row - centerRow)
 
 		if idx < 0 || idx >= total {
 			sb.WriteString(lyricStyleForDistance(dist, false).Width(w).Render("") + "\n")
@@ -410,22 +435,16 @@ func (a *App) renderLyricsPlain(w, h int) string {
 	return strings.TrimRight(sb.String(), "\n")
 }
 
-// lyricDistanceColors defines the colour palette for non-active lines.
-// Index 0 corresponds to distance=1 (immediately adjacent to active),
-// since the active line itself is always rendered in mauve+bold and does
-// not use this table.  Each subsequent index is one step dimmer.
-// The gradient is stretched over 10 steps for a gradual transition.
-var lyricDistanceColors = []string{
-	subtext1, // dist 1 — immediately adjacent (NOT mauve — that's active only)
-	subtext1, // dist 2
-	subtext0, // dist 3
-	subtext0, // dist 4
-	overlay2, // dist 5
-	overlay2, // dist 6
-	overlay1, // dist 7
-	overlay1, // dist 8
-	overlay0, // dist 9
-	overlay0, // dist 10+ — most distant / out-of-range
+// lyricDistanceColors maps distance-from-active (1-indexed) to a colour.
+// dist=1 uses [0], dist=2 uses [1], …, dist≥10 clamps to [9].
+// Gradient: subtext1(1-2) → subtext0(3-4) → overlay2(5-6) → overlay1(7-8) → overlay0(9-10+).
+// The active line itself uses mauve (handled by lyricStyleForDistance / renderActiveLyricLine).
+var lyricDistanceColors = [10]string{
+	subtext1, subtext1, // dist 1-2 — immediately adjacent (NOT mauve)
+	subtext0, subtext0, // dist 3-4
+	overlay2, overlay2, // dist 5-6
+	overlay1, overlay1, // dist 7-8
+	overlay0, overlay0, // dist 9-10+
 }
 
 // lyricStyleForDistance returns a lipgloss.Style for a lyric line that is dist
@@ -456,27 +475,24 @@ func lyricStyleForDistance(dist int, isActive bool) lipgloss.Style {
 // renderActiveLyricLine renders the currently playing lyric line framed by a
 // pair of horizontal rules with a smooth per-character colour gradient:
 //
-//	overlay0 ·········· subtext0  text  subtext0 ·········· overlay0
-//	(dim outer)         (bright inner)  (bright inner)      (dim outer)
+//	overlay0 ─ overlay1 ─ overlay2 ─ subtext0  text  subtext0 ─ overlay2 ─ overlay1 ─ overlay0
+//	(dim outer)                       (bright)        (bright)                        (dim outer)
 //
 // The gradient is computed by gradientText so every ─ character gets its own
 // interpolated colour — no visible colour bands.
 //
 // Layout:
-//   - margin: 4-column gap between the panel edge and the outermost ─.
+//   - margin: lyricRuleMargin (4) columns between panel edge and outermost ─.
 //   - fixed rule width: derived from maxTextW so the rule length never
 //     changes as different (shorter) lines become active.
-//   - 1-space gap between the innermost ─ and the text on each side.
+//   - gap: lyricRuleGap (1) space between innermost ─ and text on each side.
 //   - short text is centred within the maxTextW slot via equal padding.
 func renderActiveLyricLine(text string, w, maxTextW int) string {
-	const margin = 4 // columns reserved on each side of the whole decoration
-	const gap = 1    // spaces between rule end and text
-
 	styleText := lipgloss.NewStyle().Foreground(lipgloss.Color(mauve)).Bold(true)
 
 	textW := strWidth(text)
 
-	ruleLen := (w - 2*margin - 2*gap - maxTextW) / 2
+	ruleLen := (w - 2*lyricRuleMargin - 2*lyricRuleGap - maxTextW) / 2
 	if ruleLen < 2 {
 		return styleText.Width(w).Render(text)
 	}
@@ -488,7 +504,7 @@ func renderActiveLyricLine(text string, w, maxTextW int) string {
 	// Right rule: inner (bright) → outer (dim), leaving the text.
 	rightRule := gradientText(rule, false, subtext0, overlay2, overlay1, overlay0)
 
-	sp := strings.Repeat(" ", gap)
+	sp := strings.Repeat(" ", lyricRuleGap)
 	mid := styleText.Render(text)
 
 	// Centre short text within maxTextW.
@@ -496,13 +512,13 @@ func renderActiveLyricLine(text string, w, maxTextW int) string {
 	padL := padTotal / 2
 	padR := padTotal - padL
 
-	content := strings.Repeat(" ", margin) +
+	content := strings.Repeat(" ", lyricRuleMargin) +
 		leftRule +
 		sp + strings.Repeat(" ", padL) + mid + strings.Repeat(" ", padR) + sp +
 		rightRule +
-		strings.Repeat(" ", margin)
+		strings.Repeat(" ", lyricRuleMargin)
 
-	contentW := 2*margin + 2*ruleLen + 2*gap + maxTextW
+	contentW := 2*lyricRuleMargin + 2*ruleLen + 2*lyricRuleGap + maxTextW
 	if contentW < w {
 		pad := w - contentW
 		content = strings.Repeat(" ", pad/2) + content + strings.Repeat(" ", pad-pad/2)
@@ -513,21 +529,21 @@ func renderActiveLyricLine(text string, w, maxTextW int) string {
 // renderBrowseCursorLine renders the lyric line at the browse cursor position
 // when it is NOT the currently playing line.
 //
-// Layout: │ ▶ ──gradient── text ──gradient──
+// Layout:  (play icon)  ──gradient── text ──gradient──  (right margin)
 //
-//	│   — left border in overlay1 (dim vertical bar anchors the eye)
-//	▶   — play icon in subtext0 (neutral, not the playback mauve)
-//	──  — gradient rule: overlay0 → overlay1 → overlay2 → subtext0 (same
-//	      as renderActiveLyricLine but approaching subtext0 instead of mauve)
-//	text — subtext0, bold (medium-bright, clearly readable but not "playing")
+//	 (U+F144 nf-fa-play) — rendered in overlay1 via styleBorder.
+//	                        The whole left decoration is lyricBrowseDecW (4) cols:
+//	                        space(1) + icon(1) + space(1) + space(1).
+//	──  — gradient rule with same colour stops as renderActiveLyricLine
+//	      (overlay0→overlay1→overlay2→subtext0), but no mauve endpoint.
+//	text — text (#CDD6F4, bright white), bold — clearly readable but not "playing".
+//
+// Note: styleIcon is defined for colour but its Render argument is empty ("");
+// the icon character (U+F144) is embedded in styleBorder.Render(" <icon>").
+// Nerd Font glyph width is assumed to be 1 terminal cell.
 //
 // maxTextW fixes the rule width to the widest lyric line.
 func renderBrowseCursorLine(lyric string, w, maxTextW int) string {
-	// Left decoration: "│ ▶ " — 4 display columns
-	const leftDecW = 4
-	const margin = 4 // same margin as renderActiveLyricLine
-	const gap = 1
-
 	styleBorder := lipgloss.NewStyle().Foreground(lipgloss.Color(overlay1))
 	styleIcon := lipgloss.NewStyle().Foreground(lipgloss.Color(subtext0))
 	styleText := lipgloss.NewStyle().
@@ -540,12 +556,12 @@ func renderBrowseCursorLine(lyric string, w, maxTextW int) string {
 	// Available width after the left decoration for the rule+text block.
 	// We reuse the same rule-length formula as renderActiveLyricLine so
 	// the horizontal rules are the same width as the playback line.
-	ruleLen := (w - 2*margin - 2*gap - maxTextW) / 2
+	ruleLen := (w - 2*lyricRuleMargin - 2*lyricRuleGap - maxTextW) / 2
 
-	if ruleLen < 2 || w-leftDecW < 4 {
+	if ruleLen < 2 || w-lyricBrowseDecW < 4 {
 		// Not enough space: simple fallback.
 		return styleBorder.Render(" ") + " " + styleIcon.Render("") + " " +
-			styleText.Width(w-leftDecW).Render(truncate(lyric, w-leftDecW))
+			styleText.Width(w-lyricBrowseDecW).Render(truncate(lyric, w-lyricBrowseDecW))
 	}
 
 	rule := strings.Repeat("─", ruleLen)
@@ -554,7 +570,7 @@ func renderBrowseCursorLine(lyric string, w, maxTextW int) string {
 	leftRule := gradientText(rule, false, overlay0, overlay1, overlay2, subtext0)
 	rightRule := gradientText(rule, false, subtext0, overlay2, overlay1, overlay0)
 
-	sp := strings.Repeat(" ", gap)
+	sp := strings.Repeat(" ", lyricRuleGap)
 	midText := styleText.Render(lyric)
 
 	padTotal := maxTextW - lyricW
@@ -571,12 +587,15 @@ func renderBrowseCursorLine(lyric string, w, maxTextW int) string {
 	leftDec := styleBorder.Render(" ") + " " + styleIcon.Render("") + " "
 
 	// Right margin.
-	rightMargin := strings.Repeat(" ", margin)
+	rightMargin := strings.Repeat(" ", lyricRuleMargin)
 
 	line := leftDec + block + rightMargin
 
-	// Centre-pad if the total is narrower than w (parity adjustment).
-	lineW := leftDecW + 2*ruleLen + 2*gap + maxTextW + margin
+	// lineW = leftDec(lyricBrowseDecW) + leftRule(ruleLen) + gap(lyricRuleGap)
+	//       + maxTextW(text+padding) + gap(lyricRuleGap) + rightRule(ruleLen)
+	//       + rightMargin(lyricRuleMargin).
+	// padL+padR = maxTextW - lyricW is already folded into maxTextW.
+	lineW := lyricBrowseDecW + 2*ruleLen + 2*lyricRuleGap + maxTextW + lyricRuleMargin
 	if lineW < w {
 		pad := w - lineW
 		line = strings.Repeat(" ", pad/2) + line + strings.Repeat(" ", pad-pad/2)
