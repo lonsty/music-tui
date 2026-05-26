@@ -2,6 +2,7 @@
 package tui
 
 import (
+	"context"
 	"fmt"
 	"math/rand"
 	"os"
@@ -16,6 +17,7 @@ import (
 	"github.com/lonsty/music-tui/internal/library"
 	"github.com/lonsty/music-tui/internal/lyrics"
 	"github.com/lonsty/music-tui/internal/lyrics/online"
+	"github.com/lonsty/music-tui/internal/provider"
 	"github.com/lonsty/music-tui/internal/store"
 )
 
@@ -62,6 +64,32 @@ type ChipState struct {
 	chip8Options   string // extra CLI options forwarded to p2chip
 }
 
+// PlaylistState holds playlist management state.
+// It is embedded in App and accessed via a.playlists, a.playlistCursor, etc.
+// Fields are declared here for future playlist tab implementation;
+// they are intentionally unused until the playlist UI is built.
+//
+//nolint:unused
+type PlaylistState struct {
+	playlists      []store.Playlist // cached list of all playlists
+	playlistCursor int              // index of the selected playlist in a.playlists
+}
+
+// OnlineState holds the state for the online music search tab.
+// It is embedded in App and accessed via a.onlineTracks, a.onlineCursor, etc.
+// The online tab maintains its own track list, separate from a.filtered,
+// so that local and online results never intermix.
+// Fields are declared here for future online tab implementation;
+// they are intentionally unused until the online search UI is built.
+//
+//nolint:unused
+type OnlineState struct {
+	onlineTracks  []library.Track // search results from an online TrackProvider
+	onlineCursor  int             // index of the selected track in a.onlineTracks
+	onlineQuery   string          // the most recent search query
+	onlineLoading bool            // true while an online search is in-flight
+}
+
 // LyricsState holds the lyrics for the currently playing track.
 // It is embedded in App and accessed via a.lines, a.activeIdx, etc.
 type LyricsState struct {
@@ -100,12 +128,20 @@ type App struct {
 	// by cmdRestoreSession on the first Init tick and then zeroed out.
 	session *SessionState
 
+	// providerMap maps a TrackProvider ID (e.g. "netease") to its implementation.
+	// When playing a track, cmdPlayTrack looks up the track's ProviderID here to
+	// obtain a StreamSource.  Tracks with ProviderID "" or "local" fall back to
+	// LocalSource{Path: track.Path} without requiring a map entry.
+	providerMap map[string]provider.TrackProvider
+
 	// Embed functional sub-models for clean grouping.
 	// All fields remain accessible directly on *App (e.g. a.volume, a.cursor).
 	PlaybackState
 	LibraryState
 	ChipState
 	LyricsState
+	PlaylistState
+	OnlineState
 
 	// ── Search ───────────────────────────────────────────────────────────────
 	searchInput textinput.Model
@@ -133,6 +169,12 @@ type App struct {
 	// ── Loading ──────────────────────────────────────────────────────────────
 	loading bool
 	scanErr error
+
+	// ── Network request cancellation ─────────────────────────────────────────
+	// netCancel cancels the most recent in-flight network request (lyrics fetch,
+	// online search).  Call it before starting a new request so that stale
+	// responses from the old request are never applied to the new track's state.
+	netCancel context.CancelFunc
 
 	// ── Enter-twice-to-fullscreen ────────────────────────────────────────────
 	// Tracks the ID of the track that was selected last time Enter was pressed.
@@ -164,8 +206,15 @@ func NewApp(player *audio.Player, st *store.Store, musicDir string, tracks []lib
 		chip8Opts = sess.Chip8Options
 	}
 
+	// Restore UI language from the database before any rendering occurs.
+	if st != nil {
+		if lang, _ := st.GetSetting(store.KeyLanguage); lang == "zh" {
+			SetLang(LangZH)
+		}
+	}
+
 	ti := textinput.New()
-	ti.Placeholder = "Search… (s: artist  a: album  t: title)"
+	ti.Placeholder = T("search_placeholder")
 	ti.CharLimit = 128
 
 	si := textinput.New()
@@ -189,19 +238,9 @@ func NewApp(player *audio.Player, st *store.Store, musicDir string, tracks []lib
 		tmpDir = os.TempDir()
 	}
 
-	// Build the lyrics provider chain: local files first, lrclib.net as fallback.
-	// CachedProvider wraps lrclib.net to avoid repeated network requests.
-	var lyricsProvider lyrics.Provider
-	lyricsProvider = lyrics.LocalLRCProvider{}
-	if cacheDir, err := store.LyricsCacheDir(); err == nil {
-		cachedOnline := lyrics.NewCachedProvider(online.NewLrcLibProvider(), cacheDir)
-		lyricsProvider = &lyrics.ChainProvider{
-			Providers: []lyrics.Provider{
-				lyrics.LocalLRCProvider{},
-				cachedOnline,
-			},
-		}
-	}
+	// Build the lyrics provider chain using the factory function so it can be
+	// rebuilt later when the user changes provider settings.
+	lyricsProvider := buildLyricsProvider()
 
 	vol := 1.0
 	mode := playModeLoop
@@ -231,6 +270,8 @@ func NewApp(player *audio.Player, st *store.Store, musicDir string, tracks []lib
 		mqAlbum:       NewMarquee("", marqueeSep),
 		mqRow:         NewMarquee("", marqueeSep),
 		session:       sess,
+		providerMap:   map[string]provider.TrackProvider{},
+		netCancel:     func() {}, // no-op until a network request is started
 		PlaybackState: PlaybackState{
 			volume:   vol,
 			playMode: mode,
@@ -285,7 +326,7 @@ func NewApp(player *audio.Player, st *store.Store, musicDir string, tracks []lib
 			}
 		}
 	} else {
-		app.statusMsg = "No tracks — open Settings (,) and reload the library"
+		app.statusMsg = T("no_tracks_hint")
 	}
 
 	return app
@@ -400,7 +441,7 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					a.currentTrack = nil
 					a.currentIdx = 0
 					a.cursor = 0
-					a.statusMsg = "Playing track was removed from library"
+					a.statusMsg = T("track_removed")
 				}
 			}
 		}
@@ -486,17 +527,24 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case lyricsLoadedMsg:
 		// Discard stale results — track may have changed while loading.
 		if a.currentTrack != nil && msg.trackID == a.currentTrack.ID {
-			a.lines = msg.lines
-			a.activeIdx = -1
-			a.trackID = msg.trackID
-			// Determine whether any line carries a real timestamp.
-			// Pure plain-text lyrics (all Time=0) are shown statically
-			// without any active-line highlight.
-			a.synced = false
-			for _, l := range msg.lines {
-				if l.Time > 0 {
-					a.synced = true
-					break
+			if msg.err != nil {
+				// Fetch failed (e.g. network timeout, context cancelled).
+				// Leave lines nil so the UI shows "No lyrics" rather than stale data.
+				a.lines = nil
+				a.synced = false
+			} else {
+				a.lines = msg.lines
+				a.activeIdx = -1
+				a.trackID = msg.trackID
+				// Determine whether any line carries a real timestamp.
+				// Pure plain-text lyrics (all Time=0) are shown statically
+				// without any active-line highlight.
+				a.synced = false
+				for _, l := range msg.lines {
+					if l.Time > 0 {
+						a.synced = true
+						break
+					}
 				}
 			}
 		}
@@ -810,4 +858,23 @@ func (a *App) syncLyricsActive() {
 
 	a.prevActiveIdx = a.activeIdx
 	a.activeIdx = idx
+}
+
+// buildLyricsProvider constructs the lyrics provider chain from the current
+// configuration.  It is called at startup and can be called again whenever
+// the user changes provider settings (e.g. enabling or disabling online lookup).
+//
+// Chain order: local .lrc files → cached lrclib.net.
+// If the lyrics cache directory cannot be resolved, the chain falls back to
+// local-only so that offline usage is unaffected.
+func buildLyricsProvider() lyrics.Provider {
+	base := lyrics.LocalLRCProvider{}
+	cacheDir, err := store.LyricsCacheDir()
+	if err != nil {
+		return base
+	}
+	cachedOnline := lyrics.NewCachedProvider(online.NewLrcLibProvider(), cacheDir)
+	return &lyrics.ChainProvider{
+		Providers: []lyrics.Provider{base, cachedOnline},
+	}
 }

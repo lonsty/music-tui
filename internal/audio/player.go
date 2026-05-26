@@ -169,15 +169,27 @@ func (p *Player) SetOnDone(fn func()) {
 }
 
 // Play stops any current playback, then loads and starts the given track.
+// It is a convenience wrapper around PlaySource for local tracks.
 func (p *Player) Play(track library.Track) error {
 	return p.playAt(LocalSource{Path: track.Path}, 0)
 }
 
-// PlayAt starts the track at the given byte offset into the file, then seeks
-// to offsetDur before handing the stream to the speaker.  The volume stored
-// in the player is applied to the new stream immediately.
+// PlayAt starts the track at offsetDur into the file.
+// It is a convenience wrapper around PlaySourceAt for local tracks.
 func (p *Player) PlayAt(track library.Track, offsetDur time.Duration) error {
 	return p.playAt(LocalSource{Path: track.Path}, offsetDur)
+}
+
+// PlaySource stops any current playback and starts the given StreamSource.
+// Use this method when the audio origin is not a local file path (e.g. HTTP
+// streams or platform API sources).
+func (p *Player) PlaySource(src StreamSource) error {
+	return p.playAt(src, 0)
+}
+
+// PlaySourceAt starts the given StreamSource at offsetDur into the stream.
+func (p *Player) PlaySourceAt(src StreamSource, offsetDur time.Duration) error {
+	return p.playAt(src, offsetDur)
 }
 
 func (p *Player) playAt(src StreamSource, offsetDur time.Duration) error {
@@ -471,7 +483,17 @@ func (p *Player) SetRetroPreset(idx int) {
 // The fade duration is fixed at 1200 ms (smooth and audible).  If the player
 // is stopped or paused when called, the crossfade still proceeds (it opens and
 // seeks newPath).
+//
+// CrossfadeTo is a convenience wrapper for local-file chip-mode transitions.
+// For non-local sources use CrossfadeToSource.
 func (p *Player) CrossfadeTo(newPath string, positionOffset time.Duration) error {
+	return p.CrossfadeToSource(LocalSource{Path: newPath}, positionOffset)
+}
+
+// CrossfadeToSource fades out the current track and starts the given
+// StreamSource with a fade-in.  It is the generalised form of CrossfadeTo
+// that works with any audio origin (local files, HTTP streams, platform APIs).
+func (p *Player) CrossfadeToSource(src StreamSource, positionOffset time.Duration) error {
 	const fadeDuration = 1200 * time.Millisecond
 	const steps = 40 // number of volume steps (each ≈ 30 ms)
 	stepSleep := fadeDuration / steps
@@ -510,7 +532,7 @@ func (p *Player) CrossfadeTo(newPath string, positionOffset time.Duration) error
 	}
 
 	// ── Open and start new stream ─────────────────────────────────────────
-	streamer, format, err := LocalSource{Path: newPath}.Open(context.Background())
+	streamer, format, err := src.Open(context.Background())
 	if err != nil {
 		return err
 	}

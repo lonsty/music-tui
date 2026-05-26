@@ -5,8 +5,9 @@ import (
 	"strings"
 )
 
-// SupportedExtensions is the set of audio file extensions that music-tui can play.
-// To add a new format, insert its lower-case extension (with leading dot) here.
+// SupportedExtensions is the set of audio file extensions that music-tui can
+// scan and play.  When adding a new format, you must also register a decoder
+// in internal/audio/source.go (the decoders map) — both maps must stay in sync.
 var SupportedExtensions = map[string]bool{
 	".mp3": true,
 }

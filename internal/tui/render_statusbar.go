@@ -6,17 +6,24 @@ import (
 
 // ── Status bar ────────────────────────────────────────────────────────────────
 
-// stateLabels maps audio.State to the chip-label text (including surrounding
-// spaces for visual padding inside the status chip).
-var stateLabels = map[audio.State]string{
-	audio.StateStopped: "  Stopped ",
-	audio.StatePlaying: "  Playing ",
-	audio.StatePaused:  "  Paused  ",
+// stateLabel returns the localised chip-label text for the given playback state,
+// including surrounding spaces for visual padding inside the status chip.
+// A function is used instead of a package-level var so the active language is
+// read at render time, supporting runtime language switching.
+func stateLabel(s audio.State) string {
+	switch s {
+	case audio.StatePlaying:
+		return T("state_playing")
+	case audio.StatePaused:
+		return T("state_paused")
+	default:
+		return T("state_stopped")
+	}
 }
 
 func (a *App) renderStatusBar() string {
 	if a.loading {
-		return styleStatusLine.Render("  󰔟  Scanning library…")
+		return styleStatusLine.Render("  󰔟  " + T("scanning_library"))
 	}
 	if a.scanErr != nil {
 		return styleStatusLine.Render("  󰅚  " + a.scanErr.Error())
@@ -34,7 +41,7 @@ func (a *App) renderStatusBar() string {
 		displayState = audio.StatePlaying
 	}
 
-	stateLabel := stateLabels[displayState]
+	stateLabel := stateLabel(displayState)
 	stateChip := styleStatusState.Render(stateLabel)
 
 	// Build hint chips: [key] label
@@ -45,34 +52,34 @@ func (a *App) renderStatusBar() string {
 
 	var hints string
 	if a.currentView == viewFullscreen {
-		pauseLabel := "Pause"
+		pauseLabel := T("hint_pause")
 		if displayState == audio.StatePaused {
-			pauseLabel = "Resume"
+			pauseLabel = T("hint_resume")
 		}
-		hints = hint("Esc", "Back") + hint("Spc", pauseLabel) +
-			hint("n", "Next") + hint("p", "Prev") +
-			hint("</>", "Seek") + hint("+/-", "Vol") +
-			hint("m", "Mode") + hint("b", "8-bit") + hint("q", "Quit")
+		hints = hint("Esc", T("hint_back")) + hint("Spc", pauseLabel) +
+			hint("n", T("hint_next")) + hint("p", T("hint_prev")) +
+			hint("</>", T("hint_seek")) + hint("+/-", T("hint_vol")) +
+			hint("m", T("hint_mode")) + hint("b", "8-bit") + hint("q", T("hint_quit"))
 	} else {
 		switch {
 		case displayState == audio.StatePlaying:
-			hints = hint("Spc", "Pause") + hint("n", "Next") + hint("p", "Prev") +
-				hint("</>", "Seek") + hint("+/-", "Vol") +
-				hint("/", "Search") + hint("?", "Help") + hint("q", "Quit")
+			hints = hint("Spc", T("hint_pause")) + hint("n", T("hint_next")) + hint("p", T("hint_prev")) +
+				hint("</>", T("hint_seek")) + hint("+/-", T("hint_vol")) +
+				hint("/", T("hint_search")) + hint("?", T("hint_help")) + hint("q", T("hint_quit"))
 		case displayState == audio.StatePaused:
-			hints = hint("Spc", "Resume") + hint("n", "Next") + hint("p", "Prev") +
-				hint("</>", "Seek") + hint("+/-", "Vol") +
-				hint("/", "Search") + hint("?", "Help") + hint("q", "Quit")
+			hints = hint("Spc", T("hint_resume")) + hint("n", T("hint_next")) + hint("p", T("hint_prev")) +
+				hint("</>", T("hint_seek")) + hint("+/-", T("hint_vol")) +
+				hint("/", T("hint_search")) + hint("?", T("hint_help")) + hint("q", T("hint_quit"))
 		case a.currentTrack != nil:
 			// Stopped but a track is loaded (e.g. briefly between track changes).
 			// Show playback hints to avoid a flash of "Enter Play" during seeks.
-			hints = hint("Spc", "Resume") + hint("n", "Next") + hint("p", "Prev") +
-				hint("</>", "Seek") + hint("+/-", "Vol") +
-				hint("/", "Search") + hint("?", "Help") + hint("q", "Quit")
+			hints = hint("Spc", T("hint_resume")) + hint("n", T("hint_next")) + hint("p", T("hint_prev")) +
+				hint("</>", T("hint_seek")) + hint("+/-", T("hint_vol")) +
+				hint("/", T("hint_search")) + hint("?", T("hint_help")) + hint("q", T("hint_quit"))
 		default:
 			// Truly stopped with no track — guide the user to load one.
-			hints = hint("Enter", "Play") + hint("/", "Search") +
-				hint(",", "Settings") + hint("?", "Help") + hint("q", "Quit")
+			hints = hint("Enter", T("hint_play")) + hint("/", T("hint_search")) +
+				hint(",", T("hint_settings")) + hint("?", T("hint_help")) + hint("q", T("hint_quit"))
 		}
 	}
 
@@ -90,13 +97,13 @@ func (a *App) renderStatusBar() string {
 	var chipChip string
 	switch {
 	case a.chipConverting:
-		chipChip = "  " + styleStatusState.Render(" 8-bit Converting… ")
+		chipChip = "  " + styleStatusState.Render(T("chip_converting"))
 	case a.chipBusy && a.chipMode:
-		chipChip = "  " + styleStatusState.Render(" 8-bit Switching… ")
+		chipChip = "  " + styleStatusState.Render(T("chip_switching"))
 	case a.chipBusy:
-		chipChip = "  " + styleStatusState.Render(" 8-bit… ")
+		chipChip = "  " + styleStatusState.Render(T("chip_busy"))
 	case a.chipMode:
-		chipChip = "  " + styleStatusState.Render(" 8-bit ")
+		chipChip = "  " + styleStatusState.Render(T("chip_active"))
 	}
 
 	line := " " + stateChip + "  " + modeChip + retroChip + chipChip + "  " + hints

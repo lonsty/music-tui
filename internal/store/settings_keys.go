@@ -21,4 +21,7 @@ const (
 	KeyCursor = "cursor"
 	// KeyChip8Options holds extra CLI options forwarded to p2chip.
 	KeyChip8Options = "chip8_options"
+	// KeyLanguage stores the UI display language ("en" or "zh").
+	// An empty value or "en" means English; "zh" means Simplified Chinese.
+	KeyLanguage = "language"
 )

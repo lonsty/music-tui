@@ -11,11 +11,13 @@ import (
 
 // ── Lyric line decoration constants ──────────────────────────────────────────
 
-// lyricsLoadingText is shown while the lyrics provider fetch is in-flight.
-const lyricsLoadingText = "󰔟  loading lyrics…"
+// lyricsLoadingText returns the status text shown while a lyrics fetch is in
+// flight.  The text is localised via T() so it reflects the active language.
+func lyricsLoadingText() string { return "󰔟  " + T("lyrics_loading") }
 
-// lyricsNoneText is shown in the mini player when no lyrics are available.
-const lyricsNoneText = "󰝚  No lyrics"
+// lyricsNoneText returns the placeholder shown in the mini player when no
+// lyrics are available.  Icon prefix is always kept for visual consistency.
+func lyricsNoneText() string { return "󰝚  " + T("no_lyrics") }
 
 // lyricRuleMargin is the number of blank columns between the panel edge and
 // the outermost ─ character of the active/cursor line decoration.
@@ -67,8 +69,8 @@ func (a *App) buildMiniPlayerContent(w, h int) string {
 		idle := lipgloss.JoinVertical(lipgloss.Center,
 			coverLine,
 			"",
-			stylePlayerArtist.Width(w).Render("No track selected"),
-			stylePlayerMuted().Width(w).Render("Press Enter to play"),
+			stylePlayerArtist.Width(w).Render(T("no_track_selected")),
+			stylePlayerMuted().Width(w).Render(T("press_enter_to_play")),
 		)
 		return idle
 	}
@@ -91,14 +93,14 @@ func (a *App) buildMiniPlayerContent(w, h int) string {
 	var lyricText string
 	switch {
 	case a.lyricsLoading:
-		lyricText = lyricsLoadingText
+		lyricText = lyricsLoadingText()
 	case a.activeIdx >= 0 && a.activeIdx < len(a.lines):
 		lyricText = a.lines[a.activeIdx].Text
 	case len(a.lines) > 0:
 		// Has lyrics but no active line yet (plain-text or before first stamp).
 		lyricText = a.lines[0].Text
 	default:
-		lyricText = lyricsNoneText
+		lyricText = lyricsNoneText()
 	}
 	lyric := styleLyricNormal.Align(lipgloss.Center).Width(w).Render(lyricText)
 
@@ -257,16 +259,16 @@ func (a *App) renderFullLyrics() string {
 	var lyricsContent string
 	switch {
 	case a.lyricsLoading:
-		spinner := styleLyricNormal.Render(lyricsLoadingText)
+		spinner := styleLyricNormal.Render(lyricsLoadingText())
 		lyricsContent = lipgloss.Place(innerW, lyricsH,
 			lipgloss.Center, lipgloss.Center, spinner)
 	case len(a.lines) == 0:
 		placeholder := lipgloss.JoinVertical(lipgloss.Center,
-			// lyricsNoneText includes the icon prefix; strip it for the fullscreen
+			// lyricsNoneText() includes the icon prefix; strip it for the fullscreen
 			// placeholder since the panel header already shows the lyrics icon.
-			styleLyricNormal.Render("No lyrics"),
+			styleLyricNormal.Render(T("no_lyrics")),
 			"",
-			styleOverlayMuted.Render("Place a .lrc file next to the audio file"),
+			styleOverlayMuted.Render(T("lyrics_hint_lrc")),
 		)
 		lyricsContent = lipgloss.Place(innerW, lyricsH,
 			lipgloss.Center, lipgloss.Center, placeholder)

@@ -195,7 +195,7 @@ func (a *App) handleNormalKey(msg tea.KeyMsg) tea.Cmd {
 		a.openSettings()
 
 	case "tab":
-		a.activeTab = (a.activeTab + 1) % 2
+		a.activeTab = (a.activeTab + 1) % tabCount
 
 	case "esc":
 		a.activeOvl = overlayNone
@@ -369,7 +369,26 @@ func (a *App) handleInfoKey(_ tea.KeyMsg) tea.Cmd {
 func (a *App) handleSettingsKey(msg tea.KeyMsg) tea.Cmd {
 	switch msg.String() {
 	case "enter":
-		// Save both fields and close.
+		// Language field: toggle language on Enter.
+		if a.settingsActive == 2 {
+			if activeLang == LangEN {
+				SetLang(LangZH)
+			} else {
+				SetLang(LangEN)
+			}
+			if a.st != nil {
+				langVal := "en"
+				if activeLang == LangZH {
+					langVal = "zh"
+				}
+				_ = a.st.SetSetting(store.KeyLanguage, langVal)
+			}
+			// Also update the search input placeholder to reflect the new language.
+			a.searchInput.Placeholder = T("search_placeholder")
+			return nil
+		}
+
+		// Save dir + opts fields and close.
 		newDir := strings.TrimSpace(a.musicDirInput.Value())
 		newOpts := strings.TrimSpace(a.settingsInput.Value())
 
@@ -400,23 +419,27 @@ func (a *App) handleSettingsKey(msg tea.KeyMsg) tea.Cmd {
 
 		a.closeSettings()
 		return nil
-
 	case "esc":
 		// Discard and close.
 		a.closeSettings()
 		return nil
 
 	case "tab", "shift+tab":
-		// Toggle active input field.
-		if a.settingsActive == 0 {
-			a.settingsActive = 1
-			a.musicDirInput.Blur()
-			a.settingsInput.Focus()
+		// Cycle active field: 0 = dir, 1 = opts, 2 = language.
+		a.musicDirInput.Blur()
+		a.settingsInput.Blur()
+		if a.settingsActive < 2 {
+			a.settingsActive++
 		} else {
 			a.settingsActive = 0
-			a.settingsInput.Blur()
-			a.musicDirInput.Focus()
 		}
+		switch a.settingsActive {
+		case 0:
+			a.musicDirInput.Focus()
+		case 1:
+			a.settingsInput.Focus()
+		}
+		// settingsActive == 2 (language): no text input, handled via Enter.
 		return nil
 
 	case "ctrl+r":

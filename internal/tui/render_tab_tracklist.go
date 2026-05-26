@@ -19,8 +19,8 @@ func (a *App) renderTabBar() string {
 		label string
 	}
 	tabs := []tabDef{
-		{tabLocal, "󰋌", "Local"},
-		{tabOnline, "󰖟", "Online"},
+		{tabLocal, "󰋌", T("tab_local")},
+		{tabOnline, "󰖟", T("tab_online")},
 	}
 
 	var parts []string
@@ -71,7 +71,7 @@ func (a *App) renderOnlinePlaceholder() string {
 	lines = append(lines,
 		gradientText("󰖟  Online", true, blue, mauve, pink),
 		"",
-		styleOverlayMuted.Render("Coming soon — planned features:"),
+		styleOverlayMuted.Render(T("online_coming_soon")),
 		"",
 	)
 	for _, f := range features {
@@ -81,7 +81,7 @@ func (a *App) renderOnlinePlaceholder() string {
 	}
 	lines = append(lines,
 		"",
-		styleOverlayMuted.Render("Press Tab to switch back to Local"),
+		styleOverlayMuted.Render(T("online_back_hint")),
 	)
 
 	block := lipgloss.JoinVertical(lipgloss.Left, lines...)

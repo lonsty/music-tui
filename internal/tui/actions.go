@@ -27,6 +27,16 @@ const (
 
 // ── Play commands ─────────────────────────────────────────────────────────────
 
+// resolveSource returns the StreamSource for track by consulting providerMap.
+// If the track's ProviderID has a registered TrackProvider, that provider's
+// StreamSource() is called.  Otherwise a LocalSource is returned as the default.
+func (a *App) resolveSource(ctx context.Context, track library.Track) (audio.StreamSource, error) {
+	if p, ok := a.providerMap[track.ProviderID]; ok && p != nil {
+		return p.StreamSource(ctx, track)
+	}
+	return audio.LocalSource{Path: track.Path}, nil
+}
+
 // cmdRestoreSession loads the last-played track at the saved position and
 // leaves the player paused.  Called once from Init().
 func (a *App) cmdRestoreSession() tea.Cmd {
@@ -51,9 +61,13 @@ func (a *App) cmdRestoreSession() tea.Cmd {
 	offsetDur := time.Duration(sess.LastPositionMs) * time.Millisecond
 
 	return func() tea.Msg {
-		// PlayAt opens the file and seeks before handing to the speaker,
-		// so the position is accurate from the very first frame.
-		if err := a.player.PlayAt(track, offsetDur); err != nil {
+		// PlaySourceAt opens the stream and seeks before handing to the
+		// speaker, so the position is accurate from the very first frame.
+		src, err := a.resolveSource(context.Background(), track)
+		if err != nil {
+			return playResultMsg{err: err, idx: idx}
+		}
+		if err := a.player.PlaySourceAt(src, offsetDur); err != nil {
 			return playResultMsg{err: err, idx: idx}
 		}
 		// Start paused — user presses Space to resume.
@@ -65,13 +79,21 @@ func (a *App) cmdRestoreSession() tea.Cmd {
 
 // cmdPlayTrack returns a Cmd that plays filtered[idx].
 // All App-state mutations happen via playResultMsg in Update — never in the Cmd.
+//
+// The audio source is resolved via providerMap: if the track's ProviderID has
+// a registered TrackProvider, that provider's StreamSource() is used; otherwise
+// the track falls back to LocalSource{Path: track.Path}.
 func (a *App) cmdPlayTrack(idx int) tea.Cmd {
 	if idx < 0 || idx >= len(a.filtered) {
 		return nil
 	}
 	track := a.filtered[idx] // value copy — safe across goroutine boundary
 	return func() tea.Msg {
-		if err := a.player.Play(track); err != nil {
+		src, err := a.resolveSource(context.Background(), track)
+		if err != nil {
+			return playResultMsg{err: err, idx: idx}
+		}
+		if err := a.player.PlaySource(src); err != nil {
 			return playResultMsg{err: err, idx: idx}
 		}
 		t := track
@@ -334,15 +356,29 @@ func (a *App) adjustVolume(delta float64) {
 
 // ── Lyrics ────────────────────────────────────────────────────────────────────
 
+// lyricsNetTimeout is the maximum time allowed for an online lyrics fetch.
+// Local file lookups complete immediately; this guard applies to HTTP calls.
+const lyricsNetTimeout = 10 * time.Second
+
 // cmdLoadLyrics asynchronously loads lyrics for track using the configured
 // provider chain (local files → cached lrclib.net).
+//
+// Any in-flight request started by a previous call is cancelled before the new
+// one begins, preventing stale responses from polluting the current track state.
 // The result is delivered via lyricsLoadedMsg; lines is nil when nothing found.
 func (a *App) cmdLoadLyrics(track library.Track) tea.Cmd {
+	// Cancel the previous in-flight request before starting a new one.
+	a.netCancel()
+
+	ctx, cancel := context.WithTimeout(context.Background(), lyricsNetTimeout)
+	a.netCancel = cancel
+
 	id := track.ID
 	p := a.provider // capture; safe — provider is read-only after NewApp
 	return func() tea.Msg {
-		lines, _ := p.Fetch(context.Background(), track)
-		return lyricsLoadedMsg{trackID: id, lines: lines}
+		defer cancel()
+		lines, err := p.Fetch(ctx, track)
+		return lyricsLoadedMsg{trackID: id, lines: lines, err: err}
 	}
 }
 

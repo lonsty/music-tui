@@ -42,8 +42,10 @@ const (
 type tabID int
 
 const (
-	tabLocal  tabID = iota
-	tabOnline       // placeholder — not yet implemented
+	tabLocal    tabID = iota
+	tabOnline         // online music search — placeholder
+	tabPlaylist       // playlist management — placeholder
+	tabCount          // sentinel — must be the last constant
 )
 
 // ── Play mode ────────────────────────────────────────────────────────────────
@@ -113,9 +115,14 @@ type chipCrossfadeDoneMsg struct{ chipMode bool }
 
 // lyricsLoadedMsg is sent by cmdLoadLyrics when lyrics have been fetched.
 // lines is nil when no .lrc file exists for the track (not an error).
+// lyricsLoadedMsg is sent by cmdLoadLyrics when lyrics have been fetched.
+// lines is nil when no lyrics are available (not an error).
+// err is non-nil when the fetch itself failed; the UI should handle it
+// gracefully (e.g. display "No lyrics" rather than crashing).
 type lyricsLoadedMsg struct {
 	trackID string
 	lines   []lyrics.Line
+	err     error
 }
 
 // tick fires a tickMsg after tickInterval.

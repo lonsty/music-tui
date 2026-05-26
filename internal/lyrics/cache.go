@@ -134,13 +134,23 @@ func (c *CachedProvider) save(path string, lines []Line) {
 }
 
 // cacheKey derives a stable filename from track metadata.
-// We use sha256(trackID) when a stable ID exists; otherwise we hash the
-// title+artist string so searches for the same song always share a cache entry.
+//
+// The key is scoped by ProviderID so that tracks from different providers
+// (e.g. "netease:12345" and "local:12345") never share a cache entry even
+// when their numeric IDs happen to collide.
+//
+// Key derivation:
+//   - If track.ID is set:      sha256("<providerID>:<trackID>")
+//   - Otherwise (legacy/unknown): sha256("<providerID>:<title>\x00<artist>")
 func cacheKey(track library.Track) string {
+	providerID := track.ProviderID
+	if providerID == "" {
+		providerID = "local"
+	}
 	s := track.ID
 	if s == "" {
 		s = track.DisplayTitle() + "\x00" + track.DisplayArtist()
 	}
-	h := sha256.Sum256([]byte(s))
+	h := sha256.Sum256([]byte(providerID + ":" + s))
 	return fmt.Sprintf("%x", h[:16]) // 32-char hex, collision-resistant
 }

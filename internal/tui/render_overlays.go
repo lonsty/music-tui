@@ -11,31 +11,31 @@ import (
 func (a *App) renderHelpOverlay() string {
 	type binding struct{ key, action string }
 	bindings := []binding{
-		{"j / ↓", "Move down"},
-		{"k / ↑", "Move up"},
-		{"g / G", "Top / Bottom"},
-		{"Enter", "Play  (2nd Enter → Fullscreen)"},
-		{"Space", "Pause / Resume"},
-		{"n / p", "Next / Previous"},
-		{"< / >", "Seek −5s / +5s"},
-		{"m", "Cycle play mode"},
-		{"b", "Toggle 8-bit chip mode  (converts + crossfades)"},
-		{"r / R", "Lo-fi effect  lower / raise sample rate"},
-		{",", "Settings  (music dir · p2chip options · Ctrl+R reload)"},
-		{"/", "Search  (s: artist  a: album  t: title)"},
-		{"i", "Track info"},
-		{"f", "Toggle fullscreen"},
-		{"+ / -", "Volume up / down"},
-		{"Tab", "Switch tab"},
-		{"?", "This help"},
-		{"q", "Quit"},
+		{"j / ↓", T("action_move_down")},
+		{"k / ↑", T("action_move_up")},
+		{"g / G", T("action_top_bottom")},
+		{"Enter", T("action_play")},
+		{"Space", T("action_pause_resume")},
+		{"n / p", T("action_next_prev")},
+		{"< / >", T("action_seek")},
+		{"m", T("action_cycle_mode")},
+		{"b", T("action_chip")},
+		{"r / R", T("action_lofi")},
+		{",", T("action_settings")},
+		{"/", T("action_search")},
+		{"i", T("action_track_info")},
+		{"f", T("action_fullscreen")},
+		{"+ / -", T("action_volume")},
+		{"Tab", T("action_switch_tab")},
+		{"?", T("action_this_help")},
+		{"q", T("action_quit")},
 		{"", ""},
-		{"F6 / F9", "Prev / Next  (media key mapping)"},
-		{"F7", "Play / Pause  (media key mapping)"},
-		{"F11 / F12", "Vol down / up  (media key mapping)"},
+		{"F6 / F9", T("action_media_prev_next")},
+		{"F7", T("action_media_play")},
+		{"F11 / F12", T("action_media_vol")},
 	}
 
-	title := styleOverlayTitle.Render("󰋼  Keyboard shortcuts")
+	title := styleOverlayTitle.Render("󰋼  " + T("help_title"))
 	// 44 = 2(indent) + 14(key chip width) + 2(gap) + 26(longest action text fit)
 	div := styleOverlayMuted.Render(strings.Repeat("─", 44))
 
@@ -51,7 +51,7 @@ func (a *App) renderHelpOverlay() string {
 		v := styleOverlayValue.Render(b.action)
 		rows = append(rows, "  "+k+"  "+v)
 	}
-	rows = append(rows, "", styleOverlayMuted.Render("  Any key to close"))
+	rows = append(rows, "", styleOverlayMuted.Render("  "+T("help_close")))
 
 	box := styleOverlayBox.Render(lipgloss.JoinVertical(lipgloss.Left, rows...))
 	return strings.Repeat("\n", topPad) +
@@ -74,7 +74,7 @@ func (a *App) renderInfoOverlay() string {
 	const valueW = 38
 	const indent = "                  " // 18 spaces: 2 + 14 + 2
 
-	title := styleOverlayTitle.Render("󰋽  Track Info")
+	title := styleOverlayTitle.Render("󰋽  " + T("info_title"))
 	// +6 = "  "(2 prefix spaces) + "  "(2 key-value gap spaces) + 2(visual margin).
 	div := styleOverlayMuted.Render(strings.Repeat("─", labelW+valueW+6))
 
@@ -104,24 +104,24 @@ func (a *App) renderInfoOverlay() string {
 	rows = append(rows, title, div, "")
 	if t != nil {
 		for _, lines := range [][]string{
-			row("Title", t.DisplayTitle()),
-			row("Artist", t.DisplayArtist()),
-			row("Album Artist", t.AlbumArtist),
-			row("Album", t.Album),
-			row("Year", t.Year),
-			row("Track", t.TrackNumber),
-			row("Genre", t.Genre),
-			row("Comment", t.Comment),
-			row("Duration", formatDuration(t.Duration)),
-			row("Format", t.Format()),
-			row("Path", t.Path),
+			row(T("label_title"), t.DisplayTitle()),
+			row(T("label_artist"), t.DisplayArtist()),
+			row(T("label_album_artist"), t.AlbumArtist),
+			row(T("label_album"), t.Album),
+			row(T("label_year"), t.Year),
+			row(T("label_track"), t.TrackNumber),
+			row(T("label_genre"), t.Genre),
+			row(T("label_comment"), t.Comment),
+			row(T("label_duration"), formatDuration(t.Duration)),
+			row(T("label_format"), t.Format()),
+			row(T("label_path"), t.Path),
 		} {
 			rows = append(rows, lines...)
 		}
 	} else {
-		rows = append(rows, styleOverlayMuted.Render("  No track selected"))
+		rows = append(rows, styleOverlayMuted.Render("  "+T("info_no_track")))
 	}
-	rows = append(rows, "", styleOverlayMuted.Render("  Any key to close"))
+	rows = append(rows, "", styleOverlayMuted.Render("  "+T("help_close")))
 
 	box := styleOverlayBox.Render(lipgloss.JoinVertical(lipgloss.Left, rows...))
 	return strings.Repeat("\n", topPad) +
@@ -136,7 +136,7 @@ func (a *App) renderSettingsOverlay() string {
 	// the longest input value without horizontal scrolling.
 	const lineW = 52
 
-	title := styleOverlayTitle.Render("  Settings")
+	title := styleOverlayTitle.Render("  " + T("settings_title"))
 	topDiv := styleOverlayMuted.Render(strings.Repeat("─", lineW))
 
 	sectionLabel := func(label string) string {
@@ -164,7 +164,7 @@ func (a *App) renderSettingsOverlay() string {
 	// fits 9 visible chars — exactly "Directory".
 	const inputW = lineW - 15
 	dirActive := a.settingsActive == 0
-	dirLabel := labelStyle(dirActive).Width(11).Render("Directory")
+	dirLabel := labelStyle(dirActive).Width(11).Render(T("settings_dir_label"))
 	// Show the current value truncated to inputW so the overlay never overflows.
 	// The textinput widget handles cursor/editing; we display a preview when
 	// the input is not active, and the live input.View() when it is.
@@ -183,11 +183,11 @@ func (a *App) renderSettingsOverlay() string {
 	}
 	dirLine := "  " + dirLabel + "  " + dirView
 	reloadKey := styleOverlayKey.Render(" Ctrl+R ")
-	reloadHint := "  " + reloadKey + styleOverlayMuted.Render(" reload library  (adds new · removes missing)")
+	reloadHint := "  " + reloadKey + styleOverlayMuted.Render(" "+T("settings_reload_hint"))
 
 	// ── 8-bit Conversion section ──────────────────────────────────────────
 	optsActive := a.settingsActive == 1
-	optsLabel := labelStyle(optsActive).Width(11).Render("Options")
+	optsLabel := labelStyle(optsActive).Width(11).Render(T("settings_opts_label"))
 	var optsView string
 	if optsActive {
 		a.settingsInput.Width = inputW
@@ -200,32 +200,47 @@ func (a *App) renderSettingsOverlay() string {
 		optsView = styleOverlayValue.Render(val)
 	}
 	optsLine := "  " + optsLabel + "  " + optsView
-	optsHint := styleOverlayMuted.Render("  Extra options appended to the p2chip command.")
-	optsEx := styleOverlayMuted.Render("  e.g.  --sf2 nes --onset 0.6")
+	optsHint := styleOverlayMuted.Render("  " + T("settings_opts_hint"))
+	optsEx := styleOverlayMuted.Render("  " + T("settings_opts_example"))
+
+	// ── Language section ──────────────────────────────────────────────────
+	langActive := a.settingsActive == 2
+	langLabel := labelStyle(langActive).Width(11).Render(T("settings_lang_label"))
+	var langView string
+	if activeLang == LangZH {
+		langView = styleOverlayValue.Render(T("settings_lang_zh"))
+	} else {
+		langView = styleOverlayValue.Render(T("settings_lang_en"))
+	}
+	langLine := "  " + langLabel + "  " + langView
 
 	// ── Footer ────────────────────────────────────────────────────────────
 	enterKey := styleOverlayKey.Render(" Enter ")
 	escKey := styleOverlayKey.Render(" Esc ")
 	tabKey := styleOverlayKey.Render(" Tab ")
-	footer := "  " + enterKey + styleOverlayMuted.Render(" save  ·  ") +
-		escKey + styleOverlayMuted.Render(" cancel  ·  ") +
-		tabKey + styleOverlayMuted.Render(" switch field")
+	footer := "  " + enterKey + styleOverlayMuted.Render(" "+T("settings_save")+"  ·  ") +
+		escKey + styleOverlayMuted.Render(" "+T("settings_cancel")+"  ·  ") +
+		tabKey + styleOverlayMuted.Render(" "+T("settings_switch"))
 
 	rows := []string{
 		title,
 		topDiv,
 		"",
-		sectionLabel("Music Library"),
+		sectionLabel(T("settings_section_lib")),
 		"",
 		dirLine,
 		reloadHint,
 		"",
-		sectionLabel("8-bit Conversion  (p2chip)"),
+		sectionLabel(T("settings_section_chip")),
 		"",
 		optsLine,
 		"",
 		optsHint,
 		optsEx,
+		"",
+		sectionLabel(T("settings_lang_label")),
+		"",
+		langLine,
 		"",
 		footer,
 	}
