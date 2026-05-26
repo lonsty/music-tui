@@ -339,11 +339,13 @@ func (a *App) renderLyricsScroll(w, h int) string {
 
 		case idx == centerIdx && isBrowsing:
 			// Browse mode, centre line: bright colour + play icon, no rule deco.
-			rendered = renderBrowseCursorLine(text, w)
+			rendered = renderBrowseCursorLine(text, w, maxTextW)
 
 		case isBrowsing && active >= 0 && idx == active:
-			// Browse mode, the actual playing line (not at centre): mauve, no deco.
-			rendered = renderActiveOffCenterLine(text, w)
+			// Browse mode, the actual playing line (not at centre):
+			// keep the mauve highlight so the user can still see where playback
+			// is, but without any icon or rule decoration.
+			rendered = lyricStyleForDistance(0, true).Width(w).Render(text)
 
 		default:
 			rendered = lyricStyleForDistance(dist, false).Width(w).Render(text)
@@ -361,8 +363,8 @@ func (a *App) renderLyricsScroll(w, h int) string {
 // The scroll is driven by the playback position such that the centre row of
 // the panel tracks the current line index proportionally to progress:
 //
-//   middleIdx = int(progress × (total - 1))
-//   offset    = clamp(middleIdx - h/2, 0, max(0, total - h))
+//	middleIdx = int(progress × (total - 1))
+//	offset    = clamp(middleIdx - h/2, 0, max(0, total - h))
 //
 // This means:
 //   - At progress=0 the first line is near the top.
@@ -463,8 +465,8 @@ func lyricStyleForDistance(dist int, isActive bool) lipgloss.Style {
 // renderActiveLyricLine renders the currently playing lyric line framed by a
 // pair of horizontal rules with a smooth per-character colour gradient:
 //
-//	    overlay0 ·········· subtext0  text  subtext0 ·········· overlay0
-//	    (dim outer)         (bright inner)  (bright inner)      (dim outer)
+//	overlay0 ·········· subtext0  text  subtext0 ·········· overlay0
+//	(dim outer)         (bright inner)  (bright inner)      (dim outer)
 //
 // The gradient is computed by gradientText so every ─ character gets its own
 // interpolated colour — no visible colour bands.
@@ -477,7 +479,7 @@ func lyricStyleForDistance(dist int, isActive bool) lipgloss.Style {
 //   - short text is centred within the maxTextW slot via equal padding.
 func renderActiveLyricLine(text string, w, maxTextW int) string {
 	const margin = 4 // columns reserved on each side of the whole decoration
-	const gap    = 1 // spaces between rule end and text
+	const gap = 1    // spaces between rule end and text
 
 	styleText := lipgloss.NewStyle().Foreground(lipgloss.Color(mauve)).Bold(true)
 
@@ -495,13 +497,13 @@ func renderActiveLyricLine(text string, w, maxTextW int) string {
 	// Right rule: inner (bright) → outer (dim), leaving the text.
 	rightRule := gradientText(rule, false, subtext0, overlay2, overlay1, overlay0)
 
-	sp  := strings.Repeat(" ", gap)
+	sp := strings.Repeat(" ", gap)
 	mid := styleText.Render(text)
 
 	// Centre short text within maxTextW.
 	padTotal := maxTextW - textW
-	padL     := padTotal / 2
-	padR     := padTotal - padL
+	padL := padTotal / 2
+	padR := padTotal - padL
 
 	content := strings.Repeat(" ", margin) +
 		leftRule +
@@ -517,42 +519,14 @@ func renderActiveLyricLine(text string, w, maxTextW int) string {
 	return content
 }
 
-// renderBrowseCursorLine renders the lyric line that sits at the centre of the
-// panel when the user is in browse mode.  It is shown in the brightest colour
-// (Catppuccin "text" = #CDD6F4) with a play icon on the left, but without the
-// rule decorations used for the actual playing line.  This indicates "you are
-// here — press Enter to play from this position".
-func renderBrowseCursorLine(lyric string, w int) string {
-	const iconW = 2 // "" glyph (1 col) + 1 space = 2 cols
-	icon := " " // play icon + space
-	styleIcon := lipgloss.NewStyle().Foreground(lipgloss.Color(mauve)).Bold(true)
-	styleText := lipgloss.NewStyle().
-		Foreground(lipgloss.Color(text)). // "text" here is the colour constant
-		Bold(true).
-		Align(lipgloss.Center)
 
-	avail := w - iconW
-	if avail < 1 {
-		return styleText.Width(w).Render(truncate(lyric, w))
-	}
-	return styleIcon.Render(icon) + styleText.Width(avail).Render(truncate(lyric, avail))
-}
-
-// renderActiveOffCenterLine renders the currently playing lyric line when the
-// user has scrolled the browse cursor away from it.  The line is shown in
-// mauve (matching the active colour) but without bold or rule decorations, and
-// with a small playing indicator on the left so it remains identifiable.
-func renderActiveOffCenterLine(lyric string, w int) string {
-	const iconW = 2 // "󰎆 " = playing glyph (1 col) + 1 space = 2 cols
-	icon := "󰎆 "
-	styleIcon := lipgloss.NewStyle().Foreground(lipgloss.Color(mauve))
-	styleText := lipgloss.NewStyle().
-		Foreground(lipgloss.Color(mauve)).
-		Align(lipgloss.Center)
-
-	avail := w - iconW
-	if avail < 1 {
-		return styleText.Width(w).Render(truncate(lyric, w))
-	}
-	return styleIcon.Render(icon) + styleText.Width(avail).Render(truncate(lyric, avail))
+// renderBrowseCursorLine renders the lyric line at the browse cursor position
+// (centre of the panel in browse mode).  It uses the same gradient-rule
+// decoration as the active playback line so the cursor position is visually
+// consistent — the decoration indicates "press Enter to seek here".
+//
+// maxTextW is the widest lyric line in the set and is passed through to keep
+// rule widths consistent with the rest of the panel.
+func renderBrowseCursorLine(lyric string, w, maxTextW int) string {
+	return renderActiveLyricLine(lyric, w, maxTextW)
 }
