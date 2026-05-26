@@ -9,7 +9,16 @@ import (
 // scan and play.  When adding a new format, you must also register a decoder
 // in internal/audio/source.go (the decoders map) — both maps must stay in sync.
 var SupportedExtensions = map[string]bool{
+	// MP3 — MPEG Audio Layer III
 	".mp3": true,
+	// FLAC — Free Lossless Audio Codec (via beep/flac + mewkiz/flac)
+	".flac": true,
+	// WAV — Waveform Audio File Format, uncompressed PCM (via beep/wav)
+	".wav":  true,
+	".wave": true,
+	// OGG / Vorbis — Ogg container with Vorbis audio (via beep/vorbis + jfreymuth/oggvorbis)
+	".ogg": true,
+	".oga": true,
 }
 
 // IsSupportedAudio reports whether path has a supported audio file extension.

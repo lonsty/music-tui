@@ -204,10 +204,18 @@ func (p *Player) playAt(src StreamSource, offsetDur time.Duration) error {
 	}
 
 	// Seek before the stream reaches the speaker so no frames are lost.
+	// A seek failure is non-fatal: playback will start from the beginning
+	// of the stream rather than the requested offset.  This can happen for
+	// formats whose decoder does not fully support random access (e.g. some
+	// unusual codec variants), but all standard decoders registered in
+	// source.go handle seek correctly for local files.
 	if offsetDur > 0 {
 		target := format.SampleRate.N(offsetDur)
 		if target > 0 && target < streamer.Len() {
-			_ = streamer.Seek(target)
+			if serr := streamer.Seek(target); serr != nil {
+				// Non-fatal: stream will play from start.
+				_ = serr
+			}
 		}
 	}
 
@@ -538,10 +546,16 @@ func (p *Player) CrossfadeToSource(src StreamSource, positionOffset time.Duratio
 	}
 	// streamer.Close() will close the underlying file.
 
-	// Seek to the target position (ignore errors — the file may be shorter).
+	// Seek to the crossfade target position.  A failure is non-fatal: the
+	// new stream will start from the beginning instead of the computed offset,
+	// producing a slightly off crossfade position.  All standard local-file
+	// decoders registered in source.go support seek correctly.
 	targetSample := format.SampleRate.N(seekTo)
 	if targetSample > 0 && targetSample < streamer.Len() {
-		_ = streamer.Seek(targetSample)
+		if serr := streamer.Seek(targetSample); serr != nil {
+			// Non-fatal: crossfade will start from stream beginning.
+			_ = serr
+		}
 	}
 
 	var beepSrc beep.Streamer = streamer

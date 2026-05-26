@@ -3,16 +3,22 @@ package library
 import (
 	"crypto/sha256"
 	"fmt"
+	"io"
 	"io/fs"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
-	id3 "github.com/bogem/id3v2/v2"
+	"github.com/dhowden/tag"
+	"github.com/gopxl/beep/v2"
+	"github.com/gopxl/beep/v2/flac"
 	"github.com/gopxl/beep/v2/mp3"
+	"github.com/gopxl/beep/v2/vorbis"
+	"github.com/gopxl/beep/v2/wav"
 )
 
-// ScanDir walks the given directory and returns all MP3 tracks found.
+// ScanDir walks the given directory and returns all supported audio tracks.
 // Subdirectories are traversed recursively.
 // CoverArt is populated in-memory; use ParseTrackWithCover to persist covers.
 func ScanDir(dir string) ([]Track, error) {
@@ -43,7 +49,7 @@ func ScanDir(dir string) ([]Track, error) {
 	return tracks, nil
 }
 
-// ParseTrackWithCover reads ID3 metadata for a single file.
+// ParseTrackWithCover reads metadata for a single audio file.
 // If cover art is found and coverCacheDir is non-empty, the cover is written
 // to coverCacheDir/<sha256(path)[:8]>.jpg and Track.CoverPath is set.
 // Track.CoverArt is NOT populated (to avoid keeping large blobs in memory).
@@ -71,49 +77,46 @@ func ParseTrackWithCover(path, coverCacheDir string) (Track, error) {
 	return t, nil
 }
 
-// parseTrack reads ID3 metadata and audio duration from an MP3 file.
+// parseTrack reads metadata and audio duration from any supported audio file.
 // CoverArt is populated in-memory; the caller decides whether to persist it.
+//
+// Metadata is read via github.com/dhowden/tag which supports the tag formats
+// used by all supported audio containers:
+//
+//   - MP3:  ID3v1, ID3v2.2, ID3v2.3, ID3v2.4
+//   - FLAC: Vorbis Comment (+ native FLAC metadata blocks)
+//   - OGG:  Vorbis Comment
+//   - WAV:  ID3v2 chunk (when present; WAV has no standard tag format)
 func parseTrack(path string) (Track, error) {
 	var title, artist, albumArtist, album, year, trackNum, genre, comment string
 	var coverArt []byte
 
-	if tag, err := id3.Open(path, id3.Options{Parse: true}); err == nil {
-		title = tag.Title()
-		artist = tag.Artist()
-		album = tag.Album()
-		year = tag.Year()
-		genre = tag.Genre()
+	if m, err := readTags(path); err == nil {
+		title = m.Title()
+		artist = m.Artist()
+		album = m.Album()
+		albumArtist = m.AlbumArtist()
+		genre = m.Genre()
 
-		// TPE2 — album artist
-		if f := tag.GetTextFrame("TPE2"); f.Text != "" {
-			albumArtist = f.Text
+		if m.Year() != 0 {
+			year = fmt.Sprintf("%d", m.Year())
 		}
 
-		// TRCK — track number (may be "3/12")
-		if f := tag.GetTextFrame("TRCK"); f.Text != "" {
-			trackNum = f.Text
+		if tn, _ := m.Track(); tn != 0 {
+			trackNum = fmt.Sprintf("%d", tn)
 		}
 
-		// COMM — first comment frame
-		frames := tag.GetFrames(tag.CommonID("Comments"))
-		if len(frames) > 0 {
-			if cf, ok := frames[0].(id3.CommentFrame); ok {
-				comment = cf.Text
-			}
-		}
+		// Lyrics — dhowden/tag exposes embedded lyrics for some formats.
+		comment = m.Lyrics()
 
-		// APIC — first attached picture
-		frames = tag.GetFrames(tag.CommonID("Attached picture"))
-		if len(frames) > 0 {
-			if pic, ok := frames[0].(id3.PictureFrame); ok && len(pic.Picture) > 0 {
-				coverArt = make([]byte, len(pic.Picture))
-				copy(coverArt, pic.Picture)
-			}
+		// Cover art — returns nil when no embedded picture is found.
+		if pic := m.Picture(); pic != nil && len(pic.Data) > 0 {
+			coverArt = make([]byte, len(pic.Data))
+			copy(coverArt, pic.Data)
 		}
-		_ = tag.Close()
 	}
 
-	duration := readMP3Duration(path)
+	duration := readDuration(path)
 
 	return Track{
 		ID:          path, // overwritten by ParseTrackWithCover
@@ -132,16 +135,74 @@ func parseTrack(path string) (Track, error) {
 	}, nil
 }
 
-// readMP3Duration opens the file, decodes the MP3 header, and returns the
-// track length. Returns 0 on any error.
-func readMP3Duration(path string) time.Duration {
+// readTags opens path and reads audio tags using github.com/dhowden/tag.
+// The caller must not close the returned Metadata; its internal file handle
+// is closed when the function returns.
+func readTags(path string) (tag.Metadata, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = f.Close() }()
+
+	m, err := tag.ReadFrom(f)
+	if err != nil {
+		return nil, err
+	}
+	return m, nil
+}
+
+// ── Duration readers ──────────────────────────────────────────────────────────
+
+// scannerDecoderFn is the signature for format-specific duration readers.
+// It mirrors the decoderFn type in the audio package but is kept separate to
+// avoid an import cycle (library → audio would be circular since audio already
+// uses library types indirectly via the TUI layer).
+type scannerDecoderFn func(r io.ReadCloser) (beep.StreamSeekCloser, beep.Format, error)
+
+// scannerDecoders maps lower-case file extensions to their duration-decoder.
+// This map must be kept in sync with audio.decoders in internal/audio/source.go.
+var scannerDecoders = map[string]scannerDecoderFn{
+	".mp3": func(r io.ReadCloser) (beep.StreamSeekCloser, beep.Format, error) {
+		return mp3.Decode(r)
+	},
+	".flac": func(r io.ReadCloser) (beep.StreamSeekCloser, beep.Format, error) {
+		return flac.Decode(r)
+	},
+	".wav": func(r io.ReadCloser) (beep.StreamSeekCloser, beep.Format, error) {
+		return wav.Decode(r)
+	},
+	".wave": func(r io.ReadCloser) (beep.StreamSeekCloser, beep.Format, error) {
+		return wav.Decode(r)
+	},
+	".ogg": func(r io.ReadCloser) (beep.StreamSeekCloser, beep.Format, error) {
+		return vorbis.Decode(r)
+	},
+	".oga": func(r io.ReadCloser) (beep.StreamSeekCloser, beep.Format, error) {
+		return vorbis.Decode(r)
+	},
+}
+
+// readDuration opens path, decodes enough of the stream to determine length,
+// and returns the track duration.  Returns 0 on any error.
+//
+// The format is detected from the file extension via scannerDecoders.
+// This function is intentionally separate from the tag-reading path so that
+// a missing or malformed tag does not prevent the duration from being read.
+func readDuration(path string) time.Duration {
+	ext := strings.ToLower(filepath.Ext(path))
+	dec, ok := scannerDecoders[ext]
+	if !ok {
+		return 0
+	}
+
 	f, err := os.Open(path)
 	if err != nil {
 		return 0
 	}
 	defer func() { _ = f.Close() }()
 
-	streamer, format, err := mp3.Decode(f)
+	streamer, format, err := dec(f)
 	if err != nil {
 		return 0
 	}
