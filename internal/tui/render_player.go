@@ -288,40 +288,67 @@ func (a *App) renderLyricsScroll(w, h int) string {
 		}
 	}
 
-	// Synchronised lyrics before the first timestamp has been reached
-	// (active == -1): treat as if active were at index -1 so that all lyrics
-	// sit below the centre line, waiting to scroll up into view.
-	// We achieve this by using a virtual active position of -1: the first
-	// lyric line (index 0) will appear one row below centre.
-	virtualActive := active
-	if virtualActive < 0 {
-		virtualActive = -1
+	// ── Determine the centre line index ────────────────────────────────────
+	// In browse mode (browseOffset != 0) the centre follows the browse cursor.
+	// In follow mode (browseOffset == 0) the centre follows activeIdx.
+	isBrowsing := a.browseOffset != 0
+
+	var centerIdx int
+	if !isBrowsing {
+		// Follow-playback mode: same as before.
+		// Use virtualActive=-1 before the first timed line so lyrics wait below.
+		if active < 0 {
+			// Synchronised lyrics before first line: show lines below centre.
+			centerIdx = -1
+		} else {
+			centerIdx = active
+		}
+	} else {
+		// Browse mode: clamp the browse cursor to valid range.
+		centerIdx = active + a.browseOffset
+		if centerIdx < 0 {
+			centerIdx = 0
+		}
+		if total > 0 && centerIdx >= total {
+			centerIdx = total - 1
+		}
 	}
 
 	centerRow := h / 2
 	var sb strings.Builder
 
 	for row := 0; row < h; row++ {
-		idx := virtualActive + (row - centerRow)
+		idx := centerIdx + (row - centerRow)
 		dist := row - centerRow
 		if dist < 0 {
 			dist = -dist
 		}
 
 		if idx < 0 || idx >= total {
-			// Out-of-range (above first line or below last): blank line.
 			sb.WriteString(lyricStyleForDistance(dist, false).Width(w).Render("") + "\n")
 			continue
 		}
 
 		text := truncate(lines[idx].Text, w)
-		isActive := active >= 0 && idx == active
+
 		var rendered string
-		if isActive {
+		switch {
+		case idx == centerIdx && !isBrowsing && active >= 0:
+			// Follow mode, centre = active line: use the full decorated style.
 			rendered = renderActiveLyricLine(text, w, maxTextW)
-		} else {
+
+		case idx == centerIdx && isBrowsing:
+			// Browse mode, centre line: bright colour + play icon, no rule deco.
+			rendered = renderBrowseCursorLine(text, w)
+
+		case isBrowsing && active >= 0 && idx == active:
+			// Browse mode, the actual playing line (not at centre): mauve, no deco.
+			rendered = renderActiveOffCenterLine(text, w)
+
+		default:
 			rendered = lyricStyleForDistance(dist, false).Width(w).Render(text)
 		}
+
 		sb.WriteString(rendered + "\n")
 	}
 
@@ -488,4 +515,44 @@ func renderActiveLyricLine(text string, w, maxTextW int) string {
 		content = strings.Repeat(" ", pad/2) + content + strings.Repeat(" ", pad-pad/2)
 	}
 	return content
+}
+
+// renderBrowseCursorLine renders the lyric line that sits at the centre of the
+// panel when the user is in browse mode.  It is shown in the brightest colour
+// (Catppuccin "text" = #CDD6F4) with a play icon on the left, but without the
+// rule decorations used for the actual playing line.  This indicates "you are
+// here — press Enter to play from this position".
+func renderBrowseCursorLine(lyric string, w int) string {
+	const iconW = 2 // "" glyph (1 col) + 1 space = 2 cols
+	icon := " " // play icon + space
+	styleIcon := lipgloss.NewStyle().Foreground(lipgloss.Color(mauve)).Bold(true)
+	styleText := lipgloss.NewStyle().
+		Foreground(lipgloss.Color(text)). // "text" here is the colour constant
+		Bold(true).
+		Align(lipgloss.Center)
+
+	avail := w - iconW
+	if avail < 1 {
+		return styleText.Width(w).Render(truncate(lyric, w))
+	}
+	return styleIcon.Render(icon) + styleText.Width(avail).Render(truncate(lyric, avail))
+}
+
+// renderActiveOffCenterLine renders the currently playing lyric line when the
+// user has scrolled the browse cursor away from it.  The line is shown in
+// mauve (matching the active colour) but without bold or rule decorations, and
+// with a small playing indicator on the left so it remains identifiable.
+func renderActiveOffCenterLine(lyric string, w int) string {
+	const iconW = 2 // "󰎆 " = playing glyph (1 col) + 1 space = 2 cols
+	icon := "󰎆 "
+	styleIcon := lipgloss.NewStyle().Foreground(lipgloss.Color(mauve))
+	styleText := lipgloss.NewStyle().
+		Foreground(lipgloss.Color(mauve)).
+		Align(lipgloss.Center)
+
+	avail := w - iconW
+	if avail < 1 {
+		return styleText.Width(w).Render(truncate(lyric, w))
+	}
+	return styleIcon.Render(icon) + styleText.Width(avail).Render(truncate(lyric, avail))
 }

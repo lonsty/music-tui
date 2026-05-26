@@ -138,6 +138,11 @@ func (a *App) cmdPlayPrev() tea.Cmd {
 // seekStep is the seek distance applied by < and >.
 const seekStep = 5 * time.Second
 
+// browseFadeOutTicks is the number of 500ms ticks after the last manual lyric
+// scroll before the browse cursor automatically resets to follow playback.
+// 10 ticks × 500ms = 5 seconds.
+const browseFadeOutTicks = 10
+
 // cmdSeek moves the playback position by delta relative to the current
 // position.  The result is clamped to [0, Duration].
 func (a *App) cmdSeek(delta time.Duration) tea.Cmd {
@@ -152,6 +157,18 @@ func (a *App) cmdSeek(delta time.Duration) tea.Cmd {
 			target = dur
 		}
 		_ = a.player.Seek(target)
+		return noopMsg{}
+	}
+}
+
+// cmdSeekAndResume seeks to the given absolute position and ensures the player
+// is running.  Used when the user selects a lyric line in browse mode.
+func (a *App) cmdSeekAndResume(pos time.Duration) tea.Cmd {
+	return func() tea.Msg {
+		_ = a.player.Seek(pos)
+		if a.player.State() != audio.StatePlaying {
+			a.player.Resume()
+		}
 		return noopMsg{}
 	}
 }

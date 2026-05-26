@@ -71,6 +71,14 @@ type LyricsState struct {
 	provider  lyrics.Provider // chain of local + online providers; set in NewApp
 	loading   bool            // true while a background fetch is in-flight
 	synced    bool            // true when at least one line has a non-zero timestamp
+
+	// Manual browse state (fullscreen lyrics panel only).
+	// browseOffset is the signed offset from activeIdx to the line that sits
+	// at the centre of the visible window.  0 means "follow playback".
+	// browseTicks counts how many ticks have elapsed since the last manual
+	// scroll; when it reaches browseFadeOutTicks the offset resets to 0.
+	browseOffset int
+	browseTicks  int
 }
 
 // App is the root Bubble Tea model.
@@ -398,6 +406,8 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		a.trackID = ""
 		a.synced = false
 		a.loading = msg.track != nil // loading until lyricsLoadedMsg arrives
+		a.browseOffset = 0
+		a.browseTicks = 0
 
 		var cmds []tea.Cmd
 		// If we were in chip mode, automatically start converting the new track.
@@ -460,6 +470,14 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tickMsg:
 		a.tickMarquees()
 		a.syncLyricsActive()
+		// Auto-reset browse cursor after inactivity.
+		if a.browseOffset != 0 {
+			a.browseTicks++
+			if a.browseTicks >= browseFadeOutTicks {
+				a.browseOffset = 0
+				a.browseTicks = 0
+			}
+		}
 		return a, tick()
 
 	case trackDoneMsg:

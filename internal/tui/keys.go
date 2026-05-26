@@ -247,6 +247,40 @@ func (a *App) handleFullscreenKey(msg tea.KeyMsg) tea.Cmd {
 	case ">":
 		return a.cmdSeek(+seekStep)
 
+	// ── Lyrics browse (synced lyrics only) ────────────────────────────────────
+	// ↑/k scroll the visible window up (browse cursor moves toward earlier lines).
+	// ↓/j scroll down (browse cursor moves toward later lines).
+	// Any movement activates browse mode; the cursor auto-resets after 5s.
+	case "up", "k":
+		if a.synced && len(a.lines) > 0 {
+			a.browseOffset--
+			a.browseTicks = 0
+		}
+
+	case "down", "j":
+		if a.synced && len(a.lines) > 0 {
+			a.browseOffset++
+			a.browseTicks = 0
+		}
+
+	// Enter in browse mode: seek to the line currently at the panel centre
+	// and resume playback; reset the browse cursor.
+	case "enter":
+		if a.synced && a.browseOffset != 0 && len(a.lines) > 0 {
+			total := len(a.lines)
+			centerIdx := a.activeIdx + a.browseOffset
+			if centerIdx < 0 {
+				centerIdx = 0
+			}
+			if centerIdx >= total {
+				centerIdx = total - 1
+			}
+			target := a.lines[centerIdx].Time
+			a.browseOffset = 0
+			a.browseTicks = 0
+			return a.cmdSeekAndResume(target)
+		}
+
 	case "q":
 		return a.cmdQuit()
 
