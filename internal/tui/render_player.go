@@ -393,89 +393,54 @@ func lyricStyleForDistance(dist int, isActive bool) lipgloss.Style {
 }
 
 // renderActiveLyricLine renders the currently playing lyric line framed by a
-// pair of multi-segment horizontal rules with a light→dark gradient:
+// pair of horizontal rules with a smooth per-character colour gradient:
 //
-//	    ── ─── ──── text ──── ─── ──
-//	    ↑s1 ↑s2  ↑s3       s3↑  s2↑ s1↑
+//	    overlay0 ·········· subtext0  text  subtext0 ·········· overlay0
+//	    (dim outer)         (bright inner)  (bright inner)      (dim outer)
 //
-// The four colour segments per side (outermost to innermost):
-//
-//	overlay0 → overlay1 → overlay2 → subtext0  →  [mauve bold text]
-//
-// This produces a "浅→深→文字→深→浅" effect where the rules seem to
-// illuminate toward the centre text.
+// The gradient is computed by gradientText so every ─ character gets its own
+// interpolated colour — no visible colour bands.
 //
 // Layout:
-//   - margin: 4-column gap between the panel edge and the outermost segment.
-//   - fixed rule width: derived from maxTextW (widest lyric line) so the
-//     rule length never changes as different lines become active.
-//   - 1-space gap between the innermost segment and the text on each side.
-//   - short text is padded to maxTextW so the rules stay at fixed positions.
+//   - margin: 4-column gap between the panel edge and the outermost ─.
+//   - fixed rule width: derived from maxTextW so the rule length never
+//     changes as different (shorter) lines become active.
+//   - 1-space gap between the innermost ─ and the text on each side.
+//   - short text is centred within the maxTextW slot via equal padding.
 func renderActiveLyricLine(text string, w, maxTextW int) string {
-	const margin  = 4 // columns reserved on each side of the whole decoration
-	const gap     = 1 // spaces between innermost rule segment and text
+	const margin = 4 // columns reserved on each side of the whole decoration
+	const gap    = 1 // spaces between rule end and text
 
 	styleText := lipgloss.NewStyle().Foreground(lipgloss.Color(mauve)).Bold(true)
 
-	// Four colour segments from outer (dim) to inner (bright).
-	ruleStyles := []lipgloss.Style{
-		lipgloss.NewStyle().Foreground(lipgloss.Color(overlay0)),
-		lipgloss.NewStyle().Foreground(lipgloss.Color(overlay1)),
-		lipgloss.NewStyle().Foreground(lipgloss.Color(overlay2)),
-		lipgloss.NewStyle().Foreground(lipgloss.Color(subtext0)),
-	}
-	nSegs := len(ruleStyles)
-
 	textW := strWidth(text)
 
-	// ruleLen = total columns available for both rules combined / 2
-	// Available = w - 2*margin - 2*gap - maxTextW
 	ruleLen := (w - 2*margin - 2*gap - maxTextW) / 2
-	if ruleLen < nSegs {
-		// Not enough space for segmented rules — plain centred text.
+	if ruleLen < 2 {
 		return styleText.Width(w).Render(text)
 	}
 
-	// Distribute ruleLen across nSegs segments.
-	// Inner segments are at least as wide as outer ones (extra cols go inward).
-	segLens := make([]int, nSegs)
-	base    := ruleLen / nSegs
-	extra   := ruleLen - base*nSegs
-	for i := range segLens {
-		segLens[i] = base
-	}
-	// Give extra columns to the inner segments (highest indices).
-	for i := 0; i < extra; i++ {
-		segLens[nSegs-1-i]++
-	}
+	rule := strings.Repeat("─", ruleLen)
 
-	// Build left rule: outermost first (index 0 = overlay0).
-	var leftRule, rightRule strings.Builder
-	for i := 0; i < nSegs; i++ {
-		seg := strings.Repeat("─", segLens[i])
-		leftRule.WriteString(ruleStyles[i].Render(seg))
-	}
-	// Right rule: innermost first (mirror of left).
-	for i := nSegs - 1; i >= 0; i-- {
-		seg := strings.Repeat("─", segLens[i])
-		rightRule.WriteString(ruleStyles[i].Render(seg))
-	}
+	// Left rule: outer (dim) → inner (bright), approaching the text.
+	leftRule := gradientText(rule, false, overlay0, overlay1, overlay2, subtext0)
+	// Right rule: inner (bright) → outer (dim), leaving the text.
+	rightRule := gradientText(rule, false, subtext0, overlay2, overlay1, overlay0)
 
-	sp         := strings.Repeat(" ", gap)
-	mid        := styleText.Render(text)
+	sp  := strings.Repeat(" ", gap)
+	mid := styleText.Render(text)
 
-	// Centre the text within maxTextW by padding short lines equally.
+	// Centre short text within maxTextW.
 	padTotal := maxTextW - textW
 	padL     := padTotal / 2
 	padR     := padTotal - padL
 
 	content := strings.Repeat(" ", margin) +
-		leftRule.String() +
+		leftRule +
 		sp + strings.Repeat(" ", padL) + mid + strings.Repeat(" ", padR) + sp +
-		rightRule.String() +
+		rightRule +
 		strings.Repeat(" ", margin)
 
-	// If the content is narrower than w (odd-width ruleLen etc.), centre it.
 	contentW := 2*margin + 2*ruleLen + 2*gap + maxTextW
 	if contentW < w {
 		pad := w - contentW
