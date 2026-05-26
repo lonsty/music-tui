@@ -349,36 +349,42 @@ func (a *App) renderLyricsPlain(w, h int) string {
 	return strings.TrimRight(sb.String(), "\n")
 }
 
-// lyricDistanceColors defines the colour palette used for the distance-based
-// fade effect.  Index 0 is the active line (brightest); each subsequent index
-// is one step dimmer.  The gradient is stretched over 12 steps so the colour
-// transition is gradual rather than abrupt.  All colours are from the
-// Catppuccin Mocha palette.
+// lyricDistanceColors defines the colour palette for non-active lines.
+// Index 0 corresponds to distance=1 (immediately adjacent to active),
+// since the active line itself is always rendered in mauve+bold and does
+// not use this table.  Each subsequent index is one step dimmer.
+// The gradient is stretched over 10 steps for a gradual transition.
 var lyricDistanceColors = []string{
-	mauve,    // 0 — active line
-	mauve,    // 1 — still very close
-	subtext1, // 2
-	subtext1, // 3
-	subtext0, // 4
-	subtext0, // 5
-	overlay2, // 6
-	overlay2, // 7
-	overlay1, // 8
-	overlay1, // 9
-	overlay0, // 10
-	overlay0, // 11+ — most distant / out-of-range
+	subtext1, // dist 1 — immediately adjacent (NOT mauve — that's active only)
+	subtext1, // dist 2
+	subtext0, // dist 3
+	subtext0, // dist 4
+	overlay2, // dist 5
+	overlay2, // dist 6
+	overlay1, // dist 7
+	overlay1, // dist 8
+	overlay0, // dist 9
+	overlay0, // dist 10+ — most distant / out-of-range
 }
 
 // lyricStyleForDistance returns a lipgloss.Style for a lyric line that is dist
-// rows away from the active line.  The active line (dist=0) is rendered bold;
-// all others are normal weight.
+// rows away from the active line.
+//   - dist == 0 (active line): mauve + Bold — the active style is handled by
+//     renderActiveLyricLine, but this function is kept consistent.
+//   - dist >= 1: look up lyricDistanceColors[dist-1], clamped to the last entry.
 func lyricStyleForDistance(dist int, isActive bool) lipgloss.Style {
-	maxIdx := len(lyricDistanceColors) - 1
-	if dist > maxIdx {
-		dist = maxIdx
+	var colour string
+	if dist == 0 || isActive {
+		colour = mauve
+	} else {
+		idx := dist - 1
+		if idx >= len(lyricDistanceColors) {
+			idx = len(lyricDistanceColors) - 1
+		}
+		colour = lyricDistanceColors[idx]
 	}
 	s := lipgloss.NewStyle().
-		Foreground(lipgloss.Color(lyricDistanceColors[dist])).
+		Foreground(lipgloss.Color(colour)).
 		Align(lipgloss.Center)
 	if isActive {
 		s = s.Bold(true)
@@ -387,66 +393,89 @@ func lyricStyleForDistance(dist int, isActive bool) lipgloss.Style {
 }
 
 // renderActiveLyricLine renders the currently playing lyric line framed by a
-// pair of segmented horizontal rules:
+// pair of multi-segment horizontal rules with a light→dark gradient:
 //
-//	    ─── ── text ── ───
-//	    ↑outer ↑inner    ↑inner ↑outer
+//	    ── ─── ──── text ──── ─── ──
+//	    ↑s1 ↑s2  ↑s3       s3↑  s2↑ s1↑
 //
-// Design rules:
-//   - margin: 4-column gap between the panel edge and the start of the rule.
-//   - fixed width: rule length is derived from maxTextW (the widest line in
-//     the lyric set) so it never changes between lines.
-//   - colour gradient (outer → inner → text):
-//       overlay0 (outer, dim) → overlay2 (inner, brighter) → mauve+bold (text)
-//   - each rule is split in half: outer half in overlay0, inner half in overlay2.
-//   - 1 space separates the inner rule from the text on each side.
-//   - the whole assembly is centred in w columns.
+// The four colour segments per side (outermost to innermost):
+//
+//	overlay0 → overlay1 → overlay2 → subtext0  →  [mauve bold text]
+//
+// This produces a "浅→深→文字→深→浅" effect where the rules seem to
+// illuminate toward the centre text.
+//
+// Layout:
+//   - margin: 4-column gap between the panel edge and the outermost segment.
+//   - fixed rule width: derived from maxTextW (widest lyric line) so the
+//     rule length never changes as different lines become active.
+//   - 1-space gap between the innermost segment and the text on each side.
+//   - short text is padded to maxTextW so the rules stay at fixed positions.
 func renderActiveLyricLine(text string, w, maxTextW int) string {
-	const margin  = 4 // columns reserved on each side between panel edge and rule
-	const gap     = 1 // spaces between inner rule end and text
+	const margin  = 4 // columns reserved on each side of the whole decoration
+	const gap     = 1 // spaces between innermost rule segment and text
 
-	styleText  := lipgloss.NewStyle().Foreground(lipgloss.Color(mauve)).Bold(true)
-	styleInner := lipgloss.NewStyle().Foreground(lipgloss.Color(overlay2))
-	styleOuter := lipgloss.NewStyle().Foreground(lipgloss.Color(overlay0))
+	styleText := lipgloss.NewStyle().Foreground(lipgloss.Color(mauve)).Bold(true)
+
+	// Four colour segments from outer (dim) to inner (bright).
+	ruleStyles := []lipgloss.Style{
+		lipgloss.NewStyle().Foreground(lipgloss.Color(overlay0)),
+		lipgloss.NewStyle().Foreground(lipgloss.Color(overlay1)),
+		lipgloss.NewStyle().Foreground(lipgloss.Color(overlay2)),
+		lipgloss.NewStyle().Foreground(lipgloss.Color(subtext0)),
+	}
+	nSegs := len(ruleStyles)
 
 	textW := strWidth(text)
 
-	// Total content width = 2*margin + 2*ruleLen + 2*gap + maxTextW
-	// We want rule length fixed to the widest line.
-	// ruleLen = (w - 2*margin - 2*gap - maxTextW) / 2
+	// ruleLen = total columns available for both rules combined / 2
+	// Available = w - 2*margin - 2*gap - maxTextW
 	ruleLen := (w - 2*margin - 2*gap - maxTextW) / 2
-	if ruleLen < 2 {
-		// Not enough room — fall back to plain centred text.
+	if ruleLen < nSegs {
+		// Not enough space for segmented rules — plain centred text.
 		return styleText.Width(w).Render(text)
 	}
 
-	// Split each rule: outer half (dim) + inner half (bright).
-	// Inner half gets any extra column when ruleLen is odd.
-	outerLen := ruleLen / 2
-	innerLen := ruleLen - outerLen
+	// Distribute ruleLen across nSegs segments.
+	// Inner segments are at least as wide as outer ones (extra cols go inward).
+	segLens := make([]int, nSegs)
+	base    := ruleLen / nSegs
+	extra   := ruleLen - base*nSegs
+	for i := range segLens {
+		segLens[i] = base
+	}
+	// Give extra columns to the inner segments (highest indices).
+	for i := 0; i < extra; i++ {
+		segLens[nSegs-1-i]++
+	}
 
-	leftOuter  := styleOuter.Render(strings.Repeat("─", outerLen))
-	leftInner  := styleInner.Render(strings.Repeat("─", innerLen))
-	rightInner := styleInner.Render(strings.Repeat("─", innerLen))
-	rightOuter := styleOuter.Render(strings.Repeat("─", outerLen))
+	// Build left rule: outermost first (index 0 = overlay0).
+	var leftRule, rightRule strings.Builder
+	for i := 0; i < nSegs; i++ {
+		seg := strings.Repeat("─", segLens[i])
+		leftRule.WriteString(ruleStyles[i].Render(seg))
+	}
+	// Right rule: innermost first (mirror of left).
+	for i := nSegs - 1; i >= 0; i-- {
+		seg := strings.Repeat("─", segLens[i])
+		rightRule.WriteString(ruleStyles[i].Render(seg))
+	}
+
 	sp         := strings.Repeat(" ", gap)
 	mid        := styleText.Render(text)
 
-	// Pad text side to maxTextW so short lines keep the rules at fixed position.
+	// Centre the text within maxTextW by padding short lines equally.
 	padTotal := maxTextW - textW
 	padL     := padTotal / 2
 	padR     := padTotal - padL
-	spacePadL := strings.Repeat(" ", padL)
-	spacePadR := strings.Repeat(" ", padR)
 
 	content := strings.Repeat(" ", margin) +
-		leftOuter + leftInner +
-		sp + spacePadL + mid + spacePadR + sp +
-		rightInner + rightOuter +
+		leftRule.String() +
+		sp + strings.Repeat(" ", padL) + mid + strings.Repeat(" ", padR) + sp +
+		rightRule.String() +
 		strings.Repeat(" ", margin)
 
-	// Centre the whole line if it is narrower than w (can happen when
-	// maxTextW is small and margin already accounts for the difference).
+	// If the content is narrower than w (odd-width ruleLen etc.), centre it.
 	contentW := 2*margin + 2*ruleLen + 2*gap + maxTextW
 	if contentW < w {
 		pad := w - contentW
