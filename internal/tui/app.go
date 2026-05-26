@@ -24,7 +24,6 @@ import (
 // SessionState holds the persisted state that is restored on the next launch.
 type SessionState struct {
 	LastTrackID    string // preferred: stable ID (since v0.4)
-	LastTrackPath  string // fallback: file path (pre-v0.4 sessions)
 	LastPositionMs int64
 	WasPlaying     bool // if true, load the track but start paused
 	Volume         float64
@@ -337,11 +336,9 @@ func NewApp(player *audio.Player, st *store.Store, musicDir string, tracks []lib
 		// the correct playing state (no flash/blank period while the async
 		// restore Cmd is in flight).
 		// Prefer ID lookup (stable since v0.4); fall back to path for legacy sessions.
-		if sess != nil && (sess.LastTrackID != "" || sess.LastTrackPath != "") {
+		if sess != nil && sess.LastTrackID != "" {
 			for _, t := range app.tracks {
-				matchID := sess.LastTrackID != "" && t.ID == sess.LastTrackID
-				matchPath := sess.LastTrackID == "" && t.Path == sess.LastTrackPath
-				if !matchID && !matchPath {
+				if t.ID != sess.LastTrackID {
 					continue
 				}
 				tc := t
@@ -393,10 +390,8 @@ func (a *App) saveSession() {
 		wasPlaying = "1"
 	}
 
-	lastTrackPath := ""
 	lastTrackID := ""
 	if a.currentTrack != nil {
-		lastTrackPath = a.currentTrack.Path
 		lastTrackID = a.currentTrack.ID
 	}
 
@@ -405,14 +400,13 @@ func (a *App) saveSession() {
 	// saved moments earlier by the q-key handler).
 	posMs := pos.Milliseconds()
 	pairs := map[string]string{
-		store.KeyVolume:        strconv.FormatFloat(a.volume, 'f', 4, 64),
-		store.KeyPlayMode:      strconv.Itoa(int(a.playMode)),
-		store.KeyRetroIdx:      strconv.Itoa(a.retroIdx),
-		store.KeyLastTrackID:   lastTrackID,
-		store.KeyLastTrackPath: lastTrackPath,
-		store.KeyWasPlaying:    wasPlaying,
-		store.KeyCursor:        strconv.Itoa(a.cursorPos),
-		store.KeyChip8Options:  a.chip8Options,
+		store.KeyVolume:       strconv.FormatFloat(a.volume, 'f', 4, 64),
+		store.KeyPlayMode:     strconv.Itoa(int(a.playMode)),
+		store.KeyRetroIdx:     strconv.Itoa(a.retroIdx),
+		store.KeyLastTrackID:  lastTrackID,
+		store.KeyWasPlaying:   wasPlaying,
+		store.KeyCursor:       strconv.Itoa(a.cursorPos),
+		store.KeyChip8Options: a.chip8Options,
 	}
 	if posMs > 0 || state != audio.StateStopped {
 		pairs[store.KeyLastPositionMs] = strconv.FormatInt(posMs, 10)
@@ -431,7 +425,7 @@ func (a *App) WithProgram(p *tea.Program) {
 // Init implements tea.Model.
 func (a *App) Init() tea.Cmd {
 	cmds := []tea.Cmd{tick()}
-	if a.session != nil && a.session.LastTrackPath != "" {
+	if a.session != nil && a.session.LastTrackID != "" {
 		cmds = append(cmds, a.cmdRestoreSession())
 	}
 	return tea.Batch(cmds...)

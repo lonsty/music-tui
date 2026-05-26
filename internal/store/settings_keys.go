@@ -11,11 +11,7 @@ const (
 	KeyPlayMode = "play_mode"
 	// KeyRetroIdx is the retro effect preset index.
 	KeyRetroIdx = "retro_idx"
-	// KeyLastTrackPath is the file path of the last played track.
-	// Kept for backward compatibility with sessions created before v0.4.
-	KeyLastTrackPath = "last_track_path"
 	// KeyLastTrackID is the stable ID (sha256-derived hex) of the last played track.
-	// Preferred over KeyLastTrackPath because it survives file renames.
 	KeyLastTrackID = "last_track_id"
 	// KeyLastPositionMs is the playback position in milliseconds of the last track.
 	KeyLastPositionMs = "last_position_ms"

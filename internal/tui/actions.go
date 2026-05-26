@@ -53,12 +53,7 @@ func (a *App) cmdRestoreSession() tea.Cmd {
 	var found *library.Track
 	for i := range a.tracks {
 		t := &a.tracks[i]
-		if sess.LastTrackID != "" && t.ID == sess.LastTrackID {
-			tc := *t
-			found = &tc
-			break
-		}
-		if sess.LastTrackID == "" && t.Path == sess.LastTrackPath {
+		if t.ID == sess.LastTrackID {
 			tc := *t
 			found = &tc
 			break
