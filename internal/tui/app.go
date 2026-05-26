@@ -309,7 +309,9 @@ func NewApp(player *audio.Player, st *store.Store, musicDir string, tracks []lib
 	if len(tracks) > 0 {
 		library.SortByArtistAlbum(tracks)
 		app.tracks = tracks
-		app.filtered = tracks
+		// Apply format preference and any existing search query so the initial
+		// filtered list is consistent with the user's persisted settings.
+		app.applyFilter()
 		app.rebuildShuffle()
 		app.statusMsg = fmt.Sprintf("Loaded %d tracks", len(tracks))
 		// Restore cursor, clamped to valid range.
@@ -431,7 +433,9 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// the existing library and surface the error in the status bar.
 		if msg.tracks != nil {
 			a.tracks = msg.tracks
-			a.filtered = msg.tracks
+			// Re-apply the current search query and format preference so the
+			// filtered list stays consistent after a library reload.
+			a.applyFilter()
 			a.rebuildShuffle()
 			// Re-anchor currentIdx to the playing track's ID so the position
 			// is correct after the library list is replaced.
