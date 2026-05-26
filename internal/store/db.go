@@ -4,9 +4,11 @@
 //
 //	~/.local/share/music-tui/music-tui.db
 //
-// It holds two tables:
-//   - settings  — key/value application configuration
-//   - tracks    — the scanned music library
+// Tables:
+//   - settings        — key/value application configuration
+//   - tracks          — scanned music library
+//   - playlists       — named, ordered track collections
+//   - playlist_tracks — many-to-many join table for playlists
 package store
 
 import (
@@ -56,12 +58,10 @@ func (s *Store) Close() error {
 	return s.db.Close()
 }
 
-// migrate applies any pending schema migrations in order.
-//
-// Each migration is identified by a monotonically increasing version number.
-// Applied versions are recorded in the schema_migrations table so that each
-// migration runs exactly once.  New tables or ALTER TABLE statements should
-// be added as a new entry at the end of the migrations slice.
+// migrate applies all schema changes in a single transaction.
+// There is only one version (1) which creates the complete schema from scratch.
+// New columns or tables should be added directly to this single CREATE TABLE
+// block — no separate ALTER TABLE migrations are needed for a fresh install.
 func migrate(db *sql.DB) error {
 	// Bootstrap the migrations tracker table first (idempotent).
 	if _, err := db.Exec(`
@@ -71,7 +71,6 @@ func migrate(db *sql.DB) error {
 		return fmt.Errorf("create schema_migrations: %w", err)
 	}
 
-	// ordered list of all migrations; append new entries here.
 	migrations := []struct {
 		version int
 		sql     string
@@ -83,31 +82,30 @@ func migrate(db *sql.DB) error {
 			);
 
 			CREATE TABLE IF NOT EXISTS tracks (
-				id            TEXT PRIMARY KEY,
-				path          TEXT NOT NULL UNIQUE,
-				title         TEXT NOT NULL DEFAULT '',
-				artist        TEXT NOT NULL DEFAULT '',
-				album_artist  TEXT NOT NULL DEFAULT '',
-				album         TEXT NOT NULL DEFAULT '',
-				year          TEXT NOT NULL DEFAULT '',
-				track_number  TEXT NOT NULL DEFAULT '',
-				genre         TEXT NOT NULL DEFAULT '',
-				comment       TEXT NOT NULL DEFAULT '',
+				id            TEXT    PRIMARY KEY,
+				path          TEXT    NOT NULL UNIQUE,
+				title         TEXT    NOT NULL DEFAULT '',
+				artist        TEXT    NOT NULL DEFAULT '',
+				album_artist  TEXT    NOT NULL DEFAULT '',
+				album         TEXT    NOT NULL DEFAULT '',
+				year          TEXT    NOT NULL DEFAULT '',
+				track_number  TEXT    NOT NULL DEFAULT '',
+				genre         TEXT    NOT NULL DEFAULT '',
+				comment       TEXT    NOT NULL DEFAULT '',
 				duration_ms   INTEGER NOT NULL DEFAULT 0,
-				cover_path    TEXT NOT NULL DEFAULT '',
-				source        INTEGER NOT NULL DEFAULT 0,
+				cover_path    TEXT    NOT NULL DEFAULT '',
+				format        TEXT    NOT NULL DEFAULT '',
+				provider_id   TEXT    NOT NULL DEFAULT 'local',
 				mtime         INTEGER NOT NULL DEFAULT 0,
 				added_at      INTEGER NOT NULL DEFAULT 0
 			);
 
 			CREATE INDEX IF NOT EXISTS idx_tracks_sort
 				ON tracks(album_artist, year, album, track_number);
-		`},
-		// version 2: playlists tables (歌单管理)
-		{2, `
+
 			CREATE TABLE IF NOT EXISTS playlists (
-				id         TEXT PRIMARY KEY,
-				name       TEXT NOT NULL,
+				id         TEXT    PRIMARY KEY,
+				name       TEXT    NOT NULL,
 				created_at INTEGER NOT NULL DEFAULT 0
 			);
 
@@ -117,32 +115,6 @@ func migrate(db *sql.DB) error {
 				position    INTEGER NOT NULL DEFAULT 0,
 				PRIMARY KEY (playlist_id, track_id)
 			);
-		`},
-		// version 3: add provider_id column to tracks for multi-source support
-		{3, `
-			ALTER TABLE tracks ADD COLUMN provider_id TEXT NOT NULL DEFAULT 'local';
-		`},
-		// version 4: add format column to tracks for format-preference filtering.
-		// The format is the upper-case audio codec string (e.g. "MP3", "FLAC").
-		// Stored explicitly so queries can filter without parsing file extensions.
-		{4, `
-			ALTER TABLE tracks ADD COLUMN format TEXT NOT NULL DEFAULT '';
-		`},
-		// version 5: drop the source INTEGER column, superseded by provider_id.
-		// provider_id (added in v3) carries the same information as a stable string
-		// identifier ("local", "netease", etc.).  source=0 (SourceLocal) maps to
-		// provider_id="local"; source=1 (SourceNetease) to "netease".
-		// SQLite does not support DROP COLUMN before 3.35.0, so we backfill
-		// provider_id from source for any rows that still carry the old default,
-		// then stop reading/writing the column — the column stays in the schema
-		// but is never touched by application code after this migration.
-		{5, `
-			UPDATE tracks
-			   SET provider_id = CASE source
-			                       WHEN 1 THEN 'netease'
-			                       ELSE 'local'
-			                     END
-			 WHERE provider_id = 'local' AND source != 0;
 		`},
 	}
 
