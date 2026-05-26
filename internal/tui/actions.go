@@ -133,6 +133,29 @@ func (a *App) cmdPlayPrev() tea.Cmd {
 	return a.cmdPlayTrack(prev)
 }
 
+// ── Seek ──────────────────────────────────────────────────────────────────────
+
+// seekStep is the seek distance applied by < and >.
+const seekStep = 5 * time.Second
+
+// cmdSeek moves the playback position by delta relative to the current
+// position.  The result is clamped to [0, Duration].
+func (a *App) cmdSeek(delta time.Duration) tea.Cmd {
+	return func() tea.Msg {
+		pos := a.player.Position()
+		dur := a.player.Duration()
+		target := pos + delta
+		if target < 0 {
+			target = 0
+		}
+		if dur > 0 && target > dur {
+			target = dur
+		}
+		_ = a.player.Seek(target)
+		return noopMsg{}
+	}
+}
+
 // ── Pause toggle ──────────────────────────────────────────────────────────────
 
 // cmdTogglePause runs TogglePause in a background goroutine.

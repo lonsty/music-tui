@@ -169,6 +169,13 @@ func (a *App) handleNormalKey(msg tea.KeyMsg) tea.Cmd {
 	case "-":
 		a.adjustVolume(-volumeStep)
 
+	// ── Seek ──────────────────────────────────────────────────────────────────
+	case "<":
+		return a.cmdSeek(-seekStep)
+
+	case ">":
+		return a.cmdSeek(+seekStep)
+
 	// ── Views / overlays ──────────────────────────────────────────────────────
 	case "f":
 		a.currentView = viewFullscreen
@@ -232,6 +239,13 @@ func (a *App) handleFullscreenKey(msg tea.KeyMsg) tea.Cmd {
 
 	case "-":
 		a.adjustVolume(-volumeStep)
+
+	// ── Seek ──────────────────────────────────────────────────────────────────
+	case "<":
+		return a.cmdSeek(-seekStep)
+
+	case ">":
+		return a.cmdSeek(+seekStep)
 
 	case "q":
 		return a.cmdQuit()

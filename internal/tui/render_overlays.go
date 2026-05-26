@@ -17,6 +17,7 @@ func (a *App) renderHelpOverlay() string {
 		{"Enter", "Play  (2nd Enter → Fullscreen)"},
 		{"Space", "Pause / Resume"},
 		{"n / p", "Next / Previous"},
+		{"< / >", "Seek −5s / +5s"},
 		{"m", "Cycle play mode"},
 		{"b", "Toggle 8-bit chip mode  (converts + crossfades)"},
 		{"r / R", "Lo-fi effect  lower / raise sample rate"},
