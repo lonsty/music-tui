@@ -85,19 +85,25 @@ func (a *App) cmdPlayNext() tea.Cmd {
 		return nil
 	}
 
+	// If the current track is not in filtered (e.g. a search hid it),
+	// clamp the base index so next/prev stays within bounds.
+	baseIdx := a.currentIdx
+	if baseIdx < 0 || baseIdx >= len(a.filtered) {
+		baseIdx = 0
+	}
 	var next int
 	switch a.playMode {
 	case playModeSingle:
-		next = a.currentIdx
+		next = baseIdx
 
 	case playModeRandom:
 		if len(a.shuffleOrder) == 0 {
 			a.rebuildShuffle()
 		}
-		// Find currentIdx position in shuffle order and advance.
+		// Find baseIdx position in shuffle order and advance.
 		pos := 0
 		for i, v := range a.shuffleOrder {
-			if v == a.currentIdx {
+			if v == baseIdx {
 				pos = i
 				break
 			}
@@ -112,10 +118,10 @@ func (a *App) cmdPlayNext() tea.Cmd {
 		next = a.shuffleOrder[pos]
 
 	case playModeLoop:
-		next = (a.currentIdx + 1) % len(a.filtered)
+		next = (baseIdx + 1) % len(a.filtered)
 
 	default: // playModeSequential
-		next = a.currentIdx + 1
+		next = baseIdx + 1
 		if next >= len(a.filtered) {
 			return nil // reached end, stop
 		}
@@ -129,7 +135,11 @@ func (a *App) cmdPlayPrev() tea.Cmd {
 	if len(a.filtered) == 0 {
 		return nil
 	}
-	prev := (a.currentIdx - 1 + len(a.filtered)) % len(a.filtered)
+	baseIdx := a.currentIdx
+	if baseIdx < 0 || baseIdx >= len(a.filtered) {
+		baseIdx = 0
+	}
+	prev := (baseIdx - 1 + len(a.filtered)) % len(a.filtered)
 	return a.cmdPlayTrack(prev)
 }
 
@@ -273,6 +283,25 @@ func (a *App) applyFilter() {
 	}
 
 	a.rebuildShuffle()
+
+	// Re-anchor currentIdx so next/prev navigation stays correct after the
+	// filtered list changes.  The cursor clamp is a separate concern.
+	if a.currentTrack != nil {
+		newIdx := -1
+		for i, t := range a.filtered {
+			if t.ID == a.currentTrack.ID {
+				newIdx = i
+				break
+			}
+		}
+		if newIdx >= 0 {
+			a.currentIdx = newIdx
+		}
+		// If the playing track is not in the filtered list, currentIdx is left
+		// unchanged (it points outside filtered); cmdPlayNext/Prev will handle
+		// the boundary naturally since they operate on len(a.filtered).
+	}
+
 	if a.cursor >= len(a.filtered) {
 		a.cursor = max(0, len(a.filtered)-1)
 	}

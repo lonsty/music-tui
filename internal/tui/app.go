@@ -380,10 +380,33 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			a.tracks = msg.tracks
 			a.filtered = msg.tracks
 			a.rebuildShuffle()
+			// Re-anchor currentIdx to the playing track's ID so the position
+			// is correct after the library list is replaced.
+			// If the playing track is no longer in the library, stop playback.
+			if a.currentTrack != nil {
+				newIdx := -1
+				for i, t := range a.filtered {
+					if t.ID == a.currentTrack.ID {
+						newIdx = i
+						break
+					}
+				}
+				if newIdx >= 0 {
+					a.currentIdx = newIdx
+					a.cursor = newIdx
+				} else {
+					// Track no longer exists — stop immediately.
+					a.player.Stop()
+					a.currentTrack = nil
+					a.currentIdx = 0
+					a.cursor = 0
+					a.statusMsg = "Playing track was removed from library"
+				}
+			}
 		}
 		if msg.err != nil {
 			a.statusMsg = "Sync error: " + msg.err.Error()
-		} else {
+		} else if a.currentTrack != nil || len(a.tracks) == 0 {
 			a.statusMsg = fmt.Sprintf("Loaded %d tracks", len(a.tracks))
 		}
 		return a, nil

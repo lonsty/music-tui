@@ -510,29 +510,28 @@ func renderActiveLyricLine(text string, w, maxTextW int) string {
 	return content
 }
 
-
 // renderBrowseCursorLine renders the lyric line at the browse cursor position
 // when it is NOT the currently playing line.
 //
 // Layout: │ ▶ ──gradient── text ──gradient──
 //
-//   │   — left border in overlay1 (dim vertical bar anchors the eye)
-//   ▶   — play icon in subtext0 (neutral, not the playback mauve)
-//   ──  — gradient rule: overlay0 → overlay1 → overlay2 → subtext0 (same
-//         as renderActiveLyricLine but approaching subtext0 instead of mauve)
-//   text — subtext0, bold (medium-bright, clearly readable but not "playing")
+//	│   — left border in overlay1 (dim vertical bar anchors the eye)
+//	▶   — play icon in subtext0 (neutral, not the playback mauve)
+//	──  — gradient rule: overlay0 → overlay1 → overlay2 → subtext0 (same
+//	      as renderActiveLyricLine but approaching subtext0 instead of mauve)
+//	text — subtext0, bold (medium-bright, clearly readable but not "playing")
 //
 // maxTextW fixes the rule width to the widest lyric line.
 func renderBrowseCursorLine(lyric string, w, maxTextW int) string {
 	// Left decoration: "│ ▶ " — 4 display columns
 	const leftDecW = 4
-	const margin  = 4 // same margin as renderActiveLyricLine
-	const gap     = 1
+	const margin = 4 // same margin as renderActiveLyricLine
+	const gap = 1
 
 	styleBorder := lipgloss.NewStyle().Foreground(lipgloss.Color(overlay1))
-	styleIcon   := lipgloss.NewStyle().Foreground(lipgloss.Color(subtext0))
-	styleText   := lipgloss.NewStyle().
-		Foreground(lipgloss.Color(subtext0)).
+	styleIcon := lipgloss.NewStyle().Foreground(lipgloss.Color(subtext0))
+	styleText := lipgloss.NewStyle().
+		Foreground(lipgloss.Color(text)). // bright white — distinct from mauve playing line
 		Bold(true).
 		Align(lipgloss.Center)
 
@@ -545,22 +544,22 @@ func renderBrowseCursorLine(lyric string, w, maxTextW int) string {
 
 	if ruleLen < 2 || w-leftDecW < 4 {
 		// Not enough space: simple fallback.
-		return styleBorder.Render("│") + " " + styleIcon.Render("") + " " +
+		return styleBorder.Render(" ") + " " + styleIcon.Render("") + " " +
 			styleText.Width(w-leftDecW).Render(truncate(lyric, w-leftDecW))
 	}
 
 	rule := strings.Repeat("─", ruleLen)
 	// Rules gradient: overlay0→overlay1→overlay2→subtext0 (same stops,
 	// colour stays neutral — no mauve so it doesn't look "playing").
-	leftRule  := gradientText(rule, false, overlay0, overlay1, overlay2, subtext0)
+	leftRule := gradientText(rule, false, overlay0, overlay1, overlay2, subtext0)
 	rightRule := gradientText(rule, false, subtext0, overlay2, overlay1, overlay0)
 
-	sp       := strings.Repeat(" ", gap)
-	midText  := styleText.Render(lyric)
+	sp := strings.Repeat(" ", gap)
+	midText := styleText.Render(lyric)
 
 	padTotal := maxTextW - lyricW
-	padL     := padTotal / 2
-	padR     := padTotal - padL
+	padL := padTotal / 2
+	padR := padTotal - padL
 
 	// Build the rule+text block (same structure as renderActiveLyricLine
 	// but without the outer margin — left decoration takes that space).
@@ -569,7 +568,7 @@ func renderBrowseCursorLine(lyric string, w, maxTextW int) string {
 		rightRule
 
 	// Left decoration replaces the left margin.
-	leftDec := styleBorder.Render("│") + " " + styleIcon.Render("") + " "
+	leftDec := styleBorder.Render(" ") + " " + styleIcon.Render("") + " "
 
 	// Right margin.
 	rightMargin := strings.Repeat(" ", margin)
