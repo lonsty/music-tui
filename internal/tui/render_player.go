@@ -273,28 +273,39 @@ func (a *App) renderLyricsScroll(w, h int) string {
 	active := a.activeIdx
 	total := len(lines)
 
-	if active < 0 {
+	// Plain-text (unsynchronised) lyrics: no highlight, top-to-bottom display.
+	if !a.synced {
 		return a.renderLyricsPlain(w, h)
+	}
+
+	// Synchronised lyrics before the first timestamp has been reached
+	// (active == -1): treat as if active were at index -1 so that all lyrics
+	// sit below the centre line, waiting to scroll up into view.
+	// We achieve this by using a virtual active position of -1: the first
+	// lyric line (index 0) will appear one row below centre.
+	virtualActive := active
+	if virtualActive < 0 {
+		virtualActive = -1
 	}
 
 	centerRow := h / 2
 	var sb strings.Builder
 
 	for row := 0; row < h; row++ {
-		idx := active + (row - centerRow)
+		idx := virtualActive + (row - centerRow)
 		dist := row - centerRow
 		if dist < 0 {
 			dist = -dist
 		}
 
 		if idx < 0 || idx >= total {
-			// Out-of-range: blank line in the most-dimmed colour.
+			// Out-of-range (above first line or below last): blank line.
 			sb.WriteString(lyricStyleForDistance(dist, false).Width(w).Render("") + "\n")
 			continue
 		}
 
 		text := truncate(lines[idx].Text, w)
-		isActive := idx == active
+		isActive := active >= 0 && idx == active
 		sb.WriteString(lyricStyleForDistance(dist, isActive).Width(w).Render(text) + "\n")
 	}
 
