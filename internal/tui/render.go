@@ -177,10 +177,14 @@ var (
 				Bold(true).
 				Foreground(lipgloss.Color(mauve))
 
+	// styleOverlayKey renders keyboard shortcut chips as ❮key❯ using Unicode
+	// angle quotation marks (U+276E / U+276F).  No background fill is used to
+	// avoid the rectangular colour-block artefacts that appear on some terminals
+	// when a lipgloss style with Background + Width is rendered inside a box
+	// that already has a background colour.
 	styleOverlayKey = lipgloss.NewStyle().
-			Background(lipgloss.Color(surface0)).
 			Foreground(lipgloss.Color(lavender)).
-			PaddingLeft(1).PaddingRight(1)
+			Bold(true)
 
 	styleOverlayValue = lipgloss.NewStyle().
 				Foreground(lipgloss.Color(text))

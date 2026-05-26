@@ -46,10 +46,17 @@ func (a *App) renderHelpOverlay() string {
 			rows = append(rows, "")
 			continue
 		}
-		// Use lipgloss Width for the key chip so ANSI codes don't skew %-padding.
-		k := styleOverlayKey.Width(14).Render(b.key)
+		// Render key chip as ❮key❯ and pad to a fixed column width so the
+		// action column is always left-aligned regardless of key length.
+		const keyColW = 14 // display columns reserved for the key chip
+		chip := styleOverlayKey.Render("❮" + b.key + "❯")
+		// chip visible width = 1 + strWidth(b.key) + 1 (brackets are 1-wide each)
+		chipW := 2 + strWidth(b.key)
+		if chipW < keyColW {
+			chip += strings.Repeat(" ", keyColW-chipW)
+		}
 		v := styleOverlayValue.Render(b.action)
-		rows = append(rows, "  "+k+"  "+v)
+		rows = append(rows, "  "+chip+"  "+v)
 	}
 	rows = append(rows, "", styleOverlayMuted.Render("  "+T("help_close")))
 
@@ -84,7 +91,13 @@ func (a *App) renderInfoOverlay() string {
 		if value == "" {
 			return nil
 		}
-		l := styleOverlayKey.Width(labelW).Render(label)
+		// Field label: fixed-width column without background fill.
+		labelText := styleOverlayKey.Render(label)
+		labelW2 := strWidth(label)
+		if labelW2 < labelW {
+			labelText += strings.Repeat(" ", labelW-labelW2)
+		}
+		l := labelText
 		// Wrap value into segments of at most valueW display columns.
 		segments := wrapText(value, valueW)
 		var result []string
@@ -163,7 +176,7 @@ func (a *App) renderSettingsOverlay() string {
 	// fits 9 visible chars — exactly "Directory".
 	const inputW = lineW - 15
 	dirActive := a.settingsActive == 0
-	dirLabel := labelStyle(dirActive).Width(11).Render(T("settings_dir_label"))
+	dirLabel := labelStyle(dirActive).Render(T("settings_dir_label") + strings.Repeat(" ", max(0, 11-strWidth(T("settings_dir_label")))))
 	// Show the current value truncated to inputW so the overlay never overflows.
 	// The textinput widget handles cursor/editing; we display a preview when
 	// the input is not active, and the live input.View() when it is.
@@ -181,12 +194,12 @@ func (a *App) renderSettingsOverlay() string {
 		dirView = styleOverlayValue.Render(val)
 	}
 	dirLine := "  " + dirLabel + "  " + dirView
-	reloadKey := styleOverlayKey.Render(" Ctrl+R ")
+	reloadKey := styleOverlayKey.Render("❮Ctrl+R❯")
 	reloadHint := "  " + reloadKey + styleOverlayMuted.Render(" "+T("settings_reload_hint"))
 
 	// ── 8-bit Conversion section ──────────────────────────────────────────
 	optsActive := a.settingsActive == 1
-	optsLabel := labelStyle(optsActive).Width(11).Render(T("settings_opts_label"))
+	optsLabel := labelStyle(optsActive).Render(T("settings_opts_label") + strings.Repeat(" ", max(0, 11-strWidth(T("settings_opts_label")))))
 	var optsView string
 	if optsActive {
 		a.settingsInput.Width = inputW
@@ -204,7 +217,7 @@ func (a *App) renderSettingsOverlay() string {
 
 	// ── Language section ──────────────────────────────────────────────────
 	langActive := a.settingsActive == 2
-	langLabel := labelStyle(langActive).Width(11).Render(T("settings_lang_label"))
+	langLabel := labelStyle(langActive).Render(T("settings_lang_label") + strings.Repeat(" ", max(0, 11-strWidth(T("settings_lang_label")))))
 	var langView string
 	if activeLang == LangZH {
 		langView = styleOverlayValue.Render(T("settings_lang_zh"))
@@ -215,13 +228,13 @@ func (a *App) renderSettingsOverlay() string {
 
 	// ── Format filter section ─────────────────────────────────────────────
 	fmtActive := a.settingsActive == 3
-	fmtLabel := labelStyle(fmtActive).Width(11).Render(T("settings_fmt_label"))
+	fmtLabel := labelStyle(fmtActive).Render(T("settings_fmt_label") + strings.Repeat(" ", max(0, 11-strWidth(T("settings_fmt_label")))))
 	fmtLine := "  " + fmtLabel + "  " + styleOverlayValue.Render(formatPrefLabel(a.formatPref))
 
 	// ── Footer ────────────────────────────────────────────────────────────
-	enterKey := styleOverlayKey.Render(" Enter ")
-	escKey := styleOverlayKey.Render(" Esc ")
-	tabKey := styleOverlayKey.Render(" Tab ")
+	enterKey := styleOverlayKey.Render("❮Enter❯")
+	escKey := styleOverlayKey.Render("❮Esc❯")
+	tabKey := styleOverlayKey.Render("❮Tab❯")
 	footer := "  " + enterKey + styleOverlayMuted.Render(" "+T("settings_save")+"  ·  ") +
 		escKey + styleOverlayMuted.Render(" "+T("settings_cancel")+"  ·  ") +
 		tabKey + styleOverlayMuted.Render(" "+T("settings_switch"))
