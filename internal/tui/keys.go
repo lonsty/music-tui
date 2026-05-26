@@ -250,34 +250,51 @@ func (a *App) handleFullscreenKey(msg tea.KeyMsg) tea.Cmd {
 	// ── Lyrics browse (synced lyrics only) ────────────────────────────────────
 	// ↑/k scroll the visible window up (browse cursor moves toward earlier lines).
 	// ↓/j scroll down (browse cursor moves toward later lines).
-	// Any movement activates browse mode; the cursor auto-resets after 5s.
+	// The cursor is pinned to an absolute line index so playback scrolling
+	// does not move it; the cursor stays fixed until Enter or auto-reset.
 	case "up", "k":
 		if a.synced && len(a.lines) > 0 {
-			a.browseOffset--
+			cur := a.browseCenterIdx
+			if cur < 0 {
+				cur = a.activeIdx // start from current playing line
+				if cur < 0 {
+					cur = 0
+				}
+			}
+			cur--
+			if cur < 0 {
+				cur = 0
+			}
+			a.browseCenterIdx = cur
 			a.browseTicks = 0
+			a.browseExpired = false
 		}
 
 	case "down", "j":
 		if a.synced && len(a.lines) > 0 {
-			a.browseOffset++
+			cur := a.browseCenterIdx
+			if cur < 0 {
+				cur = a.activeIdx
+				if cur < 0 {
+					cur = 0
+				}
+			}
+			cur++
+			if cur >= len(a.lines) {
+				cur = len(a.lines) - 1
+			}
+			a.browseCenterIdx = cur
 			a.browseTicks = 0
+			a.browseExpired = false
 		}
 
-	// Enter in browse mode: seek to the line currently at the panel centre
-	// and resume playback; reset the browse cursor.
+	// Enter in browse mode: seek to the pinned line and resume playback.
 	case "enter":
-		if a.synced && a.browseOffset != 0 && len(a.lines) > 0 {
-			total := len(a.lines)
-			centerIdx := a.activeIdx + a.browseOffset
-			if centerIdx < 0 {
-				centerIdx = 0
-			}
-			if centerIdx >= total {
-				centerIdx = total - 1
-			}
-			target := a.lines[centerIdx].Time
-			a.browseOffset = 0
+		if a.synced && a.browseCenterIdx >= 0 {
+			target := a.lines[a.browseCenterIdx].Time
+			a.browseCenterIdx = -1
 			a.browseTicks = 0
+			a.browseExpired = false
 			return a.cmdSeekAndResume(target)
 		}
 

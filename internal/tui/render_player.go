@@ -278,9 +278,7 @@ func (a *App) renderLyricsScroll(w, h int) string {
 		return a.renderLyricsPlain(w, h)
 	}
 
-	// Pre-compute the maximum displayed text width across all lines so that
-	// the active-line rules always have a consistent length regardless of
-	// which line is currently active.
+	// Pre-compute the maximum displayed text width for consistent rule lengths.
 	maxTextW := 0
 	for _, l := range lines {
 		if tw := strWidth(l.Text); tw > maxTextW {
@@ -288,29 +286,20 @@ func (a *App) renderLyricsScroll(w, h int) string {
 		}
 	}
 
-	// ── Determine the centre line index ────────────────────────────────────
-	// In browse mode (browseOffset != 0) the centre follows the browse cursor.
-	// In follow mode (browseOffset == 0) the centre follows activeIdx.
-	isBrowsing := a.browseOffset != 0
-
+	// Determine the line that sits at the centre of the visible window.
+	//   browseCenterIdx >= 0  → browse mode: cursor is pinned to that line
+	//   browseCenterIdx == -1 → follow mode: centre follows activeIdx
+	isBrowsing := a.browseCenterIdx >= 0
 	var centerIdx int
-	if !isBrowsing {
-		// Follow-playback mode: same as before.
-		// Use virtualActive=-1 before the first timed line so lyrics wait below.
+	if isBrowsing {
+		centerIdx = a.browseCenterIdx // absolute, never moves on its own
+	} else {
+		// Follow-playback: use -1 before the first timed line so lyrics
+		// wait below the centre line.
 		if active < 0 {
-			// Synchronised lyrics before first line: show lines below centre.
 			centerIdx = -1
 		} else {
 			centerIdx = active
-		}
-	} else {
-		// Browse mode: clamp the browse cursor to valid range.
-		centerIdx = active + a.browseOffset
-		if centerIdx < 0 {
-			centerIdx = 0
-		}
-		if total > 0 && centerIdx >= total {
-			centerIdx = total - 1
 		}
 	}
 
@@ -334,17 +323,19 @@ func (a *App) renderLyricsScroll(w, h int) string {
 		var rendered string
 		switch {
 		case idx == centerIdx && !isBrowsing && active >= 0:
-			// Follow mode, centre = active line: use the full decorated style.
+			// Follow mode, centre == playing line: full decoration.
+			rendered = renderActiveLyricLine(text, w, maxTextW)
+
+		case idx == centerIdx && isBrowsing && idx == active:
+			// Browse mode, cursor happens to be on the playing line: same deco.
 			rendered = renderActiveLyricLine(text, w, maxTextW)
 
 		case idx == centerIdx && isBrowsing:
-			// Browse mode, centre line: bright colour + play icon, no rule deco.
+			// Browse mode, cursor on a non-playing line: neutral style + deco.
 			rendered = renderBrowseCursorLine(text, w, maxTextW)
 
 		case isBrowsing && active >= 0 && idx == active:
-			// Browse mode, the actual playing line (not at centre):
-			// keep the mauve highlight so the user can still see where playback
-			// is, but without any icon or rule decoration.
+			// Browse mode, playing line is off-centre: mauve highlight, no deco.
 			rendered = lyricStyleForDistance(0, true).Width(w).Render(text)
 
 		default:
@@ -521,12 +512,75 @@ func renderActiveLyricLine(text string, w, maxTextW int) string {
 
 
 // renderBrowseCursorLine renders the lyric line at the browse cursor position
-// (centre of the panel in browse mode).  It uses the same gradient-rule
-// decoration as the active playback line so the cursor position is visually
-// consistent — the decoration indicates "press Enter to seek here".
+// when it is NOT the currently playing line.
 //
-// maxTextW is the widest lyric line in the set and is passed through to keep
-// rule widths consistent with the rest of the panel.
+// Layout: │ ▶ ──gradient── text ──gradient──
+//
+//   │   — left border in overlay1 (dim vertical bar anchors the eye)
+//   ▶   — play icon in subtext0 (neutral, not the playback mauve)
+//   ──  — gradient rule: overlay0 → overlay1 → overlay2 → subtext0 (same
+//         as renderActiveLyricLine but approaching subtext0 instead of mauve)
+//   text — subtext0, bold (medium-bright, clearly readable but not "playing")
+//
+// maxTextW fixes the rule width to the widest lyric line.
 func renderBrowseCursorLine(lyric string, w, maxTextW int) string {
-	return renderActiveLyricLine(lyric, w, maxTextW)
+	// Left decoration: "│ ▶ " — 4 display columns
+	const leftDecW = 4
+	const margin  = 4 // same margin as renderActiveLyricLine
+	const gap     = 1
+
+	styleBorder := lipgloss.NewStyle().Foreground(lipgloss.Color(overlay1))
+	styleIcon   := lipgloss.NewStyle().Foreground(lipgloss.Color(subtext0))
+	styleText   := lipgloss.NewStyle().
+		Foreground(lipgloss.Color(subtext0)).
+		Bold(true).
+		Align(lipgloss.Center)
+
+	lyricW := strWidth(lyric)
+
+	// Available width after the left decoration for the rule+text block.
+	// We reuse the same rule-length formula as renderActiveLyricLine so
+	// the horizontal rules are the same width as the playback line.
+	ruleLen := (w - 2*margin - 2*gap - maxTextW) / 2
+
+	if ruleLen < 2 || w-leftDecW < 4 {
+		// Not enough space: simple fallback.
+		return styleBorder.Render("│") + " " + styleIcon.Render("") + " " +
+			styleText.Width(w-leftDecW).Render(truncate(lyric, w-leftDecW))
+	}
+
+	rule := strings.Repeat("─", ruleLen)
+	// Rules gradient: overlay0→overlay1→overlay2→subtext0 (same stops,
+	// colour stays neutral — no mauve so it doesn't look "playing").
+	leftRule  := gradientText(rule, false, overlay0, overlay1, overlay2, subtext0)
+	rightRule := gradientText(rule, false, subtext0, overlay2, overlay1, overlay0)
+
+	sp       := strings.Repeat(" ", gap)
+	midText  := styleText.Render(lyric)
+
+	padTotal := maxTextW - lyricW
+	padL     := padTotal / 2
+	padR     := padTotal - padL
+
+	// Build the rule+text block (same structure as renderActiveLyricLine
+	// but without the outer margin — left decoration takes that space).
+	block := leftRule +
+		sp + strings.Repeat(" ", padL) + midText + strings.Repeat(" ", padR) + sp +
+		rightRule
+
+	// Left decoration replaces the left margin.
+	leftDec := styleBorder.Render("│") + " " + styleIcon.Render("") + " "
+
+	// Right margin.
+	rightMargin := strings.Repeat(" ", margin)
+
+	line := leftDec + block + rightMargin
+
+	// Centre-pad if the total is narrower than w (parity adjustment).
+	lineW := leftDecW + 2*ruleLen + 2*gap + maxTextW + margin
+	if lineW < w {
+		pad := w - lineW
+		line = strings.Repeat(" ", pad/2) + line + strings.Repeat(" ", pad-pad/2)
+	}
+	return line
 }

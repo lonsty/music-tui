@@ -67,18 +67,27 @@ type ChipState struct {
 type LyricsState struct {
 	lines     []lyrics.Line   // parsed LRC lines sorted by timestamp; nil = no lyrics
 	activeIdx int             // index of the currently highlighted line (-1 = none)
+	prevActiveIdx int         // activeIdx from the previous tick, for change detection
 	trackID   string          // Track.ID for which lines was loaded (stale-check)
 	provider  lyrics.Provider // chain of local + online providers; set in NewApp
 	loading   bool            // true while a background fetch is in-flight
 	synced    bool            // true when at least one line has a non-zero timestamp
 
 	// Manual browse state (fullscreen lyrics panel only).
-	// browseOffset is the signed offset from activeIdx to the line that sits
-	// at the centre of the visible window.  0 means "follow playback".
-	// browseTicks counts how many ticks have elapsed since the last manual
-	// scroll; when it reaches browseFadeOutTicks the offset resets to 0.
-	browseOffset int
-	browseTicks  int
+	//
+	// browseCenterIdx is the absolute index of the line pinned at the centre
+	// of the visible window.  -1 means "follow playback" (centre = activeIdx).
+	// Once set by ↑/↓ it does NOT move with activeIdx — the playing line
+	// scrolls past independently while the cursor stays put.
+	//
+	// browseTicks counts 500ms ticks since the last manual scroll.
+	// When browseTicks reaches browseFadeOutTicks, browseExpired is set to
+	// true.  The cursor is NOT immediately reset; instead, the next time
+	// activeIdx advances to a new line, the cursor smoothly snaps back to
+	// follow playback by clearing browseCenterIdx.
+	browseCenterIdx int
+	browseTicks     int
+	browseExpired   bool
 }
 
 // App is the root Bubble Tea model.
@@ -232,8 +241,10 @@ func NewApp(player *audio.Player, st *store.Store, musicDir string, tracks []lib
 			chip8Options: chip8Opts,
 		},
 		LyricsState: LyricsState{
-			activeIdx: -1,
-			provider:  lyricsProvider,
+			activeIdx:       -1,
+			prevActiveIdx:   -1,
+			browseCenterIdx: -1,
+			provider:        lyricsProvider,
 		},
 	}
 
@@ -403,11 +414,13 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// Reset lyrics and kick off background load for the new track.
 		a.lines = nil
 		a.activeIdx = -1
+		a.prevActiveIdx = -1
 		a.trackID = ""
 		a.synced = false
 		a.loading = msg.track != nil // loading until lyricsLoadedMsg arrives
-		a.browseOffset = 0
+		a.browseCenterIdx = -1
 		a.browseTicks = 0
+		a.browseExpired = false
 
 		var cmds []tea.Cmd
 		// If we were in chip mode, automatically start converting the new track.
@@ -470,12 +483,13 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tickMsg:
 		a.tickMarquees()
 		a.syncLyricsActive()
-		// Auto-reset browse cursor after inactivity.
-		if a.browseOffset != 0 {
+		// Browse cursor expiry: count ticks while cursor is active.
+		// Do NOT reset immediately — wait for the next line change so the
+		// snap-back happens at a natural lyric boundary (smooth transition).
+		if a.browseCenterIdx >= 0 && !a.browseExpired {
 			a.browseTicks++
 			if a.browseTicks >= browseFadeOutTicks {
-				a.browseOffset = 0
-				a.browseTicks = 0
+				a.browseExpired = true
 			}
 		}
 		return a, tick()
@@ -745,6 +759,10 @@ func (a *App) tickMarquees() {
 // For plain-text (unsynchronised) lyrics where all timestamps are zero,
 // activeIdx is kept at -1 so no line is highlighted — the entire list is
 // shown at uniform brightness.
+//
+// When the browse cursor has expired (browseExpired=true) and the playback
+// line advances to a new index, the cursor is snapped back to follow mode
+// at that natural lyric boundary rather than jumping mid-line.
 func (a *App) syncLyricsActive() {
 	if len(a.lines) == 0 || !a.synced {
 		a.activeIdx = -1
@@ -759,5 +777,14 @@ func (a *App) syncLyricsActive() {
 			break
 		}
 	}
+
+	// Snap-back on natural line advance when browse has expired.
+	if a.browseExpired && idx != a.prevActiveIdx && idx >= 0 {
+		a.browseCenterIdx = -1
+		a.browseTicks = 0
+		a.browseExpired = false
+	}
+
+	a.prevActiveIdx = a.activeIdx
 	a.activeIdx = idx
 }
