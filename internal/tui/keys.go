@@ -195,7 +195,11 @@ func (a *App) handleNormalKey(msg tea.KeyMsg) tea.Cmd {
 		a.openSettings()
 
 	case "tab":
-		a.activeTab = (a.activeTab + 1) % tabCount
+		// Cycle only through tabs that have a working UI.
+		// tabPlaylist exists in the enum but is not yet rendered; skip it.
+		// Update this constant when more tabs are implemented.
+		const activeTabCount = 2 // tabLocal + tabOnline
+		a.activeTab = (a.activeTab + 1) % activeTabCount
 
 	case "esc":
 		a.activeOvl = overlayNone

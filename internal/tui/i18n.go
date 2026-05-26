@@ -156,6 +156,14 @@ var translations = map[Lang]map[string]string{LangEN: {
 	"online_coming_soon": "Coming soon — planned features:",
 	"online_back_hint":   "Press Tab to switch back to Local",
 
+	// ── Library panel header ──────────────────────────────────────────────
+	"library_title": "Library",
+	// library_count: single format arg = total filtered track count
+	"library_count": "%d tracks",
+	// library_count_playing: two format args = current position, total
+	// shown when a track from the filtered list is playing.
+	"library_count_playing": "%d/%d tracks",
+
 	// ── App messages ─────────────────────────────────────────────────────
 	"track_removed":      "Playing track was removed from library",
 	"no_tracks_hint":     "No tracks — open Settings (,) and reload the library",
@@ -261,6 +269,11 @@ var translations = map[Lang]map[string]string{LangEN: {
 		"tab_playlist":       "歌单",
 		"online_coming_soon": "即将推出 — 计划功能：",
 		"online_back_hint":   "按 Tab 切换回本地",
+
+		// ── Library panel header ──────────────────────────────────────────────
+		"library_title":         "音乐库",
+		"library_count":         "%d 首",
+		"library_count_playing": "%d/%d 首",
 
 		// ── App messages ─────────────────────────────────────────────────────
 		"track_removed":      "当前播放曲目已从音乐库中移除",

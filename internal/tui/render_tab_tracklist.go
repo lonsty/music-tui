@@ -18,6 +18,9 @@ func (a *App) renderTabBar() string {
 		icon  string
 		label string
 	}
+	// Only show tabs with a working implementation.
+	// tabPlaylist is declared but its UI is not yet built;
+	// add it back here once the playlist panel is implemented.
 	tabs := []tabDef{
 		{tabLocal, "󰋌", T("tab_local")},
 		{tabOnline, "󰖟", T("tab_online")},
@@ -42,8 +45,14 @@ func (a *App) renderTabBar() string {
 // ── Normal body (track list + mini player) ────────────────────────────────────
 
 func (a *App) renderNormalBody() string {
-	if a.activeTab == tabOnline {
+	switch a.activeTab {
+	case tabOnline:
 		return a.renderOnlinePlaceholder()
+	case tabPlaylist:
+		// Playlist UI is not yet implemented; fall through to the local list
+		// so an accidental Tab keypress does not show a blank screen.
+		fallthrough
+	default:
 	}
 	left := a.renderTrackList()
 	if !a.showMiniPlayer() {
@@ -102,8 +111,19 @@ func (a *App) renderTrackList() string {
 		prompt := styleSearchPrompt.Render("󰍉 ")
 		sb.WriteString(prompt + a.searchInput.View() + "\n")
 	} else {
-		title := stylePanelTitle.Render("󰋌  Library")
-		count := styleTrackMeta.Render(fmt.Sprintf("  %d tracks", a.filteredLen()))
+		title := stylePanelTitle.Render("󰋌  " + T("library_title"))
+		// Show "pos / total" when a track from the filtered list is playing.
+		var countText string
+		if a.currentTrack != nil {
+			if pos := a.filteredPos(a.currentTrack.ID); pos >= 0 {
+				countText = fmt.Sprintf("  "+T("library_count_playing"), pos+1, a.filteredLen())
+			} else {
+				countText = fmt.Sprintf("  "+T("library_count"), a.filteredLen())
+			}
+		} else {
+			countText = fmt.Sprintf("  "+T("library_count"), a.filteredLen())
+		}
+		count := styleTrackMeta.Render(countText)
 		sb.WriteString(title + count + "\n")
 	}
 	sb.WriteString(styleDivider.Render(strings.Repeat("─", innerW)) + "\n")
