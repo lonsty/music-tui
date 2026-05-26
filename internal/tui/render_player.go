@@ -328,21 +328,47 @@ func (a *App) renderLyricsScroll(w, h int) string {
 	return strings.TrimRight(sb.String(), "\n")
 }
 
-// renderLyricsPlain renders unsynchronised (plain-text) lyrics top-to-bottom
-// without any active-line highlight.  All lines use the same dimmed colour.
+// renderLyricsPlain renders unsynchronised (plain-text) lyrics with automatic
+// progress-based scrolling.
+//
+// The visible window scrolls from the first line at position=0 to the last
+// line at position=duration, so every line is reachable over the course of
+// the track.  When the total number of lines fits within h rows the content
+// is shown from the top and no scrolling occurs.
+//
+// All lines are rendered in subtext0 (medium brightness) — bright enough to
+// read comfortably but visually distinct from synchronised active lines.
 func (a *App) renderLyricsPlain(w, h int) string {
 	lines := a.lines
 	total := len(lines)
 
-	var sb strings.Builder
-	plain := lyricStyleForDistance(len(lyricDistanceColors)-1, false)
+	// Compute scroll offset from playback progress.
+	scrollable := total - h
+	offset := 0
+	if scrollable > 0 {
+		pos := a.player.Position()
+		dur := a.player.Duration()
+		if dur > 0 {
+			progress := float64(pos) / float64(dur)
+			if progress > 1 {
+				progress = 1
+			}
+			offset = int(progress * float64(scrollable))
+		}
+	}
 
+	stylePlain := lipgloss.NewStyle().
+		Foreground(lipgloss.Color(subtext0)).
+		Align(lipgloss.Center)
+
+	var sb strings.Builder
 	for row := 0; row < h; row++ {
-		if row < total {
-			text := truncate(lines[row].Text, w)
-			sb.WriteString(plain.Width(w).Render(text) + "\n")
+		idx := offset + row
+		if idx < total {
+			text := truncate(lines[idx].Text, w)
+			sb.WriteString(stylePlain.Width(w).Render(text) + "\n")
 		} else {
-			sb.WriteString(plain.Width(w).Render("") + "\n")
+			sb.WriteString(stylePlain.Width(w).Render("") + "\n")
 		}
 	}
 
