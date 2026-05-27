@@ -25,6 +25,8 @@ func (a *App) renderHelpOverlay() string {
 		{"/", T("action_search")},
 		{"i", T("action_track_info")},
 		{"f", T("action_fullscreen")},
+		{"l", T("action_lyrics_mode")},
+		{`\`, T("action_collapse_panel")},
 		{"+ / -", T("action_volume")},
 		{"Tab", T("action_switch_tab")},
 		{"?", T("action_this_help")},
@@ -175,7 +177,7 @@ func (a *App) renderSettingsOverlay() string {
 	// styleOverlayKey has PaddingLeft(1)+PaddingRight(1), so Width(11)
 	// fits 9 visible chars — exactly "Directory".
 	const inputW = lineW - 15
-	dirActive := a.settingsActive == 0
+	dirActive := a.settingsActive == settingsFieldMusicDir
 	dirLabel := labelStyle(dirActive).Render(T("settings_dir_label") + strings.Repeat(" ", max(0, 11-strWidth(T("settings_dir_label")))))
 	// Show the current value truncated to inputW so the overlay never overflows.
 	// The textinput widget handles cursor/editing; we display a preview when
@@ -198,7 +200,7 @@ func (a *App) renderSettingsOverlay() string {
 	reloadHint := "  " + reloadKey + styleOverlayMuted.Render(" "+T("settings_reload_hint"))
 
 	// ── 8-bit Conversion section ──────────────────────────────────────────
-	optsActive := a.settingsActive == 1
+	optsActive := a.settingsActive == settingsFieldChipOpts
 	optsLabel := labelStyle(optsActive).Render(T("settings_opts_label") + strings.Repeat(" ", max(0, 11-strWidth(T("settings_opts_label")))))
 	var optsView string
 	if optsActive {
@@ -216,7 +218,7 @@ func (a *App) renderSettingsOverlay() string {
 	optsEx := styleOverlayMuted.Render("  " + T("settings_opts_example"))
 
 	// ── Language section ──────────────────────────────────────────────────
-	langActive := a.settingsActive == 2
+	langActive := a.settingsActive == settingsFieldLanguage
 	langLabel := labelStyle(langActive).Render(T("settings_lang_label") + strings.Repeat(" ", max(0, 11-strWidth(T("settings_lang_label")))))
 	var langView string
 	if activeLang == LangZH {
@@ -227,7 +229,7 @@ func (a *App) renderSettingsOverlay() string {
 	langLine := "  " + langLabel + "  " + langView
 
 	// ── Format filter section ─────────────────────────────────────────────
-	fmtActive := a.settingsActive == 3
+	fmtActive := a.settingsActive == settingsFieldFormat
 	fmtLabel := labelStyle(fmtActive).Render(T("settings_fmt_label") + strings.Repeat(" ", max(0, 11-strWidth(T("settings_fmt_label")))))
 	fmtLine := "  " + fmtLabel + "  " + styleOverlayValue.Render(formatPrefLabel(a.formatPref))
 

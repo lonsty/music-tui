@@ -21,7 +21,7 @@ func (a *App) cmdQuit() tea.Cmd {
 // openSettings initialises and opens the settings overlay.
 func (a *App) openSettings() {
 	a.activeOvl = overlaySettings
-	a.settingsActive = 0
+	a.settingsActive = settingsFieldMusicDir
 	a.musicDirInput.SetValue(a.musicDir)
 	a.musicDirInput.Focus()
 	a.musicDirInput.CursorEnd()
@@ -179,6 +179,21 @@ func (a *App) handleNormalKey(msg tea.KeyMsg) tea.Cmd {
 	// ── Views / overlays ──────────────────────────────────────────────────────
 	case "f":
 		a.currentView = viewFullscreen
+
+	case "l":
+		// Toggle the right panel between player mode and lyrics mode.
+		// Only has effect when the mini-player panel is visible.
+		if a.showMiniPlayer() {
+			if a.rightMode == rightPanelLyrics {
+				a.rightMode = rightPanelPlayer
+			} else {
+				a.rightMode = rightPanelLyrics
+			}
+		}
+
+	case `\`:
+		// Collapse or expand the right player panel.
+		a.rightCollapsed = !a.rightCollapsed
 
 	case "i":
 		a.activeOvl = overlayInfo
@@ -374,16 +389,16 @@ func (a *App) handleSettingsKey(msg tea.KeyMsg) tea.Cmd {
 	switch msg.String() {
 	case "enter":
 		// Language field: toggle language on Enter.
-		if a.settingsActive == 2 {
+		if a.settingsActive == settingsFieldLanguage {
 			if activeLang == LangEN {
 				SetLang(LangZH)
 			} else {
 				SetLang(LangEN)
 			}
 			if a.st != nil {
-				langVal := "en"
+				langVal := store.ValLanguageEN
 				if activeLang == LangZH {
-					langVal = "zh"
+					langVal = store.ValLanguageZH
 				}
 				_ = a.st.SetSetting(store.KeyLanguage, langVal)
 			}
@@ -392,8 +407,8 @@ func (a *App) handleSettingsKey(msg tea.KeyMsg) tea.Cmd {
 			return nil
 		}
 
-		// Format filter field (settingsActive == 3): cycle through preferences on Enter.
-		if a.settingsActive == 3 {
+		// Format filter field: cycle through preferences on Enter.
+		if a.settingsActive == settingsFieldFormat {
 			// Advance to next preference value, wrapping around.
 			a.formatPref = (a.formatPref + 1) % formatPrefCount
 			if a.st != nil {
@@ -441,21 +456,17 @@ func (a *App) handleSettingsKey(msg tea.KeyMsg) tea.Cmd {
 		return nil
 
 	case "tab", "shift+tab":
-		// Cycle active field: 0 = dir, 1 = opts, 2 = language, 3 = format filter.
+		// Cycle active field in order: musicDir → chipOpts → language → format → back.
 		a.musicDirInput.Blur()
 		a.settingsInput.Blur()
-		if a.settingsActive < 3 {
-			a.settingsActive++
-		} else {
-			a.settingsActive = 0
-		}
+		a.settingsActive = (a.settingsActive + 1) % settingsFieldCount
 		switch a.settingsActive {
-		case 0:
+		case settingsFieldMusicDir:
 			a.musicDirInput.Focus()
-		case 1:
+		case settingsFieldChipOpts:
 			a.settingsInput.Focus()
 		}
-		// settingsActive 2 (language) and 3 (format): no text input, handled via Enter.
+		// settingsFieldLanguage and settingsFieldFormat have no text input; handled via Enter.
 		return nil
 
 	case "ctrl+r":

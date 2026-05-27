@@ -23,6 +23,53 @@ const (
 	viewFullscreen             // Full-screen player + lyrics
 )
 
+// ── Settings overlay fields ───────────────────────────────────────────────────
+
+// settingsField identifies the active input field in the settings overlay.
+// The numeric values are used as the settingsActive index; the order determines
+// the Tab-cycling sequence.
+type settingsField int
+
+const (
+	settingsFieldMusicDir  settingsField = iota // music library directory input
+	settingsFieldChipOpts                       // p2chip options input
+	settingsFieldLanguage                       // language toggle (no text input)
+	settingsFieldFormat                         // format preference toggle (no text input)
+	settingsFieldCount                          // sentinel — must be last
+)
+
+// ── Right panel mode ─────────────────────────────────────────────────────────
+
+// rightPanelMode controls the content shown in the right mini-player panel
+// when the normal view is active and the panel is not collapsed.
+type rightPanelMode int
+
+const (
+	rightPanelPlayer rightPanelMode = iota // default: cover art + single lyric line + controls
+	rightPanelLyrics                       // scrolling lyrics panel (same as fullscreen) + controls
+)
+
+// rightPanelModeKey returns the settings-DB string for a rightPanelMode value.
+func rightPanelModeKey(m rightPanelMode) string {
+	switch m {
+	case rightPanelLyrics:
+		return "lyrics"
+	default:
+		return "player"
+	}
+}
+
+// parseRightPanelMode converts a DB string back to a rightPanelMode value.
+// Unknown or empty strings map to rightPanelPlayer (the default).
+func parseRightPanelMode(s string) rightPanelMode {
+	switch s {
+	case "lyrics":
+		return rightPanelLyrics
+	default:
+		return rightPanelPlayer
+	}
+}
+
 // ── Overlay ───────────────────────────────────────────────────────────────────
 
 // overlay is a modal layer drawn on top of the current view.
@@ -187,8 +234,6 @@ type chip8DoneMsg struct {
 // chipMode is the new desired state: true = now playing 8-bit, false = back to original.
 type chipCrossfadeDoneMsg struct{ chipMode bool }
 
-// lyricsLoadedMsg is sent by cmdLoadLyrics when lyrics have been fetched.
-// lines is nil when no .lrc file exists for the track (not an error).
 // lyricsLoadedMsg is sent by cmdLoadLyrics when lyrics have been fetched.
 // lines is nil when no lyrics are available (not an error).
 // err is non-nil when the fetch itself failed; the UI should handle it

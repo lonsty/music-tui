@@ -47,21 +47,16 @@ const (
 
 var (
 	// ── Tab bar ──────────────────────────────────────────────────────────────
-	// Single-line tabs: active tab has a distinct background + underline;
-	// inactive tabs are dim. No separator row — tabBarH = 1.
+	// Single-line tabs: active tab is bold + underlined; inactive tabs are dim.
+	// No background colour on any tab element — the terminal background shows through.
 	styleTabActive = lipgloss.NewStyle().
 			Bold(true).
-			Foreground(lipgloss.Color(mauve)).
-			Background(lipgloss.Color(surface0)).
-			Underline(true).
-			PaddingLeft(2).PaddingRight(2)
+			Foreground(lipgloss.Color(mauve))
 
 	styleTabInactive = lipgloss.NewStyle().
-				Foreground(lipgloss.Color(overlay0)).
-				PaddingLeft(2).PaddingRight(2)
+				Foreground(lipgloss.Color(overlay0))
 
-	styleTabBar = lipgloss.NewStyle().
-			Background(lipgloss.Color(mantle))
+	styleTabBar = lipgloss.NewStyle()
 
 	// ── Panels ───────────────────────────────────────────────────────────────
 	stylePanelBorder = lipgloss.NewStyle().

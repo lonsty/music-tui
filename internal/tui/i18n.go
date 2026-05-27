@@ -62,6 +62,7 @@ var translations = map[Lang]map[string]string{LangEN: {
 	"no_lyrics":           "No lyrics",
 	"lyrics_loading":      "loading lyrics…", // icon prepended at call site
 	"lyrics_hint_lrc":     "Place a .lrc file next to the audio file",
+	"lyrics_panel_title":  "Lyrics",
 
 	// ── Status bar ───────────────────────────────────────────────────────
 	"state_stopped":    "  Stopped ",
@@ -81,6 +82,10 @@ var translations = map[Lang]map[string]string{LangEN: {
 	"hint_help":        "Help",
 	"hint_play":        "Play",
 	"hint_settings":    "Settings",
+	"hint_lyrics":      "Lyrics",
+	"hint_player":      "Player",
+	"hint_collapse":    "Collapse",
+	"hint_expand":      "Expand",
 	"chip_converting":  " 8-bit Converting… ",
 	"chip_switching":   " 8-bit Switching… ",
 	"chip_busy":        " 8-bit… ",
@@ -104,6 +109,8 @@ var translations = map[Lang]map[string]string{LangEN: {
 	"action_search":          "Search  (s: artist  a: album  t: title  f: format)",
 	"action_track_info":      "Track info",
 	"action_fullscreen":      "Toggle fullscreen",
+	"action_lyrics_mode":     "Toggle lyrics / player panel",
+	"action_collapse_panel":  "Collapse / expand right panel",
 	"action_volume":          "Volume up / down",
 	"action_switch_tab":      "Switch tab",
 	"action_this_help":       "This help",
@@ -176,6 +183,7 @@ var translations = map[Lang]map[string]string{LangEN: {
 		"no_lyrics":           "无歌词",
 		"lyrics_loading":      "歌词加载中…",
 		"lyrics_hint_lrc":     "将 .lrc 文件放在音频文件旁边",
+		"lyrics_panel_title":  "歌词",
 
 		// ── Status bar ───────────────────────────────────────────────────────
 		"state_stopped":    "  已停止 ",
@@ -195,6 +203,10 @@ var translations = map[Lang]map[string]string{LangEN: {
 		"hint_help":        "帮助",
 		"hint_play":        "播放",
 		"hint_settings":    "设置",
+		"hint_lyrics":      "歌词",
+		"hint_player":      "播放器",
+		"hint_collapse":    "折叠",
+		"hint_expand":      "展开",
 		"chip_converting":  " 8-bit 转换中… ",
 		"chip_switching":   " 8-bit 切换中… ",
 		"chip_busy":        " 8-bit… ",
@@ -218,6 +230,8 @@ var translations = map[Lang]map[string]string{LangEN: {
 		"action_search":          "搜索（s: 艺术家  a: 专辑  t: 标题  f: 格式）",
 		"action_track_info":      "曲目信息",
 		"action_fullscreen":      "切换全屏",
+		"action_lyrics_mode":     "切换歌词 / 播放器面板",
+		"action_collapse_panel":  "折叠 / 展开右侧面板",
 		"action_volume":          "音量增加 / 减小",
 		"action_switch_tab":      "切换标签页",
 		"action_this_help":       "显示此帮助",

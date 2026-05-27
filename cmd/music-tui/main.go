@@ -111,7 +111,7 @@ func loadSession(st *store.Store) *tui.SessionState {
 	return &tui.SessionState{
 		LastTrackID:    lastTrackID,
 		LastPositionMs: int64(atoi(get(store.KeyLastPositionMs), 0)),
-		WasPlaying:     get(store.KeyWasPlaying) == "1",
+		WasPlaying:     get(store.KeyWasPlaying) == store.ValWasPlayingYes,
 		Volume:         atof(get(store.KeyVolume), 1.0),
 		PlayMode:       atoi(get(store.KeyPlayMode), 0),
 		RetroIdx:       atoi(get(store.KeyRetroIdx), 0),

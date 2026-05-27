@@ -167,7 +167,7 @@ type App struct {
 	// ── Settings overlay ─────────────────────────────────────────────────────
 	settingsInput  textinput.Model // p2chip options
 	musicDirInput  textinput.Model // music library directory
-	settingsActive int             // 0 = musicDirInput active, 1 = settingsInput active
+	settingsActive settingsField   // active field in the settings overlay
 
 	// ── Progress bar ─────────────────────────────────────────────────────────
 	progressBar progress.Model
@@ -176,10 +176,12 @@ type App struct {
 	lyricsVP viewport.Model
 
 	// ── UI state ─────────────────────────────────────────────────────────────
-	W, H        int
-	currentView view
-	activeTab   tabID
-	activeOvl   overlay
+	W, H           int
+	currentView    view
+	activeTab      tabID
+	activeOvl      overlay
+	rightMode      rightPanelMode // player or lyrics content in the right panel
+	rightCollapsed bool           // true = right panel hidden, track list takes full width
 
 	// ── Status / feedback ────────────────────────────────────────────────────
 	statusMsg string
@@ -226,7 +228,7 @@ func NewApp(player *audio.Player, st *store.Store, musicDir string, tracks []lib
 
 	// Restore UI language from the database before any rendering occurs.
 	if st != nil {
-		if lang, _ := st.GetSetting(store.KeyLanguage); lang == "zh" {
+		if lang, _ := st.GetSetting(store.KeyLanguage); lang == store.ValLanguageZH {
 			SetLang(LangZH)
 		}
 	}
@@ -236,6 +238,18 @@ func NewApp(player *audio.Player, st *store.Store, musicDir string, tracks []lib
 	if st != nil {
 		if raw, _ := st.GetSetting(store.KeyFormatPreference); raw != "" {
 			fmtPref = parseFormatPref(raw)
+		}
+	}
+
+	// Restore right-panel layout preferences.
+	var rightCollapsed bool
+	var rightMode rightPanelMode
+	if st != nil {
+		if v, _ := st.GetSetting(store.KeyRightCollapsed); v == store.ValRightCollapsed {
+			rightCollapsed = true
+		}
+		if v, _ := st.GetSetting(store.KeyRightPanelMode); v != "" {
+			rightMode = parseRightPanelMode(v)
 		}
 	}
 
@@ -280,22 +294,24 @@ func NewApp(player *audio.Player, st *store.Store, musicDir string, tracks []lib
 	}
 
 	app := &App{
-		player:        player,
-		st:            st,
-		musicDir:      musicDir,
-		searchInput:   ti,
-		settingsInput: si,
-		musicDirInput: di,
-		progressBar:   prog,
-		loading:       false,
-		mqTitle:       NewMarquee("", marqueeSep),
-		mqMeta:        NewMarquee("", marqueeSep),
-		mqArtist:      NewMarquee("", marqueeSep),
-		mqAlbum:       NewMarquee("", marqueeSep),
-		mqRow:         NewMarquee("", marqueeSep),
-		session:       sess,
-		providerMap:   map[string]provider.TrackProvider{},
-		netCancel:     func() {}, // no-op until a network request is started
+		player:         player,
+		st:             st,
+		musicDir:       musicDir,
+		searchInput:    ti,
+		settingsInput:  si,
+		musicDirInput:  di,
+		progressBar:    prog,
+		loading:        false,
+		mqTitle:        NewMarquee("", marqueeSep),
+		mqMeta:         NewMarquee("", marqueeSep),
+		mqArtist:       NewMarquee("", marqueeSep),
+		mqAlbum:        NewMarquee("", marqueeSep),
+		mqRow:          NewMarquee("", marqueeSep),
+		session:        sess,
+		providerMap:    map[string]provider.TrackProvider{},
+		netCancel:      func() {}, // no-op until a network request is started
+		rightCollapsed: rightCollapsed,
+		rightMode:      rightMode,
 		PlaybackState: PlaybackState{
 			volume:   vol,
 			playMode: mode,
@@ -378,9 +394,9 @@ func (a *App) saveSession() {
 	}
 	pos := a.player.Position()
 	state := a.player.State()
-	wasPlaying := "0"
+	wasPlaying := store.ValWasPlayingNo
 	if state == audio.StatePlaying || state == audio.StatePaused {
-		wasPlaying = "1"
+		wasPlaying = store.ValWasPlayingYes
 	}
 
 	lastTrackID := ""
@@ -392,13 +408,19 @@ func (a *App) saveSession() {
 	// when pos==0 and the player is stopped (would overwrite a valid position
 	// saved moments earlier by the q-key handler).
 	posMs := pos.Milliseconds()
+	collapsedVal := store.ValRightExpanded
+	if a.rightCollapsed {
+		collapsedVal = store.ValRightCollapsed
+	}
 	pairs := map[string]string{
-		store.KeyVolume:       strconv.FormatFloat(a.volume, 'f', 4, 64),
-		store.KeyPlayMode:     strconv.Itoa(int(a.playMode)),
-		store.KeyRetroIdx:     strconv.Itoa(a.retroIdx),
-		store.KeyLastTrackID:  lastTrackID,
-		store.KeyWasPlaying:   wasPlaying,
-		store.KeyChip8Options: a.chip8Options,
+		store.KeyVolume:         strconv.FormatFloat(a.volume, 'f', 4, 64),
+		store.KeyPlayMode:       strconv.Itoa(int(a.playMode)),
+		store.KeyRetroIdx:       strconv.Itoa(a.retroIdx),
+		store.KeyLastTrackID:    lastTrackID,
+		store.KeyWasPlaying:     wasPlaying,
+		store.KeyChip8Options:   a.chip8Options,
+		store.KeyRightCollapsed: collapsedVal,
+		store.KeyRightPanelMode: rightPanelModeKey(a.rightMode),
 	}
 	if posMs > 0 || state != audio.StateStopped {
 		pairs[store.KeyLastPositionMs] = strconv.FormatInt(posMs, 10)
@@ -613,7 +635,7 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	// Forward to settings input while settings overlay is active.
 	if a.activeOvl == overlaySettings {
 		var cmd tea.Cmd
-		if a.settingsActive == 0 {
+		if a.settingsActive == settingsFieldMusicDir {
 			a.musicDirInput, cmd = a.musicDirInput.Update(msg)
 		} else {
 			a.settingsInput, cmd = a.settingsInput.Update(msg)
@@ -671,8 +693,9 @@ func (a *App) panelInnerH() int {
 	return h
 }
 
-// showMiniPlayer returns true when the terminal is wide enough.
-func (a *App) showMiniPlayer() bool { return a.W >= miniPlayerMinWidth }
+// showMiniPlayer returns true when the terminal is wide enough and the right
+// panel is not collapsed.
+func (a *App) showMiniPlayer() bool { return !a.rightCollapsed && a.W >= miniPlayerMinWidth }
 
 // trackListOuterW returns the outer (border-inclusive) width of the track list.
 func (a *App) trackListOuterW() int {

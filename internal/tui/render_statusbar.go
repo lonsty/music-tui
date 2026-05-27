@@ -61,7 +61,6 @@ func (a *App) renderStatusBar() string {
 	}
 
 	stateChipStr := styleStatusState.Render(stateLabel(displayState))
-	modeChip := styleModeIcon.Render(" " + playModeIcon(a.playMode) + " ")
 
 	var retroChip string
 	if a.retroIdx > 0 {
@@ -81,7 +80,9 @@ func (a *App) renderStatusBar() string {
 	}
 
 	// Fixed prefix: always rendered.
-	prefix := " " + stateChipStr + "  " + modeChip + retroChip + chipChip + "  "
+	// Play mode icon is intentionally omitted here — it is shown in the
+	// mini/fullscreen player controls and in the collapsed-header status line.
+	prefix := " " + stateChipStr + retroChip + chipChip + "  "
 	prefixW := strWidth(prefix)
 
 	// statusMsg overrides hints entirely.
@@ -107,9 +108,22 @@ func (a *App) renderStatusBar() string {
 			{"</>", T("hint_seek"), 3},
 			{"+/-", T("hint_vol"), 3},
 			{"m", T("hint_mode"), 4},
-			{"b", "8-bit", 4},
+			{"b", "8-bit", 5},
 		}
 	} else {
+		// l hint: only shown when the right panel is visible and not collapsed.
+		// In collapsed state the panel is hidden so the mode switch has no effect.
+		lyricsHintLabel := T("hint_lyrics")
+		if a.rightMode == rightPanelLyrics {
+			lyricsHintLabel = T("hint_player")
+		}
+		showLyricsHint := a.showMiniPlayer() // false when collapsed or too narrow
+
+		collapseHintLabel := T("hint_collapse")
+		if a.rightCollapsed {
+			collapseHintLabel = T("hint_expand")
+		}
+
 		switch {
 		case displayState == audio.StatePlaying:
 			hints = []statusHint{
@@ -119,9 +133,15 @@ func (a *App) renderStatusBar() string {
 				{"p", T("hint_prev"), 2},
 				{"</>", T("hint_seek"), 3},
 				{"+/-", T("hint_vol"), 3},
-				{"/", T("hint_search"), 4},
-				{"?", T("hint_help"), 5},
 			}
+			if showLyricsHint {
+				hints = append(hints, statusHint{"l", lyricsHintLabel, 4})
+			}
+			hints = append(hints,
+				statusHint{`\`, collapseHintLabel, 4},
+				statusHint{"/", T("hint_search"), 5},
+				statusHint{"?", T("hint_help"), 5},
+			)
 		case displayState == audio.StatePaused, a.currentTrack != nil:
 			hints = []statusHint{
 				{"Spc", T("hint_resume"), 1},
@@ -130,15 +150,22 @@ func (a *App) renderStatusBar() string {
 				{"p", T("hint_prev"), 2},
 				{"</>", T("hint_seek"), 3},
 				{"+/-", T("hint_vol"), 3},
-				{"/", T("hint_search"), 4},
-				{"?", T("hint_help"), 5},
 			}
+			if showLyricsHint {
+				hints = append(hints, statusHint{"l", lyricsHintLabel, 4})
+			}
+			hints = append(hints,
+				statusHint{`\`, collapseHintLabel, 4},
+				statusHint{"/", T("hint_search"), 5},
+				statusHint{"?", T("hint_help"), 5},
+			)
 		default:
 			// No track — guide the user.
 			hints = []statusHint{
 				{"Enter", T("hint_play"), 1},
 				{"q", T("hint_quit"), 1},
 				{"/", T("hint_search"), 2},
+				{`\`, collapseHintLabel, 3},
 				{",", T("hint_settings"), 3},
 				{"?", T("hint_help"), 4},
 			}
@@ -161,15 +188,19 @@ func (a *App) renderStatusBar() string {
 	}
 
 	// Drop hints by priority (highest number first) until they fit.
-	// We work from the maximum priority downward, removing all hints at that
-	// level before moving to the next, preserving the relative hint order.
+	// Derive the initial cutoff from the hints themselves so no magic number
+	// needs to stay in sync when priorities change.
 	available := a.W - prefixW
 	if available < 0 {
 		available = 0
 	}
-
-	// Total width of all hints at the current cutoff.
-	cutoffPriority := 6 // start above the maximum priority used
+	maxPriority := 0
+	for _, h := range hints {
+		if h.priority > maxPriority {
+			maxPriority = h.priority
+		}
+	}
+	cutoffPriority := maxPriority + 1
 	for {
 		total := 0
 		for _, h := range hints {
