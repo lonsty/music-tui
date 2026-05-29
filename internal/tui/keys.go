@@ -21,10 +21,11 @@ func (a *App) cmdQuit() tea.Cmd {
 // openSettings initialises and opens the settings overlay.
 func (a *App) openSettings() {
 	a.activeOvl = overlaySettings
+	a.ovlScrollRow = 0
 	a.settingsActive = settingsFieldMusicDir
+	a.settingsEditing = false
 	a.musicDirInput.SetValue(a.musicDir)
-	a.musicDirInput.Focus()
-	a.musicDirInput.CursorEnd()
+	a.musicDirInput.Blur()
 	a.settingsInput.SetValue(a.chip8Options)
 	a.settingsInput.Blur()
 }
@@ -32,8 +33,25 @@ func (a *App) openSettings() {
 // closeSettings dismisses the settings overlay and unfocuses inputs.
 func (a *App) closeSettings() {
 	a.activeOvl = overlayNone
+	a.ovlScrollRow = 0
+	a.settingsEditing = false
 	a.musicDirInput.Blur()
 	a.settingsInput.Blur()
+}
+
+// closeOverlay dismisses any non-settings overlay and resets scroll position.
+func (a *App) closeOverlay() {
+	a.activeOvl = overlayNone
+	a.ovlScrollRow = 0
+}
+
+// scrollOverlay moves the overlay scroll position by delta rows, clamped to
+// valid range.  Actual clamping against content length happens in the renderer.
+func (a *App) scrollOverlay(delta int) {
+	a.ovlScrollRow += delta
+	if a.ovlScrollRow < 0 {
+		a.ovlScrollRow = 0
+	}
 }
 
 // handleKey is the top-level keyboard dispatcher.
@@ -197,6 +215,7 @@ func (a *App) handleNormalKey(msg tea.KeyMsg) tea.Cmd {
 
 	case "i":
 		a.activeOvl = overlayInfo
+		a.ovlScrollRow = 0
 
 	case "/":
 		a.activeOvl = overlaySearch
@@ -205,6 +224,7 @@ func (a *App) handleNormalKey(msg tea.KeyMsg) tea.Cmd {
 
 	case "?":
 		a.activeOvl = overlayHelp
+		a.ovlScrollRow = 0
 
 	case ",":
 		a.openSettings()
@@ -371,131 +391,202 @@ func (a *App) handleSearchKey(msg tea.KeyMsg) tea.Cmd {
 
 // ── Help overlay ──────────────────────────────────────────────────────────────
 
-func (a *App) handleHelpKey(_ tea.KeyMsg) tea.Cmd {
-	a.activeOvl = overlayNone
+func (a *App) handleHelpKey(msg tea.KeyMsg) tea.Cmd {
+	switch msg.String() {
+	case "?", "esc":
+		a.closeOverlay()
+	case "up", "k":
+		a.scrollOverlay(-1)
+	case "down", "j":
+		a.scrollOverlay(1)
+	}
 	return nil
 }
 
 // ── Info overlay ──────────────────────────────────────────────────────────────
 
-func (a *App) handleInfoKey(_ tea.KeyMsg) tea.Cmd {
-	a.activeOvl = overlayNone
+func (a *App) handleInfoKey(msg tea.KeyMsg) tea.Cmd {
+	switch msg.String() {
+	case "i", "esc":
+		a.closeOverlay()
+	case "up", "k":
+		a.scrollOverlay(-1)
+	case "down", "j":
+		a.scrollOverlay(1)
+	}
 	return nil
 }
 
 // ── Settings overlay ──────────────────────────────────────────────────────────
 
 func (a *App) handleSettingsKey(msg tea.KeyMsg) tea.Cmd {
+	// ── Editing mode: text input is active ────────────────────────────────
+	// In editing mode only control keys are handled; all other keystrokes are
+	// forwarded to the active text input.  Esc exits editing without closing.
+	if a.settingsEditing {
+		switch msg.String() {
+		case "esc":
+			// Exit editing mode, return to browse mode.
+			a.settingsEditing = false
+			a.musicDirInput.Blur()
+			a.settingsInput.Blur()
+			return nil
+		case "enter":
+			// Commit the edited value and exit editing mode.
+			return a.settingsCommitField()
+		case "ctrl+r":
+			return a.settingsReloadLibrary()
+		default:
+			// Forward to the active text input.
+			var cmd tea.Cmd
+			switch a.settingsActive {
+			case settingsFieldMusicDir:
+				a.musicDirInput, cmd = a.musicDirInput.Update(msg)
+			case settingsFieldChipOpts:
+				a.settingsInput, cmd = a.settingsInput.Update(msg)
+			}
+			return cmd
+		}
+	}
+
+	// ── Browse mode: navigate fields with ↑/↓, activate with Enter ────────
 	switch msg.String() {
-	case "enter":
-		// Language field: toggle language on Enter.
-		if a.settingsActive == settingsFieldLanguage {
-			if activeLang == LangEN {
-				SetLang(LangZH)
-			} else {
-				SetLang(LangEN)
-			}
-			if a.st != nil {
-				langVal := store.ValLanguageEN
-				if activeLang == LangZH {
-					langVal = store.ValLanguageZH
-				}
-				_ = a.st.SetSetting(store.KeyLanguage, langVal)
-			}
-			// Also update the search input placeholder to reflect the new language.
-			a.searchInput.Placeholder = T("search_placeholder")
-			return nil
-		}
-
-		// Format filter field: cycle through preferences on Enter.
-		if a.settingsActive == settingsFieldFormat {
-			// Advance to next preference value, wrapping around.
-			a.formatPref = (a.formatPref + 1) % formatPrefCount
-			if a.st != nil {
-				_ = a.st.SetSetting(store.KeyFormatPreference, formatPrefKey(a.formatPref))
-			}
-			// Re-filter the library immediately so the track list updates.
-			a.applyFilter()
-			return nil
-		}
-
-		// Save dir + opts fields and close.
-		newDir := strings.TrimSpace(a.musicDirInput.Value())
-		newOpts := strings.TrimSpace(a.settingsInput.Value())
-
-		dirChanged := newDir != a.musicDir && newDir != ""
-		optsChanged := newOpts != a.chip8Options
-
-		if dirChanged {
-			// Validate the directory exists before saving.
-			if info, err := os.Stat(newDir); err != nil || !info.IsDir() {
-				a.statusMsg = "󰅚  Directory not found: " + newDir
-				a.closeSettings()
-				return nil
-			}
-			a.musicDir = newDir
-			if a.st != nil {
-				_ = a.st.SetSetting(store.KeyMusicDir, newDir)
-			}
-		}
-		if optsChanged {
-			a.chip8Options = newOpts
-			if a.st != nil {
-				_ = a.st.SetSetting(store.KeyChip8Options, newOpts)
-			}
-			// Invalidate the chip cache so new options apply next time.
-			a.chipPath = ""
-			a.chipOrigin = ""
-		}
-
-		a.closeSettings()
-		return nil
 	case "esc":
-		// Discard and close.
 		a.closeSettings()
 		return nil
 
-	case "tab", "shift+tab":
-		// Cycle active field in order: musicDir → chipOpts → language → format → back.
-		a.musicDirInput.Blur()
-		a.settingsInput.Blur()
-		a.settingsActive = (a.settingsActive + 1) % settingsFieldCount
-		switch a.settingsActive {
-		case settingsFieldMusicDir:
-			a.musicDirInput.Focus()
-		case settingsFieldChipOpts:
-			a.settingsInput.Focus()
-		}
-		// settingsFieldLanguage and settingsFieldFormat have no text input; handled via Enter.
+	case "up", "k":
+		a.settingsMovePrev()
 		return nil
+
+	case "down", "j":
+		a.settingsMoveNext()
+		return nil
+
+	case "enter":
+		return a.settingsActivateField()
 
 	case "ctrl+r":
-		// Reload library (runs in background, closes overlay).
-		a.musicDir = strings.TrimSpace(a.musicDirInput.Value())
-		if a.musicDir == "" {
-			a.musicDir = strings.TrimSpace(a.musicDirInput.Placeholder)
-		}
-		// Validate the directory exists before saving and reloading.
-		if info, err := os.Stat(a.musicDir); err != nil || !info.IsDir() {
-			a.statusMsg = "󰅚  Directory not found: " + a.musicDir
-			a.closeSettings()
-			return nil
+		return a.settingsReloadLibrary()
+	}
+	return nil
+}
+
+// settingsMoveNext moves the selection to the next field, wrapping around,
+// and scrolls ovlScrollRow to keep the selected field visible.
+func (a *App) settingsMoveNext() {
+	a.settingsActive = (a.settingsActive + 1) % settingsFieldCount
+	a.ovlScrollRow = settingsFieldBodyRow[a.settingsActive]
+}
+
+// settingsMovePrev moves the selection to the previous field, wrapping around.
+func (a *App) settingsMovePrev() {
+	a.settingsActive = (a.settingsActive + settingsFieldCount - 1) % settingsFieldCount
+	a.ovlScrollRow = settingsFieldBodyRow[a.settingsActive]
+}
+
+// settingsActivateField handles Enter in browse mode.
+// For text fields it enters editing mode; for toggle fields it cycles the value.
+func (a *App) settingsActivateField() tea.Cmd {
+	switch a.settingsActive {
+	case settingsFieldMusicDir:
+		a.settingsEditing = true
+		a.musicDirInput.Focus()
+		a.musicDirInput.CursorEnd()
+		return nil
+
+	case settingsFieldChipOpts:
+		a.settingsEditing = true
+		a.settingsInput.Focus()
+		a.settingsInput.CursorEnd()
+		return nil
+
+	case settingsFieldLanguage:
+		if activeLang == LangEN {
+			SetLang(LangZH)
+		} else {
+			SetLang(LangEN)
 		}
 		if a.st != nil {
-			_ = a.st.SetSetting(store.KeyMusicDir, a.musicDir)
+			langVal := store.ValLanguageEN
+			if activeLang == LangZH {
+				langVal = store.ValLanguageZH
+			}
+			_ = a.st.SetSetting(store.KeyLanguage, langVal)
 		}
-		a.closeSettings()
-		a.loading = true
-		a.statusMsg = "Reloading library…"
-		return a.cmdSyncLibrary()
+		a.searchInput.Placeholder = T("search_placeholder")
+		return nil
+
+	case settingsFieldFormat:
+		a.formatPref = (a.formatPref + 1) % formatPrefCount
+		if a.st != nil {
+			_ = a.st.SetSetting(store.KeyFormatPreference, formatPrefKey(a.formatPref))
+		}
+		a.applyFilter()
+		return nil
+
+	case settingsFieldIconSet:
+		next := (ActiveIconSet() + 1) % iconSetCount
+		setIconSet(next)
+		if a.st != nil {
+			_ = a.st.SetSetting(store.KeyIconSet, iconSetKey(next))
+		}
+		return nil
+	}
+	return nil
+}
+
+// settingsCommitField saves the current text-field value and exits editing mode.
+func (a *App) settingsCommitField() tea.Cmd {
+	a.settingsEditing = false
+	a.musicDirInput.Blur()
+	a.settingsInput.Blur()
+
+	newDir := strings.TrimSpace(a.musicDirInput.Value())
+	newOpts := strings.TrimSpace(a.settingsInput.Value())
+
+	if a.settingsActive == settingsFieldMusicDir && newDir != a.musicDir && newDir != "" {
+		if info, err := os.Stat(newDir); err != nil || !info.IsDir() {
+			a.statusMsg = iconError() + "  Directory not found: " + newDir
+			return nil
+		}
+		a.musicDir = newDir
+		if a.st != nil {
+			_ = a.st.SetSetting(store.KeyMusicDir, newDir)
+		}
 	}
 
-	// Forward typing to the active input.
-	var cmd tea.Cmd
-	if a.settingsActive == 0 {
-		a.musicDirInput, cmd = a.musicDirInput.Update(msg)
-	} else {
-		a.settingsInput, cmd = a.settingsInput.Update(msg)
+	if a.settingsActive == settingsFieldChipOpts && newOpts != a.chip8Options {
+		a.chip8Options = newOpts
+		if a.st != nil {
+			_ = a.st.SetSetting(store.KeyChip8Options, newOpts)
+		}
+		a.chipPath = ""
+		a.chipOrigin = ""
 	}
-	return cmd
+	return nil
+}
+
+// settingsReloadLibrary saves the current dir value and triggers a library scan.
+func (a *App) settingsReloadLibrary() tea.Cmd {
+	a.settingsEditing = false
+	a.musicDirInput.Blur()
+	a.settingsInput.Blur()
+
+	a.musicDir = strings.TrimSpace(a.musicDirInput.Value())
+	if a.musicDir == "" {
+		a.musicDir = strings.TrimSpace(a.musicDirInput.Placeholder)
+	}
+	if info, err := os.Stat(a.musicDir); err != nil || !info.IsDir() {
+		a.statusMsg = iconError() + "  Directory not found: " + a.musicDir
+		a.closeSettings()
+		return nil
+	}
+	if a.st != nil {
+		_ = a.st.SetSetting(store.KeyMusicDir, a.musicDir)
+	}
+	a.closeSettings()
+	a.loading = true
+	a.statusMsg = "Reloading library…"
+	return a.cmdSyncLibrary()
 }

@@ -13,11 +13,11 @@ import (
 
 // lyricsLoadingText returns the status text shown while a lyrics fetch is in
 // flight.  The text is localised via T() so it reflects the active language.
-func lyricsLoadingText() string { return "󰔟  " + T("lyrics_loading") }
+func lyricsLoadingText() string { return iconWithSpace(iconSpinner()) + T("lyrics_loading") }
 
 // lyricsNoneText returns the placeholder shown in the mini player when no
 // lyrics are available.  Icon prefix is always kept for visual consistency.
-func lyricsNoneText() string { return "󰝚  " + T("no_lyrics") }
+func lyricsNoneText() string { return iconWithSpace(iconLyrics()) + T("no_lyrics") }
 
 // lyricRuleMargin is the number of blank columns between the panel edge and
 // the outermost ─ character of the active/cursor line decoration.
@@ -138,20 +138,19 @@ func (a *App) buildMiniPlayerContent(w, h int) string {
 
 func (a *App) buildControls(w int) string {
 	state := a.player.State()
-	playIcon := "󰐊" // play
+	playIcon := iconPlay()
 	if state == audio.StatePlaying {
-		playIcon = "󰏤" // pause
+		playIcon = iconPause()
 	}
 
-	modeIcon := styleModeIcon.Render(playModeIcon(a.playMode))
-	volIcon := "󰕾"
+	modeIcon := styleModeIcon.Render(iconPlayMode(a.playMode))
+	volIcon := iconVolumeOn()
 	if a.volume == 0 {
-		volIcon = "󰖁"
+		volIcon = iconVolumeMute()
 	}
 	volPct := int(a.volume / maxVolume * 100)
 
-	ctrl := fmt.Sprintf("󰒮  %s  󰒭    %s  %s %d%%",
-		playIcon, modeIcon, volIcon, volPct)
+	ctrl := iconPrev() + "  " + playIcon + "  " + iconNext() + "    " + modeIcon + "  " + volIcon + " " + fmt.Sprintf("%d%%", volPct)
 	return styleControls.Width(w).Render(ctrl)
 }
 
@@ -173,7 +172,7 @@ func (a *App) renderFullPlayer() string {
 	var content string
 	if a.currentTrack == nil {
 		content = lipgloss.Place(innerW, innerH, lipgloss.Center, lipgloss.Center,
-			styleModeIcon.Render("󰎄\n\nNo track selected"))
+			styleModeIcon.Render(iconMusic()+"\n\nNo track selected"))
 	} else {
 		content = a.buildFullPlayerContent(innerW, innerH)
 	}
@@ -253,7 +252,7 @@ func (a *App) renderFullLyrics() string {
 		lyricsH = 1
 	}
 
-	header := stylePanelTitle.Render("󰝚  "+T("lyrics_panel_title")) + "\n" +
+	header := stylePanelTitle.Render(iconWithSpace(iconLyrics())+T("lyrics_panel_title")) + "\n" +
 		styleDivider.Render(strings.Repeat("─", innerW))
 
 	var lyricsContent string

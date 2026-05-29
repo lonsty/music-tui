@@ -5,8 +5,6 @@ import (
 	"strings"
 
 	"github.com/charmbracelet/lipgloss"
-
-	"github.com/lonsty/music-tui/internal/audio"
 )
 
 // ── Tab bar ───────────────────────────────────────────────────────────────────
@@ -25,8 +23,8 @@ func (a *App) renderTabBar() string {
 	// tabPlaylist is declared but its UI is not yet built;
 	// add it back here once the playlist panel is implemented.
 	tabs := []tabDef{
-		{tabLocal, "󰋌", T("tab_local")},
-		{tabOnline, "󰖟", T("tab_online")},
+		{tabLocal, iconLibrary(), T("tab_local")},
+		{tabOnline, iconOnline(), T("tab_online")},
 	}
 
 	// activeMark is the left marker rendered on the active tab.
@@ -37,7 +35,12 @@ func (a *App) renderTabBar() string {
 
 	var parts []string
 	for _, t := range tabs {
-		body := t.icon + "  " + t.label
+		ic := t.icon
+		sep := ""
+		if ic != "" {
+			sep = "  " // gap between icon and label only when icon is present
+		}
+		body := ic + sep + t.label
 		if t.id == a.activeTab {
 			mark := styleTabActive.Render(activeMark)
 			parts = append(parts, mark+styleTabActive.Render(body)+styleTabActive.Render("  "))
@@ -85,15 +88,15 @@ func (a *App) renderOnlinePlaceholder() string {
 	innerH := a.panelInnerH()
 
 	features := []struct{ icon, text string }{
-		{"󰝚", "Online streaming & radio"},
-		{"󰋌", "Netease / Spotify integration"},
-		{"󰍋", "Lyrics sync & search"},
-		{"󰒝", "Playlist discovery"},
+		{iconLyrics(), "Online streaming & radio"},
+		{iconLibrary(), "Netease / Spotify integration"},
+		{iconLyricsSync(), "Lyrics sync & search"},
+		{iconMusic(), "Playlist discovery"},
 	}
 
 	var lines []string
 	lines = append(lines,
-		gradientText("󰖟  Online", true, blue, mauve, pink),
+		gradientText(iconWithSpace(iconOnline())+"Online", true, blue, mauve, pink),
 		"",
 		styleOverlayMuted.Render(T("online_coming_soon")),
 		"",
@@ -123,10 +126,10 @@ func (a *App) renderTrackList() string {
 
 	// ── Header ──
 	if a.activeOvl == overlaySearch {
-		prompt := styleSearchPrompt.Render("󰍉 ")
+		prompt := styleSearchPrompt.Render(iconSearch() + " ")
 		sb.WriteString(prompt + a.searchInput.View() + "\n")
 	} else {
-		title := stylePanelTitle.Render("󰋌  " + T("library_title"))
+		title := stylePanelTitle.Render(iconWithSpace(iconLibrary()) + T("library_title"))
 		// Show "pos / total" when a track from the filtered list is playing.
 		var countText string
 		if a.currentTrack != nil {
@@ -192,7 +195,7 @@ func (a *App) renderTrackList() string {
 		const leftFixW = 2
 		icon := "  " // 2 spaces (no-play state)
 		if isPlaying {
-			icon = "󰎆 " // glyph(1 col) + 1 space = 2 cols
+			icon = iconPlaying() + " " // glyph(1 col) + 1 space = 2 cols
 		}
 
 		// ── Right: format + duration (fixed 10 cols, right-aligned) ──────
@@ -271,32 +274,14 @@ func (a *App) renderTrackList() string {
 // Layout (left → right): mode-icon  play-icon  title · artist  time
 //
 // Drop order strictly right-to-left (rightmost element first):
-//  1. mode + icon + title[+artist] + time   (full)
-//  2. mode + icon + title[+artist]          (drop time)
-//  3. mode + icon + title                   (drop artist)
-//  4. mode + icon + title (Marquee)         (title scrolls when too wide)
-//  5. mode + icon                           (drop title)
-//  6. mode                                  (drop play icon — mode icon survives last)
-//  7. ""                                    (nothing fits)
+//  1. mode + title[+artist] + time   (full)
+//  2. mode + title[+artist]          (drop time)
+//  3. mode + title                   (drop artist)
+//  4. mode + title (Marquee)         (title scrolls when too wide)
+//  5. mode                           (drop title — mode icon survives last)
+//  6. ""                             (nothing fits)
 func (a *App) buildCollapsedPlayStatus(availW int) string {
-	if availW < 2 || a.currentTrack == nil {
-		return ""
-	}
-
-	// State icon: nf-fa-play or nf-fa-pause.
-	iconRune := "󰐊" // nf-fa-play
-	if a.player.State() == audio.StatePaused {
-		iconRune = "󰏤" // nf-fa-pause
-	}
-	icon := styleTrackRowPlayingAccent.Render(iconRune)
-	const iconCols = 1 // Nerd Font glyph renders as 1 terminal cell
-	const iconGap = 1  // space after icon
-	iconW := iconCols + iconGap
-
-	if availW <= iconW {
-		if availW >= iconCols {
-			return icon
-		}
+	if availW < 1 || a.currentTrack == nil {
 		return ""
 	}
 
@@ -311,12 +296,9 @@ func (a *App) buildCollapsedPlayStatus(availW int) string {
 	// ── Natural text widths ───────────────────────────────────────────────
 	titleNatW := strWidth(a.mqTitle.text)
 	artistNatW := strWidth(a.mqArtist.text)
-	const sep = " · " // connector between title and artist — signals they form one unit
+	const sep = " · "
 	const sepW = 3
 
-	// renderNatural returns the text at its natural width when it fits within
-	// maxW, otherwise returns a Marquee scroll window of exactly maxW columns.
-	// Returns (rendered string, actual columns used).
 	renderNatural := func(mq *Marquee, natW, maxW int) (string, int) {
 		if maxW <= 0 {
 			return "", 0
@@ -327,33 +309,18 @@ func (a *App) buildCollapsedPlayStatus(availW int) string {
 		return mq.Render(maxW), maxW
 	}
 
-	// ── Try variants from widest to narrowest ────────────────────────────
-	// Each variant is selected only when the available space can fit the
-	// natural (unscrolled) widths of all its components.  Once a variant is
-	// chosen, text that is still too wide gets a Marquee scroll window rather
-	// than being truncated.  This ensures that elements are dropped (right to
-	// left) before any scrolling is introduced.
-	//
-	// Progress bar is intentionally omitted: at header-row scale (8 cols) it
-	// adds visual noise without conveying more information than the time string.
-
-	// ── Play mode icon (lowest priority — shown only when all other components fit) ──
-	modeRune := playModeIcon(a.playMode)
+	// ── Play mode icon (lowest priority — dropped first) ──────────────────
+	modeRune := iconPlayMode(a.playMode)
 	modeStr := styleModeIcon.Render(modeRune)
-	const modeCols = 1 // Nerd Font glyph renders as 1 terminal cell
-	const modeGap = 1  // space after mode icon
+	modeCols := strWidth(modeRune)
+	const modeGap = 1
 	modeW := modeCols + modeGap
 
-	// Helper: minimum cols needed for title[+artist] given fixed overhead.
-	// "natural" means both title and artist at their raw display widths.
-	textNatW := titleNatW // title alone
+	textNatW := titleNatW
 	if artistNatW > 0 {
-		textNatW += sepW + artistNatW // title + sep + artist
+		textNatW += sepW + artistNatW
 	}
 
-	// renderBlock renders "title · artist" within textAvail cols, using natural
-	// widths when they fit; only falls back to Marquee when the text itself
-	// is wider than the slot.
 	renderBlock := func(textAvail int) string {
 		tStr, tUsed := renderNatural(a.mqTitle, titleNatW, textAvail)
 		tRendered := styleTrackRowPlayingAccent.Render(tStr)
@@ -365,37 +332,29 @@ func (a *App) buildCollapsedPlayStatus(availW int) string {
 		return tRendered + styleTrackMeta.Render(sep) + styleTrackMeta.Render(aStr)
 	}
 
-	// Variants: strictly right-to-left drop order.
-	// Each step removes the rightmost remaining element.
-
-	// Variant 1: mode + icon + title[+artist] + time
-	if availW-modeW-iconW-timeW >= textNatW {
-		return modeStr + " " + icon + " " + renderBlock(availW-modeW-iconW-timeW) +
+	// Variant 1: mode + title[+artist] + time
+	if availW-modeW-timeW >= textNatW {
+		return modeStr + " " + renderBlock(availW-modeW-timeW) +
 			" " + styleTrackMeta.Render(timeStr)
 	}
 
-	// Variant 2: mode + icon + title[+artist]  (drop time)
-	if availW-modeW-iconW >= textNatW {
-		return modeStr + " " + icon + " " + renderBlock(availW-modeW-iconW)
+	// Variant 2: mode + title[+artist]  (drop time)
+	if availW-modeW >= textNatW {
+		return modeStr + " " + renderBlock(availW-modeW)
 	}
 
-	// Variant 3: mode + icon + title  (drop artist)
-	if availW-modeW-iconW >= titleNatW {
-		return modeStr + " " + icon + " " + styleTrackRowPlayingAccent.Render(a.mqTitle.text)
+	// Variant 3: mode + title  (drop artist)
+	if availW-modeW >= titleNatW {
+		return modeStr + " " + styleTrackRowPlayingAccent.Render(a.mqTitle.text)
 	}
 
-	// Variant 4: mode + icon + title  (title too wide → Marquee scroll)
-	if availW-modeW-iconW >= 1 {
-		tStr, _ := renderNatural(a.mqTitle, titleNatW, availW-modeW-iconW)
-		return modeStr + " " + icon + " " + styleTrackRowPlayingAccent.Render(tStr)
+	// Variant 4: mode + title  (title too wide → Marquee scroll)
+	if availW-modeW >= 1 {
+		tStr, _ := renderNatural(a.mqTitle, titleNatW, availW-modeW)
+		return modeStr + " " + styleTrackRowPlayingAccent.Render(tStr)
 	}
 
-	// Variant 5: mode + icon  (drop title)
-	if availW >= modeW+iconCols {
-		return modeStr + " " + icon
-	}
-
-	// Variant 6: mode only  (drop play icon — mode is the last surviving element)
+	// Variant 5: mode only
 	if availW >= modeCols {
 		return modeStr
 	}

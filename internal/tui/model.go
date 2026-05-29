@@ -35,6 +35,7 @@ const (
 	settingsFieldChipOpts                       // p2chip options input
 	settingsFieldLanguage                       // language toggle (no text input)
 	settingsFieldFormat                         // format preference toggle (no text input)
+	settingsFieldIconSet                        // icon set toggle (no text input)
 	settingsFieldCount                          // sentinel — must be last
 )
 
@@ -67,6 +68,57 @@ func parseRightPanelMode(s string) rightPanelMode {
 		return rightPanelLyrics
 	default:
 		return rightPanelPlayer
+	}
+}
+
+// settingsFieldBodyRow maps each settingsField to its row index within the
+// Settings overlay's scrollable body.  Used to keep ovlScrollRow in sync
+// with the selected field when the user navigates with ↑/↓.
+var settingsFieldBodyRow = [settingsFieldCount]int{
+	settingsFieldMusicDir: 3,
+	settingsFieldChipOpts: 8,
+	settingsFieldLanguage: 15,
+	settingsFieldFormat:   19,
+	settingsFieldIconSet:  23,
+}
+
+// ── Icon set serialisation ────────────────────────────────────────────────────
+
+// iconSetKey returns the settings-DB string for an iconSet value.
+func iconSetKey(s iconSet) string {
+	switch s {
+	case iconSetEmoji:
+		return "emoji"
+	case iconSetPlain:
+		return "plain"
+	default:
+		return "nerd"
+	}
+}
+
+// parseIconSet converts a DB string back to an iconSet value.
+// Unknown or empty strings map to iconSetNerdFont (the default).
+func parseIconSet(s string) iconSet {
+	switch s {
+	case "emoji":
+		return iconSetEmoji
+	case "plain":
+		return iconSetPlain
+	default:
+		return iconSetNerdFont
+	}
+}
+
+// iconSetDisplayLabel returns a short localised label for the given iconSet,
+// used in the Settings overlay value column.
+func iconSetDisplayLabel(s iconSet) string {
+	switch s {
+	case iconSetEmoji:
+		return T("icon_set_emoji")
+	case iconSetPlain:
+		return T("icon_set_plain")
+	default:
+		return T("icon_set_nerd")
 	}
 }
 
@@ -177,21 +229,6 @@ func parseFormatPref(s string) formatPreference {
 	default:
 		return formatPrefAll
 	}
-}
-
-// playModeIcon returns the Nerd Font glyph for the given mode.
-func playModeIcon(m playMode) string {
-	switch m {
-	case playModeSequential:
-		return "󰒿" // nf-md-arrow_right
-	case playModeLoop:
-		return "󰑖" // nf-md-repeat
-	case playModeSingle:
-		return "󰑘" // nf-md-repeat_once
-	case playModeRandom:
-		return "󰒝" // nf-md-shuffle
-	}
-	return "?"
 }
 
 // ── Tea messages ─────────────────────────────────────────────────────────────

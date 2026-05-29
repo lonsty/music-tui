@@ -180,6 +180,8 @@ type App struct {
 	currentView    view
 	activeTab      tabID
 	activeOvl      overlay
+	ovlScrollRow   int  // scroll offset (in rows) for the active overlay
+	settingsEditing bool // true = text input active in settings overlay (editing mode)
 	rightMode      rightPanelMode // player or lyrics content in the right panel
 	rightCollapsed bool           // true = right panel hidden, track list takes full width
 
@@ -250,6 +252,13 @@ func NewApp(player *audio.Player, st *store.Store, musicDir string, tracks []lib
 		}
 		if v, _ := st.GetSetting(store.KeyRightPanelMode); v != "" {
 			rightMode = parseRightPanelMode(v)
+		}
+	}
+
+	// Restore icon set preference.
+	if st != nil {
+		if v, _ := st.GetSetting(store.KeyIconSet); v != "" {
+			setIconSet(parseIconSet(v))
 		}
 	}
 
@@ -421,6 +430,7 @@ func (a *App) saveSession() {
 		store.KeyChip8Options:   a.chip8Options,
 		store.KeyRightCollapsed: collapsedVal,
 		store.KeyRightPanelMode: rightPanelModeKey(a.rightMode),
+		store.KeyIconSet:        iconSetKey(ActiveIconSet()),
 	}
 	if posMs > 0 || state != audio.StateStopped {
 		pairs[store.KeyLastPositionMs] = strconv.FormatInt(posMs, 10)
@@ -493,7 +503,7 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case playResultMsg:
 		if msg.err != nil {
-			a.statusMsg = "󰅚  " + msg.err.Error()
+			a.statusMsg = iconError() + "  " + msg.err.Error()
 			return a, nil
 		}
 
@@ -547,7 +557,7 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// Conversion failed — unlock and surface the error.
 			a.chipBusy = false
 			a.chipConverting = false
-			a.statusMsg = "󰅚  8-bit convert failed: " + msg.err.Error()
+			a.statusMsg = iconError() + "  8-bit convert failed: " + msg.err.Error()
 			return a, nil
 		}
 		// Cache the result; conversion phase is done, crossfade phase begins.
@@ -629,17 +639,6 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		var cmd tea.Cmd
 		a.searchInput, cmd = a.searchInput.Update(msg)
 		a.applyFilter()
-		return a, cmd
-	}
-
-	// Forward to settings input while settings overlay is active.
-	if a.activeOvl == overlaySettings {
-		var cmd tea.Cmd
-		if a.settingsActive == settingsFieldMusicDir {
-			a.musicDirInput, cmd = a.musicDirInput.Update(msg)
-		} else {
-			a.settingsInput, cmd = a.settingsInput.Update(msg)
-		}
 		return a, cmd
 	}
 

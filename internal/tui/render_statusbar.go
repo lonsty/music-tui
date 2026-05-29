@@ -42,10 +42,10 @@ type statusHint struct {
 // it is truncated by the terminal rather than by us.
 func (a *App) renderStatusBar() string {
 	if a.loading {
-		return styleStatusLine.Render("  󰔟  " + T("scanning_library"))
+		return styleStatusLine.Render("  " + iconSpinner() + "  " + T("scanning_library"))
 	}
 	if a.scanErr != nil {
-		return styleStatusLine.Render("  󰅚  " + a.scanErr.Error())
+		return styleStatusLine.Render("  " + iconError() + "  " + a.scanErr.Error())
 	}
 
 	state := a.player.State()

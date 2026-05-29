@@ -92,8 +92,10 @@ var translations = map[Lang]map[string]string{LangEN: {
 	"chip_active":      " 8-bit ",
 
 	// ── Overlays ─────────────────────────────────────────────────────────
-	"help_title": "Keyboard shortcuts",
-	"help_close": "Any key to close",
+	"help_title":          "Keyboard shortcuts",
+	"help_close":          "Any key to close",
+	"help_close_key":      "Esc / ? to close  ·  ↑↓ to scroll",
+	"overlay_hint_close":  "Esc to close  ·  ↑↓ to scroll",
 
 	"action_move_down":       "Move down",
 	"action_move_up":         "Move up",
@@ -145,6 +147,8 @@ var translations = map[Lang]map[string]string{LangEN: {
 	"settings_save":         "save",
 	"settings_cancel":       "cancel",
 	"settings_switch":       "switch field",
+	"settings_edit":         "edit / toggle",
+	"settings_navigate":     "navigate",
 	"settings_lang_label":   "Language",
 	"settings_lang_en":      "English",
 	"settings_lang_zh":      "中文",
@@ -155,6 +159,12 @@ var translations = map[Lang]map[string]string{LangEN: {
 	"fmt_pref_lossless_first": "Lossless first",
 	"fmt_pref_lossless_only":  "Lossless only",
 	"fmt_pref_mp3_only":       "MP3 only",
+
+	// ── Icon set ─────────────────────────────────────────────────────────
+	"settings_icon_set_label": "Icons",
+	"icon_set_nerd":           "Nerd Font",
+	"icon_set_emoji":          "Emoji",
+	"icon_set_plain":          "Plain",
 
 	// ── Tabs ─────────────────────────────────────────────────────────────
 	"tab_local":          "Local",
@@ -213,8 +223,10 @@ var translations = map[Lang]map[string]string{LangEN: {
 		"chip_active":      " 8-bit ",
 
 		// ── Overlays ─────────────────────────────────────────────────────────
-		"help_title": "快捷键",
-		"help_close": "任意键关闭",
+		"help_title":          "快捷键",
+		"help_close":          "任意键关闭",
+		"help_close_key":      "Esc / ? 关闭  ·  ↑↓ 滚动",
+		"overlay_hint_close":  "Esc 关闭  ·  ↑↓ 滚动",
 
 		"action_move_down":       "向下移动",
 		"action_move_up":         "向上移动",
@@ -266,6 +278,8 @@ var translations = map[Lang]map[string]string{LangEN: {
 		"settings_save":         "保存",
 		"settings_cancel":       "取消",
 		"settings_switch":       "切换字段",
+		"settings_edit":         "编辑 / 切换",
+		"settings_navigate":     "移动",
 		"settings_lang_label":   "语言",
 		"settings_lang_en":      "English",
 		"settings_lang_zh":      "中文",
@@ -276,6 +290,12 @@ var translations = map[Lang]map[string]string{LangEN: {
 		"fmt_pref_lossless_first": "无损优先",
 		"fmt_pref_lossless_only":  "仅无损",
 		"fmt_pref_mp3_only":       "仅 MP3",
+
+		// ── Icon set ─────────────────────────────────────────────────────────
+		"settings_icon_set_label": "图标风格",
+		"icon_set_nerd":           "Nerd Font",
+		"icon_set_emoji":          "Emoji",
+		"icon_set_plain":          "纯文字",
 
 		// ── Tabs ─────────────────────────────────────────────────────────────
 		"tab_local":          "本地",

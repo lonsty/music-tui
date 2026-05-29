@@ -32,6 +32,10 @@ const (
 	// KeyRightPanelMode stores the right panel display mode.
 	// Valid values are defined by the rightPanelMode enum in the tui package.
 	KeyRightPanelMode = "right_panel_mode"
+	// KeyIconSet stores the icon rendering style.
+	// Valid values are defined by the iconSet enum in the tui package.
+	// Absent or unknown values default to ValIconSetNerdFont.
+	KeyIconSet = "icon_set"
 )
 
 // Settings value constants for keys with a fixed set of valid values.
@@ -48,4 +52,10 @@ const (
 	// ValRightCollapsed / ValRightExpanded are the two states for KeyRightCollapsed.
 	ValRightCollapsed = "collapsed"
 	ValRightExpanded  = "expanded"
+
+	// ValIconSetNerdFont / ValIconSetEmoji / ValIconSetPlain are the three
+	// states for KeyIconSet.
+	ValIconSetNerdFont = "nerd"
+	ValIconSetEmoji    = "emoji"
+	ValIconSetPlain    = "plain"
 )

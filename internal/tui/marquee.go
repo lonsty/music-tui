@@ -7,8 +7,11 @@ import (
 )
 
 // Marquee is a scrolling-text widget. When the text fits within the given
-// width it is returned as-is; when it overflows the text scrolls left at one
-// display-column per Tick call, wrapping with a separator gap.
+// width it is returned as-is; when it overflows the text scrolls left at
+// marqueeScrollChars complete characters per Tick call, wrapping with a
+// separator gap.  Advancing by whole characters (rather than a fixed column
+// count) keeps the perceived scroll speed uniform regardless of whether the
+// text is Latin (1 col/char) or CJK (2 cols/char).
 //
 // Usage:
 //
@@ -33,7 +36,13 @@ type Marquee struct {
 const (
 	// marqueePauseTicks is how many ticks to show text stationary before
 	// scrolling begins (or after the text wraps around).
-	marqueePauseTicks = 8
+	// At tickInterval=500ms this gives a 1 second pause before scrolling starts.
+	marqueePauseTicks = 2
+
+	// marqueeScrollChars is the number of complete characters to advance per
+	// tick.  Using characters (not columns) ensures CJK and Latin text scroll
+	// at the same perceived speed: 1 char/tick × 2 ticks/s = 2 chars/s.
+	marqueeScrollChars = 2
 )
 
 // NewMarquee creates a Marquee with the given text and separator string.
@@ -58,7 +67,10 @@ func (m *Marquee) SetText(text string) {
 	m.pauseLeft = marqueePauseTicks
 }
 
-// Tick advances the scroll position by one display column.
+// Tick advances the scroll position by marqueeScrollChars complete characters.
+// Advancing by whole characters ensures uniform perceived speed across scripts:
+// Latin text (1 col/char) and CJK text (2 cols/char) both move at the same
+// character-per-second rate rather than the same column-per-second rate.
 // Call this on every tickMsg.
 func (m *Marquee) Tick(width int) {
 	if m.loopW == 0 || strWidth(m.text) <= width {
@@ -68,11 +80,42 @@ func (m *Marquee) Tick(width int) {
 		m.pauseLeft--
 		return
 	}
-	m.offset++
+	m.offset = nextCharBoundary(m.loopBuf, m.offset, marqueeScrollChars)
 	if m.offset >= m.loopW {
 		m.offset = 0
 		m.pauseLeft = marqueePauseTicks
 	}
+}
+
+// nextCharBoundary returns the new display-column offset after advancing n
+// complete characters forward from startCol in s.
+// It first skips to startCol, then counts n more complete characters and
+// returns the column position at the start of the (n+1)-th character.
+// If s ends before n characters are consumed the returned value will be ≥
+// loopW which the caller uses as the wrap-around signal.
+func nextCharBoundary(s string, startCol, n int) int {
+	// Phase 1: skip to startCol.
+	col := 0
+	idx := 0
+	for i, r := range s {
+		if col >= startCol {
+			idx = i
+			break
+		}
+		col += ansi.StringWidth(string(r))
+		idx = i + len(string(r))
+	}
+
+	// Phase 2: advance n complete characters.
+	advanced := 0
+	for _, r := range s[idx:] {
+		if advanced >= n {
+			break
+		}
+		col += ansi.StringWidth(string(r))
+		advanced++
+	}
+	return col
 }
 
 // Render returns a string of exactly `width` display columns.

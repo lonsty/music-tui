@@ -6,6 +6,41 @@ import (
 	"github.com/charmbracelet/lipgloss"
 )
 
+// overlayInnerW returns the usable content width (columns) for an overlay box
+// given the current terminal width.  It subtracts the box border (2 cols each
+// side = 2 total for RoundedBorder) and the horizontal padding defined by
+// styleOverlayBox.Padding(1, 2) (2 cols each side = 4 total), plus a small
+// outer margin so the box never touches the terminal edges.
+//
+//	available = a.W - border(2) - padding(4) - outerMargin(4)
+//
+// The result is clamped to [minW, idealW].
+func (a *App) overlayInnerW(idealW, minW int) int {
+	const boxBorderW = 2   // left + right border chars
+	const boxPadW = 4      // Padding(1,2) → 2 left + 2 right
+	const outerMarginW = 4 // keep 2 cols free on each side of the box
+	avail := a.W - boxBorderW - boxPadW - outerMarginW
+	if avail < minW {
+		avail = minW
+	}
+	if avail > idealW {
+		avail = idealW
+	}
+	return avail
+}
+
+// All three overlays (help, info, settings) share the same ideal and minimum
+// content widths so they appear the same size on wide terminals.
+//
+// idealOverlayW is derived from the widest help action string across both
+// languages (Chinese "设置（音乐目录…）" = 58 cols) plus the key-chip column:
+//
+//	2(indent) + 14(keyColW) + 2(gap) + 58(maxAction) = 76
+const (
+	idealOverlayW = 72
+	minOverlayW   = 28
+)
+
 // ── Help overlay ──────────────────────────────────────────────────────────────
 
 func (a *App) renderHelpOverlay() string {
@@ -37,34 +72,44 @@ func (a *App) renderHelpOverlay() string {
 		{"F11 / F12", T("action_media_vol")},
 	}
 
-	title := styleOverlayTitle.Render("󰋼  " + T("help_title"))
-	// 44 = 2(indent) + 14(key chip width) + 2(gap) + 26(longest action text fit)
-	div := styleOverlayMuted.Render(strings.Repeat("─", 44))
+	// keyColW: fixed width reserved for the key chip column.
+	// actionW: remaining width for the action description.
+	const keyColW = 14
+	innerW := a.overlayInnerW(idealOverlayW, minOverlayW)
+	actionW := innerW - 2 - keyColW - 2 // innerW - indent - keyColW - gap
+	if actionW < 8 {
+		actionW = 8
+	}
 
-	var rows []string
-	rows = append(rows, title, div, "")
+	div := styleOverlayMuted.Render(strings.Repeat("─", innerW))
+	titleRows := []string{
+		styleOverlayTitle.Render(iconWithSpace(iconHelp()) + T("help_title")),
+		div,
+	}
+
+	var bodyRows []string
 	for _, b := range bindings {
 		if b.key == "" && b.action == "" {
-			rows = append(rows, "")
+			bodyRows = append(bodyRows, "")
 			continue
 		}
-		// Render key chip as ❮key❯ and pad to a fixed column width so the
-		// action column is always left-aligned regardless of key length.
-		const keyColW = 14 // display columns reserved for the key chip
 		chip := styleOverlayKey.Render("❮" + b.key + "❯")
-		// chip visible width = 1 + strWidth(b.key) + 1 (brackets are 1-wide each)
 		chipW := 2 + strWidth(b.key)
 		if chipW < keyColW {
 			chip += strings.Repeat(" ", keyColW-chipW)
 		}
-		v := styleOverlayValue.Render(b.action)
-		rows = append(rows, "  "+chip+"  "+v)
+		// Truncate action text if terminal is too narrow to fit it.
+		action := b.action
+		if strWidth(action) > actionW {
+			action = truncate(action, actionW)
+		}
+		v := styleOverlayValue.Render(action)
+		bodyRows = append(bodyRows, "  "+chip+"  "+v)
 	}
-	rows = append(rows, "", styleOverlayMuted.Render("  "+T("help_close")))
 
-	box := styleOverlayBox.Render(lipgloss.JoinVertical(lipgloss.Left, rows...))
-	return strings.Repeat("\n", topPad) +
-		lipgloss.Place(a.W, a.H-topPad, lipgloss.Center, lipgloss.Center, box)
+	hintRows := []string{"", styleOverlayMuted.Render("  " + T("overlay_hint_close"))}
+
+	return a.renderScrollableOverlay(titleRows, bodyRows, hintRows, innerW)
 }
 
 // ── Info overlay ──────────────────────────────────────────────────────────────
@@ -75,38 +120,38 @@ func (a *App) renderInfoOverlay() string {
 		t = a.cursorTrack()
 	}
 
-	// styleOverlayKey has PaddingLeft(1)+PaddingRight(1), so Width(W) fits
-	// W-2 visible characters.  The longest label is "Album Artist" (12 chars),
-	// requiring Width(14).  indent must equal 2(prefix) + 14(labelW) + 2(gap) = 18.
+	// labelW: fixed width for the field-name column.
+	// valueW: remaining width for the field value (adaptive).
 	const labelW = 14
-	const valueW = 38
-	const indent = "                  " // 18 spaces: 2 + 14 + 2
+	innerW := a.overlayInnerW(idealOverlayW, minOverlayW)
+	valueW := innerW - 2 - labelW - 2
+	if valueW < 10 {
+		valueW = 10
+	}
+	// indent aligns continuation lines with the value column.
+	indent := strings.Repeat(" ", 2+labelW+2)
 
-	title := styleOverlayTitle.Render("󰋽  " + T("info_title"))
-	// +6 = "  "(2 prefix spaces) + "  "(2 key-value gap spaces) + 2(visual margin).
-	div := styleOverlayMuted.Render(strings.Repeat("─", labelW+valueW+6))
+	div := styleOverlayMuted.Render(strings.Repeat("─", innerW))
+	titleRows := []string{
+		styleOverlayTitle.Render(iconWithSpace(iconInfo()) + T("info_title")),
+		div,
+	}
 
-	// row renders a single label+value pair.
-	// Long values are word-wrapped at valueW columns, continuation lines
-	// are indented to align with the first value character.
 	row := func(label, value string) []string {
 		if value == "" {
 			return nil
 		}
-		// Field label: fixed-width column without background fill.
 		labelText := styleOverlayKey.Render(label)
-		labelW2 := strWidth(label)
-		if labelW2 < labelW {
-			labelText += strings.Repeat(" ", labelW-labelW2)
+		lw := strWidth(label)
+		if lw < labelW {
+			labelText += strings.Repeat(" ", labelW-lw)
 		}
-		l := labelText
-		// Wrap value into segments of at most valueW display columns.
 		segments := wrapText(value, valueW)
 		var result []string
 		for i, seg := range segments {
 			v := styleOverlayValue.Render(seg)
 			if i == 0 {
-				result = append(result, "  "+l+"  "+v)
+				result = append(result, "  "+labelText+"  "+v)
 			} else {
 				result = append(result, indent+v)
 			}
@@ -114,8 +159,8 @@ func (a *App) renderInfoOverlay() string {
 		return result
 	}
 
-	var rows []string
-	rows = append(rows, title, div, "")
+	var bodyRows []string
+	bodyRows = append(bodyRows, "")
 	if t != nil {
 		for _, lines := range [][]string{
 			row(T("label_title"), t.DisplayTitle()),
@@ -130,31 +175,33 @@ func (a *App) renderInfoOverlay() string {
 			row(T("label_format"), t.Format()),
 			row(T("label_path"), t.Path),
 		} {
-			rows = append(rows, lines...)
+			bodyRows = append(bodyRows, lines...)
 		}
 	} else {
-		rows = append(rows, styleOverlayMuted.Render("  "+T("info_no_track")))
+		bodyRows = append(bodyRows, styleOverlayMuted.Render("  "+T("info_no_track")))
 	}
-	rows = append(rows, "", styleOverlayMuted.Render("  "+T("help_close")))
 
-	box := styleOverlayBox.Render(lipgloss.JoinVertical(lipgloss.Left, rows...))
-	return strings.Repeat("\n", topPad) +
-		lipgloss.Place(a.W, a.H-topPad, lipgloss.Center, lipgloss.Center, box)
+	hintRows := []string{"", styleOverlayMuted.Render("  " + T("overlay_hint_close"))}
+
+	return a.renderScrollableOverlay(titleRows, bodyRows, hintRows, innerW)
 }
 
 // ── Settings overlay ──────────────────────────────────────────────────────────
 
 func (a *App) renderSettingsOverlay() string {
-	// lineW is the content width of the settings overlay (excluding styleOverlayBox padding).
-	// 52 = 11(label chip Width) + 4(indent+gap) + 37(input field Width) chosen to fit
-	// the longest input value without horizontal scrolling.
-	const lineW = 52
+	// lineW: total content width (adaptive), shared with the other overlays.
+	// labelColW: fixed width for the label chip column (9 visible + 2 padding = 11).
+	const labelColW = 11
+	lineW := a.overlayInnerW(idealOverlayW, minOverlayW)
+	inputW := lineW - labelColW - 4 // 2(indent) + 2(gap)
+	if inputW < 8 {
+		inputW = 8
+	}
 
 	title := styleOverlayTitle.Render("  " + T("settings_title"))
 	topDiv := styleOverlayMuted.Render(strings.Repeat("─", lineW))
 
 	sectionLabel := func(label string) string {
-		// -4 = "── "(3 prefix runes) + " "(1 trailing space before the fill dashes).
 		fill := lineW - strWidth(label) - 4
 		if fill < 0 {
 			fill = 0
@@ -162,48 +209,61 @@ func (a *App) renderSettingsOverlay() string {
 		return styleOverlayMuted.Render("── " + label + " " + strings.Repeat("─", fill))
 	}
 
-	// ── Active-input highlight helper ─────────────────────────────────────
-	labelStyle := func(active bool) lipgloss.Style {
+	// selBg returns the surface0 colour when active, empty (transparent) otherwise.
+	selBg := func(active bool) lipgloss.Color {
 		if active {
-			// Assign a copy to avoid mutating the package-level style.
-			s := styleOverlayKey
+			return lipgloss.Color(surface0)
+		}
+		return lipgloss.Color("")
+	}
+
+	spaceStyle := func(active bool) lipgloss.Style {
+		return lipgloss.NewStyle().Background(selBg(active))
+	}
+
+	labelStyle := func(active bool) lipgloss.Style {
+		s := styleOverlayKey.Background(selBg(active))
+		if active {
 			return s.Foreground(lipgloss.Color(mauve))
 		}
-		return styleOverlayKey
+		return s
+	}
+	valueStyle := func(active bool) lipgloss.Style {
+		return styleOverlayValue.Background(selBg(active))
+	}
+
+	buildFieldLine := func(label, value string, active bool) string {
+		sp := spaceStyle(active)
+		line := sp.Render("  ") + label + sp.Render("  ") + value
+		if active {
+			return styleSettingsSelected.Width(lineW).Render(line)
+		}
+		return line
 	}
 
 	// ── Music Library section ─────────────────────────────────────────────
-	// labelW(11) + indent(2+2) = 15; input width = lineW - 15
-	// styleOverlayKey has PaddingLeft(1)+PaddingRight(1), so Width(11)
-	// fits 9 visible chars — exactly "Directory".
-	const inputW = lineW - 15
 	dirActive := a.settingsActive == settingsFieldMusicDir
-	dirLabel := labelStyle(dirActive).Render(T("settings_dir_label") + strings.Repeat(" ", max(0, 11-strWidth(T("settings_dir_label")))))
-	// Show the current value truncated to inputW so the overlay never overflows.
-	// The textinput widget handles cursor/editing; we display a preview when
-	// the input is not active, and the live input.View() when it is.
+	dirLabel := labelStyle(dirActive).Render(T("settings_dir_label") + strings.Repeat(" ", max(0, labelColW-2-strWidth(T("settings_dir_label")))))
 	var dirView string
-	if dirActive {
+	if dirActive && a.settingsEditing {
 		a.musicDirInput.Width = inputW
 		dirView = a.musicDirInput.View()
 	} else {
-		// Inactive: show truncated value so it never wraps.
 		val := a.musicDirInput.Value()
 		if strWidth(val) > inputW {
-			// Show the tail of the path (most useful part).
 			val = "…" + val[len(val)-inputW+1:]
 		}
-		dirView = styleOverlayValue.Render(val)
+		dirView = valueStyle(dirActive).Render(val)
 	}
-	dirLine := "  " + dirLabel + "  " + dirView
+	dirLine := buildFieldLine(dirLabel, dirView, dirActive)
 	reloadKey := styleOverlayKey.Render("❮Ctrl+R❯")
 	reloadHint := "  " + reloadKey + styleOverlayMuted.Render(" "+T("settings_reload_hint"))
 
 	// ── 8-bit Conversion section ──────────────────────────────────────────
 	optsActive := a.settingsActive == settingsFieldChipOpts
-	optsLabel := labelStyle(optsActive).Render(T("settings_opts_label") + strings.Repeat(" ", max(0, 11-strWidth(T("settings_opts_label")))))
+	optsLabel := labelStyle(optsActive).Render(T("settings_opts_label") + strings.Repeat(" ", max(0, labelColW-2-strWidth(T("settings_opts_label")))))
 	var optsView string
-	if optsActive {
+	if optsActive && a.settingsEditing {
 		a.settingsInput.Width = inputW
 		optsView = a.settingsInput.View()
 	} else {
@@ -211,39 +271,69 @@ func (a *App) renderSettingsOverlay() string {
 		if strWidth(val) > inputW {
 			val = truncate(val, inputW)
 		}
-		optsView = styleOverlayValue.Render(val)
+		optsView = valueStyle(optsActive).Render(val)
 	}
-	optsLine := "  " + optsLabel + "  " + optsView
+	optsLine := buildFieldLine(optsLabel, optsView, optsActive)
 	optsHint := styleOverlayMuted.Render("  " + T("settings_opts_hint"))
 	optsEx := styleOverlayMuted.Render("  " + T("settings_opts_example"))
 
 	// ── Language section ──────────────────────────────────────────────────
 	langActive := a.settingsActive == settingsFieldLanguage
-	langLabel := labelStyle(langActive).Render(T("settings_lang_label") + strings.Repeat(" ", max(0, 11-strWidth(T("settings_lang_label")))))
+	langLabel := labelStyle(langActive).Render(T("settings_lang_label") + strings.Repeat(" ", max(0, labelColW-2-strWidth(T("settings_lang_label")))))
 	var langView string
 	if activeLang == LangZH {
-		langView = styleOverlayValue.Render(T("settings_lang_zh"))
+		langView = valueStyle(langActive).Render(T("settings_lang_zh"))
 	} else {
-		langView = styleOverlayValue.Render(T("settings_lang_en"))
+		langView = valueStyle(langActive).Render(T("settings_lang_en"))
 	}
-	langLine := "  " + langLabel + "  " + langView
+	langLine := buildFieldLine(langLabel, langView, langActive)
 
 	// ── Format filter section ─────────────────────────────────────────────
 	fmtActive := a.settingsActive == settingsFieldFormat
-	fmtLabel := labelStyle(fmtActive).Render(T("settings_fmt_label") + strings.Repeat(" ", max(0, 11-strWidth(T("settings_fmt_label")))))
-	fmtLine := "  " + fmtLabel + "  " + styleOverlayValue.Render(formatPrefLabel(a.formatPref))
+	fmtLabel := labelStyle(fmtActive).Render(T("settings_fmt_label") + strings.Repeat(" ", max(0, labelColW-2-strWidth(T("settings_fmt_label")))))
+	fmtLine := buildFieldLine(fmtLabel, valueStyle(fmtActive).Render(formatPrefLabel(a.formatPref)), fmtActive)
+
+	// ── Icon set section ───────────────────────────────────────────────────
+	iconSetActive := a.settingsActive == settingsFieldIconSet
+	iconSetLabel := labelStyle(iconSetActive).Render(T("settings_icon_set_label") + strings.Repeat(" ", max(0, labelColW-2-strWidth(T("settings_icon_set_label")))))
+	iconSetLine := buildFieldLine(iconSetLabel, valueStyle(iconSetActive).Render(iconSetDisplayLabel(ActiveIconSet())), iconSetActive)
 
 	// ── Footer ────────────────────────────────────────────────────────────
+	// Build footer that fits within lineW by progressively dropping hints.
 	enterKey := styleOverlayKey.Render("❮Enter❯")
 	escKey := styleOverlayKey.Render("❮Esc❯")
-	tabKey := styleOverlayKey.Render("❮Tab❯")
-	footer := "  " + enterKey + styleOverlayMuted.Render(" "+T("settings_save")+"  ·  ") +
-		escKey + styleOverlayMuted.Render(" "+T("settings_cancel")+"  ·  ") +
-		tabKey + styleOverlayMuted.Render(" "+T("settings_switch"))
+	upKey := styleOverlayKey.Render("❮↑/↓❯")
+	sep := styleOverlayMuted.Render("  ·  ")
+	var footer string
+	if a.settingsEditing {
+		full := "  " + enterKey + styleOverlayMuted.Render(" "+T("settings_save")) + sep +
+			escKey + styleOverlayMuted.Render(" "+T("settings_cancel"))
+		short := "  " + escKey + styleOverlayMuted.Render(" "+T("settings_cancel"))
+		if strWidth(full) <= lineW {
+			footer = full
+		} else {
+			footer = short
+		}
+	} else {
+		full := "  " + enterKey + styleOverlayMuted.Render(" "+T("settings_edit")) + sep +
+			upKey + styleOverlayMuted.Render(" "+T("settings_navigate")) + sep +
+			escKey + styleOverlayMuted.Render(" "+T("settings_cancel"))
+		noNav := "  " + enterKey + styleOverlayMuted.Render(" "+T("settings_edit")) + sep +
+			escKey + styleOverlayMuted.Render(" "+T("settings_cancel"))
+		short := "  " + escKey + styleOverlayMuted.Render(" "+T("settings_cancel"))
+		switch {
+		case strWidth(full) <= lineW:
+			footer = full
+		case strWidth(noNav) <= lineW:
+			footer = noNav
+		default:
+			footer = short
+		}
+	}
 
-	rows := []string{
-		title,
-		topDiv,
+	titleRows := []string{title, topDiv}
+
+	bodyRows := []string{
 		"",
 		sectionLabel(T("settings_section_lib")),
 		"",
@@ -265,10 +355,109 @@ func (a *App) renderSettingsOverlay() string {
 		"",
 		fmtLine,
 		"",
-		footer,
+		sectionLabel(T("settings_icon_set_label")),
+		"",
+		iconSetLine,
 	}
 
-	box := styleOverlayBox.Render(lipgloss.JoinVertical(lipgloss.Left, rows...))
+	hintRows := []string{"", footer}
+
+	return a.renderScrollableOverlay(titleRows, bodyRows, hintRows, lineW)
+}
+
+// renderScrollableOverlay renders a scrollable modal overlay centred on screen.
+//
+// innerW is the content width (columns) computed by overlayInnerW.  Every row
+// is clipped to innerW before being passed to lipgloss so the box never grows
+// wider than intended regardless of what the callers put in the rows slices.
+func (a *App) renderScrollableOverlay(titleRows, bodyRows, hintRows []string, innerW int) string {
+	const boxBorderH = 2  // top + bottom rounded-border lines
+	const boxPadV = 2     // styleOverlayBox.Padding(1, 2) → 1 top + 1 bottom
+	const outerMargin = 2 // keep 1 blank line above and below the box
+
+	// clipRow clips a pre-rendered (possibly ANSI-coloured) string to innerW
+	// visible columns.  This prevents any single row from stretching the box
+	// beyond the intended width.
+	clipStyle := lipgloss.NewStyle().MaxWidth(innerW)
+	clipRow := func(s string) string { return clipStyle.Render(s) }
+
+	clip := func(rows []string) []string {
+		out := make([]string, len(rows))
+		for i, r := range rows {
+			out[i] = clipRow(r)
+		}
+		return out
+	}
+	titleRows = clip(titleRows)
+	bodyRows = clip(bodyRows)
+	hintRows = clip(hintRows)
+
+	// Maximum usable rows inside the box (excluding the box's own border+padding).
+	maxInner := a.H - boxBorderH - boxPadV - outerMargin
+	if maxInner < len(titleRows)+len(hintRows)+1 {
+		maxInner = len(titleRows) + len(hintRows) + 1
+	}
+
+	// Rows available for the body after reserving title + divider row + hint.
+	bodyAvail := maxInner - len(titleRows) - len(hintRows)
+	if bodyAvail < 1 {
+		bodyAvail = 1
+	}
+
+	// Clamp scroll offset.
+	total := len(bodyRows)
+	maxOffset := total - bodyAvail
+	if maxOffset < 0 {
+		maxOffset = 0
+	}
+	offset := a.ovlScrollRow
+	if offset < 0 {
+		offset = 0
+	}
+	if offset > maxOffset {
+		offset = maxOffset
+	}
+	a.ovlScrollRow = offset // write back clamped value
+
+	// Visible body slice.
+	end := offset + bodyAvail
+	if end > total {
+		end = total
+	}
+	visibleBody := bodyRows[offset:end]
+
+	// Build scroll indicator glyphs to embed in the hint row (no extra line).
+	var scrollIndicator string
+	if total > bodyAvail {
+		up, down := " ", " "
+		if offset > 0 {
+			up = "↑"
+		}
+		if offset < maxOffset {
+			down = "↓"
+		}
+		scrollIndicator = styleOverlayMuted.Render(" " + up + down)
+	}
+
+	// Embed scroll indicator at the right end of the last hint row so it
+	// doesn't consume an extra line.
+	hintRowsRendered := make([]string, len(hintRows))
+	copy(hintRowsRendered, hintRows)
+	if scrollIndicator != "" && len(hintRowsRendered) > 0 {
+		last := hintRowsRendered[len(hintRowsRendered)-1]
+		hintRowsRendered[len(hintRowsRendered)-1] = last + scrollIndicator
+	}
+
+	// Assemble: title + visible body + hint (with embedded scroll indicator).
+	var all []string
+	all = append(all, titleRows...)
+	all = append(all, visibleBody...)
+	all = append(all, hintRowsRendered...)
+
+	box := styleOverlayBox.Render(lipgloss.JoinVertical(lipgloss.Left, all...))
+
+	// Centre the box vertically when it fits; pin to top (with margin) when
+	// the terminal is too short.
 	return strings.Repeat("\n", topPad) +
 		lipgloss.Place(a.W, a.H-topPad, lipgloss.Center, lipgloss.Center, box)
 }

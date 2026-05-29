@@ -191,6 +191,10 @@ var (
 	styleOverlayMuted = lipgloss.NewStyle().
 				Foreground(lipgloss.Color(overlay0))
 
+	// styleSettingsSelected highlights the currently selected settings field row.
+	styleSettingsSelected = lipgloss.NewStyle().
+				Background(lipgloss.Color(surface0))
+
 	// ── Search ───────────────────────────────────────────────────────────────
 	styleSearchPrompt = lipgloss.NewStyle().
 				Foreground(lipgloss.Color(yellow)).
