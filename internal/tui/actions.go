@@ -352,8 +352,16 @@ func (a *App) applyFilter() {
 	// Invalidate shuffle so it is rebuilt from the new filtered list on next use.
 	a.shuffleIDs = nil
 
-	// Clamp cursor to the new filtered length.
-	if len(a.filteredIdxs) == 0 {
+	// Reset cursor to the first result only when the query actually changes.
+	// This allows ↑/↓ navigation within results without the cursor snapping
+	// back to row 0 on every applyFilter call (e.g. format-pref toggles).
+	queryChanged := raw != a.lastQuery
+	a.lastQuery = raw
+
+	if queryChanged && q != "" {
+		// New non-empty search: jump to first result.
+		a.cursorPos = 0
+	} else if len(a.filteredIdxs) == 0 {
 		a.cursorPos = 0
 	} else if a.cursorPos >= len(a.filteredIdxs) {
 		a.cursorPos = len(a.filteredIdxs) - 1

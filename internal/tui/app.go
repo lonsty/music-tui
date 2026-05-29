@@ -68,6 +68,7 @@ type LibraryState struct {
 	shuffleIDs   []string         // Track.ID values in shuffled order (random play mode)
 	cursorPos    int              // position in filteredIdxs of the cursor-selected track
 	formatPref   formatPreference // active format-display preference
+	lastQuery    string           // last applied search query; used to detect query changes
 }
 
 // ChipState holds the 8-bit chip conversion state.

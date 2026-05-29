@@ -519,6 +519,9 @@ func renderActiveLyricLine(text string, w, maxTextW int) string {
 		pad := w - contentW
 		content = strings.Repeat(" ", pad/2) + content + strings.Repeat(" ", pad-pad/2)
 	}
+	// contentW > w cannot occur here: ruleLen = (w - overhead - maxTextW)/2 uses
+	// integer floor division, so 2*ruleLen ≤ w - overhead - maxTextW, giving
+	// contentW ≤ w.  The case is therefore unreachable and needs no fallback.
 	return content
 }
 
@@ -586,6 +589,7 @@ func renderBrowseCursorLine(lyric string, w, maxTextW int) string {
 		pad := w - lineW
 		line = strings.Repeat(" ", pad/2) + line + strings.Repeat(" ", pad-pad/2)
 	}
+	// lineW > w is unreachable for the same reason as renderActiveLyricLine.
 	return line
 }
 
