@@ -243,7 +243,11 @@ func (a *App) renderSettingsOverlay() string {
 
 	// ── Music Library section ─────────────────────────────────────────────
 	dirActive := a.settingsActive == settingsFieldMusicDir
-	dirLabel := labelStyle(dirActive).Render(T("settings_dir_label") + strings.Repeat(" ", max(0, labelColW-2-strWidth(T("settings_dir_label")))))
+	dirPad := labelColW - 2 - strWidth(T("settings_dir_label"))
+	if dirPad < 0 {
+		dirPad = 0
+	}
+	dirLabel := labelStyle(dirActive).Render(T("settings_dir_label") + strings.Repeat(" ", dirPad))
 	var dirView string
 	if dirActive && a.settingsEditing {
 		a.musicDirInput.Width = inputW
@@ -261,7 +265,11 @@ func (a *App) renderSettingsOverlay() string {
 
 	// ── 8-bit Conversion section ──────────────────────────────────────────
 	optsActive := a.settingsActive == settingsFieldChipOpts
-	optsLabel := labelStyle(optsActive).Render(T("settings_opts_label") + strings.Repeat(" ", max(0, labelColW-2-strWidth(T("settings_opts_label")))))
+	optsPad := labelColW - 2 - strWidth(T("settings_opts_label"))
+	if optsPad < 0 {
+		optsPad = 0
+	}
+	optsLabel := labelStyle(optsActive).Render(T("settings_opts_label") + strings.Repeat(" ", optsPad))
 	var optsView string
 	if optsActive && a.settingsEditing {
 		a.settingsInput.Width = inputW
@@ -279,7 +287,11 @@ func (a *App) renderSettingsOverlay() string {
 
 	// ── Language section ──────────────────────────────────────────────────
 	langActive := a.settingsActive == settingsFieldLanguage
-	langLabel := labelStyle(langActive).Render(T("settings_lang_label") + strings.Repeat(" ", max(0, labelColW-2-strWidth(T("settings_lang_label")))))
+	langPad := labelColW - 2 - strWidth(T("settings_lang_label"))
+	if langPad < 0 {
+		langPad = 0
+	}
+	langLabel := labelStyle(langActive).Render(T("settings_lang_label") + strings.Repeat(" ", langPad))
 	var langView string
 	if activeLang == LangZH {
 		langView = valueStyle(langActive).Render(T("settings_lang_zh"))
@@ -290,12 +302,20 @@ func (a *App) renderSettingsOverlay() string {
 
 	// ── Format filter section ─────────────────────────────────────────────
 	fmtActive := a.settingsActive == settingsFieldFormat
-	fmtLabel := labelStyle(fmtActive).Render(T("settings_fmt_label") + strings.Repeat(" ", max(0, labelColW-2-strWidth(T("settings_fmt_label")))))
+	fmtPad := labelColW - 2 - strWidth(T("settings_fmt_label"))
+	if fmtPad < 0 {
+		fmtPad = 0
+	}
+	fmtLabel := labelStyle(fmtActive).Render(T("settings_fmt_label") + strings.Repeat(" ", fmtPad))
 	fmtLine := buildFieldLine(fmtLabel, valueStyle(fmtActive).Render(formatPrefLabel(a.formatPref)), fmtActive)
 
 	// ── Icon set section ───────────────────────────────────────────────────
 	iconSetActive := a.settingsActive == settingsFieldIconSet
-	iconSetLabel := labelStyle(iconSetActive).Render(T("settings_icon_set_label") + strings.Repeat(" ", max(0, labelColW-2-strWidth(T("settings_icon_set_label")))))
+	iconSetPad := labelColW - 2 - strWidth(T("settings_icon_set_label"))
+	if iconSetPad < 0 {
+		iconSetPad = 0
+	}
+	iconSetLabel := labelStyle(iconSetActive).Render(T("settings_icon_set_label") + strings.Repeat(" ", iconSetPad))
 	iconSetLine := buildFieldLine(iconSetLabel, valueStyle(iconSetActive).Render(iconSetDisplayLabel(ActiveIconSet())), iconSetActive)
 
 	// ── Footer ────────────────────────────────────────────────────────────

@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/x/ansi"
@@ -92,9 +93,14 @@ var (
 					Bold(true)
 
 	// ── Mini / fullscreen player ─────────────────────────────────────────────
+
+	// styleCentered is a base style for centred player elements; call
+	// .Width(w).Render(s) on it instead of creating a new style each frame.
+	styleCentered = lipgloss.NewStyle().Align(lipgloss.Center)
+
 	stylePlayerArtist = lipgloss.NewStyle().
-				Foreground(lipgloss.Color(subtext0)).
-				Align(lipgloss.Center)
+			Foreground(lipgloss.Color(subtext0)).
+			Align(lipgloss.Center)
 
 	stylePlayerAlbum = lipgloss.NewStyle().
 				Foreground(lipgloss.Color(overlay1)).
@@ -408,6 +414,12 @@ func strWidth(s string) int {
 	return ansi.StringWidth(s)
 }
 
+// runeWidth returns the terminal display width of a single rune.
+// Centralises the string(r) conversion so call sites don't scatter it inline.
+func runeWidth(r rune) int {
+	return ansi.StringWidth(string(r))
+}
+
 // truncate shortens s so its display width ≤ maxW, appending "…" if cut.
 func truncate(s string, maxW int) string {
 	if strWidth(s) <= maxW {
@@ -449,6 +461,9 @@ func padLeft(s string, targetW int) string {
 // wrapText splits s into lines of at most maxW display columns.
 // It tries to break at '/' or ' ' boundaries; if no such boundary exists
 // within a segment it hard-breaks at maxW.
+//
+// The implementation does a single forward scan per segment, tracking the
+// accumulated column width to avoid the O(n²) re-measurement of the original.
 func wrapText(s string, maxW int) []string {
 	if maxW <= 0 {
 		return []string{s}
@@ -458,37 +473,58 @@ func wrapText(s string, maxW int) []string {
 	}
 
 	var lines []string
-	for strWidth(s) > maxW {
-		// Find the last break point (/ or space) within maxW columns.
-		breakAt := -1
+	for len(s) > 0 {
+		// Single-pass scan: track columns and the last valid break position.
 		col := 0
+		breakAt := -1  // byte offset of last '/' or ' ' break (inclusive)
+		hardAt := len(s) // byte offset for a hard break at maxW
+		hardFound := false
+
 		for i, r := range s {
-			rw := strWidth(string(r))
+			rw := runeWidth(r)
 			if col+rw > maxW {
+				if !hardFound {
+					hardAt = i
+					hardFound = true
+				}
 				break
 			}
 			if r == '/' || r == ' ' {
-				breakAt = i + len(string(r)) // break after the delimiter
+				breakAt = i + utf8.RuneLen(r) // break after delimiter
 			}
 			col += rw
 		}
 
-		if breakAt <= 0 {
-			// No break point found: hard-break at maxW columns.
-			col = 0
-			breakAt = len(s)
-			for i, r := range s {
-				rw := strWidth(string(r))
-				if col+rw > maxW {
-					breakAt = i
-					break
-				}
-				col += rw
-			}
+		if col <= maxW && !hardFound {
+			// Remainder fits — done.
+			break
 		}
 
-		lines = append(lines, s[:breakAt])
-		s = strings.TrimLeft(s[breakAt:], " ")
+		if breakAt > 0 {
+			lines = append(lines, s[:breakAt])
+			s = strings.TrimLeft(s[breakAt:], " ")
+		} else {
+			if hardAt == 0 {
+				// The very first character is wider than maxW (e.g. a CJK rune
+				// with maxW=1).  Emit it as its own line and advance past it so
+				// the loop always makes progress and never spins.
+				firstRuneEnd := 0
+				for i := range s {
+					if i > 0 {
+						firstRuneEnd = i
+						break
+					}
+				}
+				if firstRuneEnd == 0 {
+					firstRuneEnd = len(s) // single-rune string
+				}
+				lines = append(lines, s[:firstRuneEnd])
+				s = s[firstRuneEnd:]
+			} else {
+				lines = append(lines, s[:hardAt])
+				s = s[hardAt:]
+			}
+		}
 	}
 	if s != "" {
 		lines = append(lines, s)

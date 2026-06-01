@@ -63,7 +63,7 @@ func (a *App) buildMiniPlayerContent(w, h int) string {
 	coverOuterCols := coverOuterRows * 2
 
 	cover := a.getCoverArt(coverOuterCols, coverOuterRows)
-	coverLine := lipgloss.NewStyle().Width(w).Align(lipgloss.Center).Render(cover)
+	coverLine := styleCentered.Width(w).Render(cover)
 
 	if a.currentTrack == nil {
 		idle := lipgloss.JoinVertical(lipgloss.Center,
@@ -111,8 +111,7 @@ func (a *App) buildMiniPlayerContent(w, h int) string {
 	// -4 = charmbracelet/progress adds 1-col padding each side (-2)
 	//      + lipgloss.Center wrapper adds 1 col each side (-2).
 	a.progressBar.Width = w - 4
-	bar := lipgloss.NewStyle().Width(w).Align(lipgloss.Center).
-		Render(a.progressBar.ViewAs(pct))
+	bar := styleCentered.Width(w).Render(a.progressBar.ViewAs(pct))
 	timeStr := styleTime.Width(w).Align(lipgloss.Center).
 		Render(fmt.Sprintf("%s / %s", formatDuration(pos), formatDuration(dur)))
 
@@ -199,7 +198,7 @@ func (a *App) buildFullPlayerContent(w, h int) string {
 	coverOuterCols := coverOuterRows * 2
 
 	cover := a.getCoverArt(coverOuterCols, coverOuterRows)
-	coverLine := lipgloss.NewStyle().Width(w).Align(lipgloss.Center).Render(cover)
+	coverLine := styleCentered.Width(w).Render(cover)
 
 	// Track info lines — Marquee scrolling for overflow.
 	avail := w - 2
@@ -217,8 +216,7 @@ func (a *App) buildFullPlayerContent(w, h int) string {
 	// -6 = same as mini player (-4) plus the fullscreen player panel has 1 extra col
 	//      of interior padding on each side compared to the mini panel (-2 more).
 	a.progressBar.Width = w - 6
-	barLine := lipgloss.NewStyle().Width(w).Align(lipgloss.Center).
-		Render(a.progressBar.ViewAs(pct))
+	barLine := styleCentered.Width(w).Render(a.progressBar.ViewAs(pct))
 	timeLine := styleTime.Width(w).Align(lipgloss.Center).
 		Render(fmt.Sprintf("%s / %s", formatDuration(pos), formatDuration(dur)))
 
@@ -432,41 +430,62 @@ func (a *App) renderLyricsPlain(w, h int) string {
 	return strings.TrimRight(sb.String(), "\n")
 }
 
-// lyricDistanceColors maps distance-from-active (1-indexed) to a colour.
-// dist=1 uses [0], dist=2 uses [1], …, dist≥10 clamps to [9].
-// Gradient: subtext1(1-2) → subtext0(3-4) → overlay2(5-6) → overlay1(7-8) → overlay0(9-10+).
-// The active line itself uses mauve (handled by lyricStyleForDistance / renderActiveLyricLine).
-var lyricDistanceColors = [10]string{
-	subtext1, subtext1, // dist 1-2 — immediately adjacent (NOT mauve)
-	subtext0, subtext0, // dist 3-4
-	overlay2, overlay2, // dist 5-6
-	overlay1, overlay1, // dist 7-8
-	overlay0, overlay0, // dist 9-10+
+// lyricDistanceStyles holds pre-computed lipgloss styles for lyric lines at
+// each distance from the active line, avoiding per-frame allocations.
+//
+//	[0]  dist==0, not active — mauve, centred (used for blank/empty rows)
+//	[1]  dist==0, active     — mauve + Bold, centred
+//	[2]  dist==1             — subtext1
+//	[3]  dist==2             — subtext1
+//	[4]  dist==3             — subtext0
+//	[5]  dist==4             — subtext0
+//	[6]  dist==5             — overlay2
+//	[7]  dist==6             — overlay2
+//	[8]  dist==7             — overlay1
+//	[9]  dist==8             — overlay1
+//	[10] dist>=9             — overlay0 (clamped)
+//
+// Gradient: subtext1(1-2) → subtext0(3-4) → overlay2(5-6) → overlay1(7-8) → overlay0(9+).
+var lyricDistanceStyles [11]lipgloss.Style
+
+func init() {
+	mkStyle := func(colour string, bold bool) lipgloss.Style {
+		s := lipgloss.NewStyle().Foreground(lipgloss.Color(colour)).Align(lipgloss.Center)
+		if bold {
+			s = s.Bold(true)
+		}
+		return s
+	}
+	lyricDistanceStyles[0] = mkStyle(mauve, false)
+	lyricDistanceStyles[1] = mkStyle(mauve, true)
+	lyricDistanceStyles[2] = mkStyle(subtext1, false)
+	lyricDistanceStyles[3] = mkStyle(subtext1, false)
+	lyricDistanceStyles[4] = mkStyle(subtext0, false)
+	lyricDistanceStyles[5] = mkStyle(subtext0, false)
+	lyricDistanceStyles[6] = mkStyle(overlay2, false)
+	lyricDistanceStyles[7] = mkStyle(overlay2, false)
+	lyricDistanceStyles[8] = mkStyle(overlay1, false)
+	lyricDistanceStyles[9] = mkStyle(overlay1, false)
+	lyricDistanceStyles[10] = mkStyle(overlay0, false)
 }
 
-// lyricStyleForDistance returns a lipgloss.Style for a lyric line that is dist
-// rows away from the active line.
-//   - dist == 0 (active line): mauve + Bold — the active style is handled by
-//     renderActiveLyricLine, but this function is kept consistent.
-//   - dist >= 1: look up lyricDistanceColors[dist-1], clamped to the last entry.
+// lyricStyleForDistance returns a pre-computed lipgloss.Style for a lyric line
+// that is dist rows away from the active line.
+//   - dist == 0, isActive == true:  mauve + Bold (playing line)
+//   - dist == 0, isActive == false: mauve (blank/padding row at centre)
+//   - dist >= 1: fading gradient, clamped at dist==9
 func lyricStyleForDistance(dist int, isActive bool) lipgloss.Style {
-	var colour string
-	if dist == 0 || isActive {
-		colour = mauve
-	} else {
-		idx := dist - 1
-		if idx >= len(lyricDistanceColors) {
-			idx = len(lyricDistanceColors) - 1
+	if dist == 0 {
+		if isActive {
+			return lyricDistanceStyles[1]
 		}
-		colour = lyricDistanceColors[idx]
+		return lyricDistanceStyles[0]
 	}
-	s := lipgloss.NewStyle().
-		Foreground(lipgloss.Color(colour)).
-		Align(lipgloss.Center)
-	if isActive {
-		s = s.Bold(true)
+	idx := dist + 1 // dist=1 → index 2, dist=2 → index 3, …
+	if idx >= len(lyricDistanceStyles) {
+		idx = len(lyricDistanceStyles) - 1
 	}
-	return s
+	return lyricDistanceStyles[idx]
 }
 
 // renderActiveLyricLine renders the currently playing lyric line framed by a
@@ -500,7 +519,6 @@ func renderActiveLyricLine(text string, w, maxTextW int) string {
 	// Right rule: inner (bright) → outer (dim), leaving the text.
 	rightRule := gradientText(rule, false, subtext0, overlay2, overlay1, overlay0)
 
-	sp := strings.Repeat(" ", lyricRuleGap)
 	mid := styleLyricActiveText.Render(text)
 
 	// Centre short text within maxTextW.
@@ -508,21 +526,31 @@ func renderActiveLyricLine(text string, w, maxTextW int) string {
 	padL := padTotal / 2
 	padR := padTotal - padL
 
-	content := strings.Repeat(" ", lyricRuleMargin) +
-		leftRule +
-		sp + strings.Repeat(" ", padL) + mid + strings.Repeat(" ", padR) + sp +
-		rightRule +
-		strings.Repeat(" ", lyricRuleMargin)
-
+	// Use a Builder to avoid creating multiple intermediate strings.
 	contentW := 2*lyricRuleMargin + 2*ruleLen + 2*lyricRuleGap + maxTextW
+	outerPad := 0
 	if contentW < w {
-		pad := w - contentW
-		content = strings.Repeat(" ", pad/2) + content + strings.Repeat(" ", pad-pad/2)
+		outerPad = w - contentW
+	}
+	var sb strings.Builder
+	sb.Grow(w)
+	if outerPad > 0 {
+		sb.WriteString(strings.Repeat(" ", outerPad/2))
+	}
+	sb.WriteString(strings.Repeat(" ", lyricRuleMargin))
+	sb.WriteString(leftRule)
+	sb.WriteString(strings.Repeat(" ", lyricRuleGap+padL))
+	sb.WriteString(mid)
+	sb.WriteString(strings.Repeat(" ", padR+lyricRuleGap))
+	sb.WriteString(rightRule)
+	sb.WriteString(strings.Repeat(" ", lyricRuleMargin))
+	if outerPad > 0 {
+		sb.WriteString(strings.Repeat(" ", outerPad-outerPad/2))
 	}
 	// contentW > w cannot occur here: ruleLen = (w - overhead - maxTextW)/2 uses
 	// integer floor division, so 2*ruleLen ≤ w - overhead - maxTextW, giving
 	// contentW ≤ w.  The case is therefore unreachable and needs no fallback.
-	return content
+	return sb.String()
 }
 
 // renderBrowseCursorLine renders the lyric line at the browse cursor position

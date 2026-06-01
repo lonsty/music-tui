@@ -250,6 +250,28 @@ func (s *Store) TrackMtime(path string) (int64, error) {
 	return mtime, err
 }
 
+// AllTrackMtimes returns a map of path → mtime for every track in the DB.
+// Used by SyncDir to batch-fetch all mtimes in a single query instead of
+// issuing one query per file.
+func (s *Store) AllTrackMtimes() (map[string]int64, error) {
+	rows, err := s.db.Query(`SELECT path, mtime FROM tracks`)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+
+	mtimes := make(map[string]int64)
+	for rows.Next() {
+		var path string
+		var mtime int64
+		if err := rows.Scan(&path, &mtime); err != nil {
+			return nil, err
+		}
+		mtimes[path] = mtime
+	}
+	return mtimes, rows.Err()
+}
+
 // UpsertTrack inserts or replaces a track record.
 func (s *Store) UpsertTrack(t library.Track, mtime int64) error {
 	_, err := s.db.Exec(`

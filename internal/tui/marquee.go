@@ -2,8 +2,7 @@ package tui
 
 import (
 	"strings"
-
-	"github.com/charmbracelet/x/ansi"
+	"unicode/utf8"
 )
 
 // Marquee is a scrolling-text widget. When the text fits within the given
@@ -102,8 +101,8 @@ func nextCharBoundary(s string, startCol, n int) int {
 			idx = i
 			break
 		}
-		col += ansi.StringWidth(string(r))
-		idx = i + len(string(r))
+		col += runeWidth(r)
+		idx = i + utf8.RuneLen(r)
 	}
 
 	// Phase 2: advance n complete characters.
@@ -112,7 +111,7 @@ func nextCharBoundary(s string, startCol, n int) int {
 		if advanced >= n {
 			break
 		}
-		col += ansi.StringWidth(string(r))
+		col += runeWidth(r)
 		advanced++
 	}
 	return col
@@ -168,21 +167,22 @@ func colSlice(s string, start, width int) string {
 			startByte = i
 			break
 		}
-		col += ansi.StringWidth(string(r))
+		col += runeWidth(r)
 	}
 
-	// Collect `width` display columns.
+	// Collect `width` display columns using a strings.Builder to avoid the
+	// per-rune []byte conversions (string(r) → []byte(string(r)) → append).
 	col = 0
-	var out []byte
+	var sb strings.Builder
 	for _, r := range s[startByte:] {
-		rw := ansi.StringWidth(string(r))
+		rw := runeWidth(r)
 		if col+rw > width {
 			break
 		}
-		out = append(out, []byte(string(r))...)
+		sb.WriteRune(r)
 		col += rw
 	}
-	result := string(out)
+	result := sb.String()
 	// Pad if we collected fewer columns than requested (e.g. double-wide char
 	// would overflow).
 	if col < width {
