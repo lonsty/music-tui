@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"strings"
 	"time"
-	"unicode/utf8"
 
 	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/x/ansi"
@@ -414,11 +413,6 @@ func strWidth(s string) int {
 	return ansi.StringWidth(s)
 }
 
-// runeWidth returns the terminal display width of a single rune.
-// Centralises the string(r) conversion so call sites don't scatter it inline.
-func runeWidth(r rune) int {
-	return ansi.StringWidth(string(r))
-}
 
 // truncate shortens s so its display width ≤ maxW, appending "…" if cut.
 func truncate(s string, maxW int) string {
@@ -462,8 +456,9 @@ func padLeft(s string, targetW int) string {
 // It tries to break at '/' or ' ' boundaries; if no such boundary exists
 // within a segment it hard-breaks at maxW.
 //
-// The implementation does a single forward scan per segment, tracking the
-// accumulated column width to avoid the O(n²) re-measurement of the original.
+// Iteration is grapheme-cluster-aware (via ansi.FirstGraphemeCluster) so that
+// multi-rune sequences — combining diacritics, ZWJ emoji families, flag pairs
+// — are treated as a single unit and their display width is measured correctly.
 func wrapText(s string, maxW int) []string {
 	if maxW <= 0 {
 		return []string{s}
@@ -474,56 +469,47 @@ func wrapText(s string, maxW int) []string {
 
 	var lines []string
 	for len(s) > 0 {
-		// Single-pass scan: track columns and the last valid break position.
+		// Single-pass scan: track columns, last soft-break, and hard-break.
 		col := 0
-		breakAt := -1  // byte offset of last '/' or ' ' break (inclusive)
-		hardAt := len(s) // byte offset for a hard break at maxW
-		hardFound := false
+		consumed := 0    // bytes consumed so far
+		breakAt := -1   // byte offset of last '/' or ' ' break (inclusive)
+		hardAt := -1    // byte offset at which we first exceed maxW
 
-		for i, r := range s {
-			rw := runeWidth(r)
-			if col+rw > maxW {
-				if !hardFound {
-					hardAt = i
-					hardFound = true
-				}
+		rest := s
+		for len(rest) > 0 {
+			cluster, w := ansi.FirstGraphemeCluster(rest, ansi.GraphemeWidth)
+			clusterLen := len(cluster)
+
+			if col+w > maxW {
+				hardAt = consumed
 				break
 			}
-			if r == '/' || r == ' ' {
-				breakAt = i + utf8.RuneLen(r) // break after delimiter
+			// Soft-break: '/' or ' ' are always single-byte ASCII clusters.
+			if cluster == "/" || cluster == " " {
+				breakAt = consumed + clusterLen
 			}
-			col += rw
+			col += w
+			consumed += clusterLen
+			rest = rest[clusterLen:]
 		}
 
-		if col <= maxW && !hardFound {
-			// Remainder fits — done.
+		if hardAt < 0 {
+			// Remainder fits entirely — done.
 			break
 		}
 
 		if breakAt > 0 {
 			lines = append(lines, s[:breakAt])
 			s = strings.TrimLeft(s[breakAt:], " ")
+		} else if hardAt > 0 {
+			lines = append(lines, s[:hardAt])
+			s = s[hardAt:]
 		} else {
-			if hardAt == 0 {
-				// The very first character is wider than maxW (e.g. a CJK rune
-				// with maxW=1).  Emit it as its own line and advance past it so
-				// the loop always makes progress and never spins.
-				firstRuneEnd := 0
-				for i := range s {
-					if i > 0 {
-						firstRuneEnd = i
-						break
-					}
-				}
-				if firstRuneEnd == 0 {
-					firstRuneEnd = len(s) // single-rune string
-				}
-				lines = append(lines, s[:firstRuneEnd])
-				s = s[firstRuneEnd:]
-			} else {
-				lines = append(lines, s[:hardAt])
-				s = s[hardAt:]
-			}
+			// hardAt == 0: the very first cluster is wider than maxW.
+			// Emit it as its own line so the loop always makes progress.
+			first, _ := ansi.FirstGraphemeCluster(s, ansi.GraphemeWidth)
+			lines = append(lines, first)
+			s = s[len(first):]
 		}
 	}
 	if s != "" {

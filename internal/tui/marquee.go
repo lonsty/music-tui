@@ -2,15 +2,17 @@ package tui
 
 import (
 	"strings"
-	"unicode/utf8"
+
+	"github.com/charmbracelet/x/ansi"
 )
 
 // Marquee is a scrolling-text widget. When the text fits within the given
 // width it is returned as-is; when it overflows the text scrolls left at
-// marqueeScrollChars complete characters per Tick call, wrapping with a
-// separator gap.  Advancing by whole characters (rather than a fixed column
-// count) keeps the perceived scroll speed uniform regardless of whether the
-// text is Latin (1 col/char) or CJK (2 cols/char).
+// marqueeScrollClusters complete grapheme clusters per Tick call, wrapping
+// with a separator gap.  Advancing by whole grapheme clusters keeps the
+// perceived scroll speed uniform across Latin, CJK, and emoji sequences:
+// a family emoji (👨‍👩‍👧, 2 cols, many runes) scrolls at the same rate as
+// one Latin character (1 col, 1 rune).
 //
 // Usage:
 //
@@ -38,10 +40,11 @@ const (
 	// At tickInterval=500ms this gives a 1 second pause before scrolling starts.
 	marqueePauseTicks = 2
 
-	// marqueeScrollChars is the number of complete characters to advance per
-	// tick.  Using characters (not columns) ensures CJK and Latin text scroll
-	// at the same perceived speed: 1 char/tick × 2 ticks/s = 2 chars/s.
-	marqueeScrollChars = 2
+	// marqueeScrollClusters is the number of complete grapheme clusters to
+	// advance per tick.  Using grapheme clusters (not runes or columns) ensures
+	// uniform perceived scroll speed across Latin (1 col), CJK (2 cols), and
+	// multi-rune emoji sequences (e.g. ZWJ family: many runes, 2 cols each).
+	marqueeScrollClusters = 2
 )
 
 // NewMarquee creates a Marquee with the given text and separator string.
@@ -66,11 +69,10 @@ func (m *Marquee) SetText(text string) {
 	m.pauseLeft = marqueePauseTicks
 }
 
-// Tick advances the scroll position by marqueeScrollChars complete characters.
-// Advancing by whole characters ensures uniform perceived speed across scripts:
-// Latin text (1 col/char) and CJK text (2 cols/char) both move at the same
-// character-per-second rate rather than the same column-per-second rate.
-// Call this on every tickMsg.
+// Tick advances the scroll position by marqueeScrollClusters complete grapheme
+// clusters.  Grapheme clusters are the correct unit here because they map to
+// what the user perceives as a single character, including multi-rune sequences
+// such as ZWJ emoji families.  Call this on every tickMsg.
 func (m *Marquee) Tick(width int) {
 	if m.loopW == 0 || strWidth(m.text) <= width {
 		return // no scrolling needed
@@ -79,40 +81,39 @@ func (m *Marquee) Tick(width int) {
 		m.pauseLeft--
 		return
 	}
-	m.offset = nextCharBoundary(m.loopBuf, m.offset, marqueeScrollChars)
+	m.offset = nextClusterBoundary(m.loopBuf, m.offset, marqueeScrollClusters)
 	if m.offset >= m.loopW {
 		m.offset = 0
 		m.pauseLeft = marqueePauseTicks
 	}
 }
 
-// nextCharBoundary returns the new display-column offset after advancing n
-// complete characters forward from startCol in s.
-// It first skips to startCol, then counts n more complete characters and
-// returns the column position at the start of the (n+1)-th character.
-// If s ends before n characters are consumed the returned value will be ≥
-// loopW which the caller uses as the wrap-around signal.
-func nextCharBoundary(s string, startCol, n int) int {
+// nextClusterBoundary returns the new display-column offset after advancing n
+// complete grapheme clusters forward from startCol in s.
+//
+// Using grapheme clusters instead of runes ensures that multi-rune sequences
+// (combining diacritics, ZWJ emoji families, flag sequences) are treated as a
+// single unit, matching user perception and the result of ansi.StringWidth.
+//
+// Phase 1: skip ahead to startCol by consuming clusters.
+// Phase 2: consume n more clusters, returning the column after the last one.
+// If s ends before n clusters are consumed the returned value will be ≥ loopW
+// which the caller uses as the wrap-around signal.
+func nextClusterBoundary(s string, startCol, n int) int {
 	// Phase 1: skip to startCol.
 	col := 0
-	idx := 0
-	for i, r := range s {
-		if col >= startCol {
-			idx = i
-			break
-		}
-		col += runeWidth(r)
-		idx = i + utf8.RuneLen(r)
+	rest := s
+	for col < startCol && len(rest) > 0 {
+		cluster, w := ansi.FirstGraphemeCluster(rest, ansi.GraphemeWidth)
+		col += w
+		rest = rest[len(cluster):]
 	}
 
-	// Phase 2: advance n complete characters.
-	advanced := 0
-	for _, r := range s[idx:] {
-		if advanced >= n {
-			break
-		}
-		col += runeWidth(r)
-		advanced++
+	// Phase 2: advance n complete grapheme clusters.
+	for i := 0; i < n && len(rest) > 0; i++ {
+		cluster, w := ansi.FirstGraphemeCluster(rest, ansi.GraphemeWidth)
+		col += w
+		rest = rest[len(cluster):]
 	}
 	return col
 }
@@ -157,34 +158,39 @@ func (m *Marquee) RenderCentered(width int) string {
 }
 
 // colSlice returns `width` display columns from `s` starting at display
-// column `start`.  It handles multi-byte and double-wide characters correctly.
+// column `start`.
+//
+// Iteration is done grapheme-cluster by grapheme-cluster (via
+// ansi.FirstGraphemeCluster) rather than rune by rune.  This guarantees
+// correct handling of combining diacritics, ZWJ emoji sequences, and flag
+// pairs whose display width is determined by the cluster as a whole, not
+// by the sum of individual rune widths.
 func colSlice(s string, start, width int) string {
-	// Skip `start` display columns.
+	// Phase 1: skip `start` display columns.
 	col := 0
-	startByte := 0
-	for i, r := range s {
-		if col >= start {
-			startByte = i
-			break
-		}
-		col += runeWidth(r)
+	rest := s
+	for col < start && len(rest) > 0 {
+		cluster, w := ansi.FirstGraphemeCluster(rest, ansi.GraphemeWidth)
+		col += w
+		rest = rest[len(cluster):]
 	}
 
-	// Collect `width` display columns using a strings.Builder to avoid the
-	// per-rune []byte conversions (string(r) → []byte(string(r)) → append).
+	// Phase 2: collect `width` display columns.
 	col = 0
 	var sb strings.Builder
-	for _, r := range s[startByte:] {
-		rw := runeWidth(r)
-		if col+rw > width {
+	for col < width && len(rest) > 0 {
+		cluster, w := ansi.FirstGraphemeCluster(rest, ansi.GraphemeWidth)
+		if col+w > width {
 			break
 		}
-		sb.WriteRune(r)
-		col += rw
+		sb.WriteString(cluster)
+		col += w
+		rest = rest[len(cluster):]
 	}
+
 	result := sb.String()
-	// Pad if we collected fewer columns than requested (e.g. double-wide char
-	// would overflow).
+	// Pad if we collected fewer columns than requested (e.g. a double-wide
+	// cluster would overflow the remaining slot).
 	if col < width {
 		result += padRight("", width-col)
 	}
