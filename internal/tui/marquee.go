@@ -40,11 +40,13 @@ const (
 	// At tickInterval=500ms this gives a 1 second pause before scrolling starts.
 	marqueePauseTicks = 2
 
-	// marqueeScrollClusters is the number of complete grapheme clusters to
-	// advance per tick.  Using grapheme clusters (not runes or columns) ensures
-	// uniform perceived scroll speed across Latin (1 col), CJK (2 cols), and
-	// multi-rune emoji sequences (e.g. ZWJ family: many runes, 2 cols each).
-	marqueeScrollClusters = 2
+	// marqueeScrollCols is the target number of display columns to advance per
+	// tick.  The scroll always stops on a grapheme-cluster boundary, so the
+	// actual advance may be slightly more than this value when the next cluster
+	// is wider than 1 column (e.g. a CJK character occupies 2 columns).
+	// Using columns (not cluster count) keeps Latin and CJK text scrolling at
+	// the same perceived speed: both advance ~2 visible columns per tick.
+	marqueeScrollCols = 2
 )
 
 // NewMarquee creates a Marquee with the given text and separator string.
@@ -69,10 +71,10 @@ func (m *Marquee) SetText(text string) {
 	m.pauseLeft = marqueePauseTicks
 }
 
-// Tick advances the scroll position by marqueeScrollClusters complete grapheme
-// clusters.  Grapheme clusters are the correct unit here because they map to
-// what the user perceives as a single character, including multi-rune sequences
-// such as ZWJ emoji families.  Call this on every tickMsg.
+// Tick advances the scroll position by approximately marqueeScrollCols display
+// columns, stopping on the nearest grapheme-cluster boundary.  This keeps
+// Latin (1 col/cluster) and CJK (2 cols/cluster) text scrolling at the same
+// perceived speed.  Call this on every tickMsg.
 func (m *Marquee) Tick(width int) {
 	if m.loopW == 0 || strWidth(m.text) <= width {
 		return // no scrolling needed
@@ -81,25 +83,27 @@ func (m *Marquee) Tick(width int) {
 		m.pauseLeft--
 		return
 	}
-	m.offset = nextClusterBoundary(m.loopBuf, m.offset, marqueeScrollClusters)
+	m.offset = nextColBoundary(m.loopBuf, m.offset, marqueeScrollCols)
 	if m.offset >= m.loopW {
 		m.offset = 0
 		m.pauseLeft = marqueePauseTicks
 	}
 }
 
-// nextClusterBoundary returns the new display-column offset after advancing n
-// complete grapheme clusters forward from startCol in s.
+// nextColBoundary returns the new display-column offset after advancing at
+// least targetCols display columns from startCol in s, stopping on the next
+// grapheme-cluster boundary.
 //
-// Using grapheme clusters instead of runes ensures that multi-rune sequences
-// (combining diacritics, ZWJ emoji families, flag sequences) are treated as a
-// single unit, matching user perception and the result of ansi.StringWidth.
+// "At least" semantics: if the cluster that crosses the target boundary is
+// wider than 1 column (e.g. a CJK character), the returned offset lands after
+// that cluster, so Latin and CJK text both advance ~targetCols visible columns
+// per call — giving uniform perceived scroll speed regardless of script.
 //
 // Phase 1: skip ahead to startCol by consuming clusters.
-// Phase 2: consume n more clusters, returning the column after the last one.
-// If s ends before n clusters are consumed the returned value will be ≥ loopW
+// Phase 2: consume clusters until col ≥ startCol + targetCols.
+// If s ends before the target is reached the returned value will be ≥ loopW,
 // which the caller uses as the wrap-around signal.
-func nextClusterBoundary(s string, startCol, n int) int {
+func nextColBoundary(s string, startCol, targetCols int) int {
 	// Phase 1: skip to startCol.
 	col := 0
 	rest := s
@@ -109,8 +113,9 @@ func nextClusterBoundary(s string, startCol, n int) int {
 		rest = rest[len(cluster):]
 	}
 
-	// Phase 2: advance n complete grapheme clusters.
-	for i := 0; i < n && len(rest) > 0; i++ {
+	// Phase 2: advance until we have moved at least targetCols columns.
+	target := col + targetCols
+	for col < target && len(rest) > 0 {
 		cluster, w := ansi.FirstGraphemeCluster(rest, ansi.GraphemeWidth)
 		col += w
 		rest = rest[len(cluster):]
