@@ -19,12 +19,10 @@ func (a *App) renderTabBar() string {
 		icon  string
 		label string
 	}
-	// Only show tabs with a working implementation.
-	// tabPlaylist is declared but its UI is not yet built;
-	// add it back here once the playlist panel is implemented.
 	tabs := []tabDef{
 		{tabLocal, iconLibrary(), T("tab_local")},
 		{tabOnline, iconOnline(), T("tab_online")},
+		{tabPlaylist, iconPlaylist(), T("tab_playlist")},
 	}
 
 	// activeMark is the left marker rendered on the active tab.
@@ -62,9 +60,7 @@ func (a *App) renderNormalBody() string {
 	case tabOnline:
 		return a.renderOnlinePlaceholder()
 	case tabPlaylist:
-		// Playlist UI is not yet implemented; fall through to the local list
-		// so an accidental Tab keypress does not show a blank screen.
-		fallthrough
+		return a.renderPlaylistTab()
 	default:
 	}
 	left := a.renderTrackList()

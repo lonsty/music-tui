@@ -222,6 +222,8 @@ func (a *App) render() string {
 		return a.renderInfoOverlay()
 	case overlaySettings:
 		return a.renderSettingsOverlay()
+	case overlayAddToPlaylist:
+		return a.renderAddToPlaylistOverlay()
 	}
 
 	tab := a.renderTabBar()

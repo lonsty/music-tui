@@ -149,7 +149,18 @@ func (a *App) buildControls(w int) string {
 	}
 	volPct := int(a.volume / maxVolume * 100)
 
-	ctrl := iconPrev() + "  " + playIcon + "  " + iconNext() + "    " + modeIcon + "  " + volIcon + " " + fmt.Sprintf("%d%%", volPct)
+	// Heart icon: filled when the current track is in Favorites, empty otherwise.
+	// Only show when an icon is available (not empty in Plain mode).
+	heartIcon := iconHeartEmpty()
+	if a.isFavorite {
+		heartIcon = styleModeIcon.Render(iconHeartFilled())
+	}
+	var heartPart string
+	if heartIcon != "" {
+		heartPart = "    " + heartIcon
+	}
+
+	ctrl := iconPrev() + "  " + playIcon + "  " + iconNext() + "    " + modeIcon + "  " + volIcon + " " + fmt.Sprintf("%d%%", volPct) + heartPart
 	return styleControls.Width(w).Render(ctrl)
 }
 

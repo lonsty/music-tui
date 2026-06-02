@@ -84,14 +84,27 @@ type ChipState struct {
 }
 
 // PlaylistState holds playlist management state.
-// It is embedded in App and accessed via a.playlists, a.playlistCursor, etc.
-// Fields are declared here for future playlist tab implementation;
-// they are intentionally unused until the playlist UI is built.
-//
-//nolint:unused
+// It is embedded in App and accessed via a.playlists, a.listCursor, etc.
 type PlaylistState struct {
-	playlists      []store.Playlist // cached list of all playlists
-	playlistCursor int              // index of the selected playlist in a.playlists
+	depth       playlistDepth    // current navigation level
+	playlists   []store.Playlist // cached list of all playlists (index 0 = Favorites)
+	listCursor  int              // cursor in the playlist list (depth == list)
+	plTracks    []library.Track  // tracks of the currently open playlist
+	trackCursor int              // cursor in the track list (depth == tracks)
+	inputMode   playlistInputMode // purpose of nameInput (none / create / rename)
+	nameInput   textinput.Model   // inline input for new-playlist name or rename
+	confirmDel  bool              // true while waiting for second 'd' to confirm delete
+
+	// addingTracks is true while the inline "add tracks" search panel is open.
+	addingTracks bool
+	addInput     textinput.Model // search box inside the add-tracks panel
+	addResults   []int           // indices into a.tracks that match addInput
+	addCursor    int             // cursor in addResults
+
+	// ovlPlaylists is the cached playlist list used by overlayAddToPlaylist.
+	// It is loaded when the overlay opens.
+	ovlPlaylists  []store.Playlist
+	ovlPlCursor   int // cursor inside the overlay list
 }
 
 // OnlineState holds the state for the online music search tab.
@@ -217,6 +230,11 @@ type App struct {
 	// Invalidated whenever the track changes or the box size changes.
 	coverRendered string
 	coverW        int // outerCols value used to produce coverRendered
+
+	// ── Favorites / Like ─────────────────────────────────────────────────────
+	// isFavorite caches whether the currently playing track is in the
+	// Favorites playlist.  Updated on track change and after Like/Unlike.
+	isFavorite bool
 }
 
 // NewApp creates the application model. Call WithProgram after tea.NewProgram.
@@ -277,6 +295,21 @@ func NewApp(player *audio.Player, st *store.Store, musicDir string, tracks []lib
 	di.CharLimit = 512
 	di.Width = 42
 
+	// Playlist inline name-input (new / rename).
+	ni := textinput.New()
+	ni.Placeholder = T("playlist_new_prompt")
+	ni.CharLimit = 64
+
+	// Playlist "add tracks" search input.
+	ai := textinput.New()
+	ai.Placeholder = T("search_placeholder")
+	ai.CharLimit = 128
+
+	// Ensure the built-in Favorites playlist exists in the DB.
+	if st != nil {
+		_ = st.EnsureFavorites()
+	}
+
 	prog := progress.New(
 		progress.WithGradient("#89B4FA", "#CBA6F7"),
 		progress.WithoutPercentage(),
@@ -322,6 +355,10 @@ func NewApp(player *audio.Player, st *store.Store, musicDir string, tracks []lib
 		netCancel:      func() {}, // no-op until a network request is started
 		rightCollapsed: rightCollapsed,
 		rightMode:      rightMode,
+		PlaylistState: PlaylistState{
+			nameInput: ni,
+			addInput:  ai,
+		},
 		PlaybackState: PlaybackState{
 			volume:   vol,
 			playMode: mode,
@@ -540,6 +577,9 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		a.browseTicks = 0
 		a.browseExpired = false
 
+		// Reset isFavorite for the new track; will be updated by cmdCheckFavorite.
+		a.isFavorite = false
+
 		var cmds []tea.Cmd
 		// If we were in chip mode, automatically start converting the new track.
 		if wasChipMode {
@@ -547,8 +587,78 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		if msg.track != nil {
 			cmds = append(cmds, a.cmdLoadLyrics(*msg.track))
+			cmds = append(cmds, a.cmdCheckFavorite(msg.track.ID))
 		}
 		return a, tea.Batch(cmds...)
+
+	case playlistsLoadedMsg:
+		if msg.err != nil {
+			a.statusMsg = T("playlist_load_error") + ": " + msg.err.Error()
+		} else {
+			a.playlists = msg.playlists
+			// Clamp cursor after reload (e.g. after delete).
+			if a.listCursor >= len(a.playlists) {
+				a.listCursor = len(a.playlists) - 1
+			}
+			if a.listCursor < 0 {
+				a.listCursor = 0
+			}
+		}
+		return a, nil
+
+	case playlistTracksLoadedMsg:
+		if msg.err != nil {
+			a.statusMsg = T("playlist_load_error") + ": " + msg.err.Error()
+		} else {
+			a.plTracks = msg.tracks
+			if a.trackCursor >= len(a.plTracks) {
+				a.trackCursor = len(a.plTracks) - 1
+			}
+			if a.trackCursor < 0 {
+				a.trackCursor = 0
+			}
+		}
+		return a, nil
+
+	case favoriteChangedMsg:
+		if msg.trackID == "" {
+			return a, nil
+		}
+		// Only update isFavorite when this is about the currently playing track.
+		if a.currentTrack != nil && msg.trackID == a.currentTrack.ID {
+			a.isFavorite = msg.isFavorite
+			if msg.isFavorite {
+				a.statusMsg = iconHeartFilled() + "  " + T("playlist_liked")
+			} else {
+				a.statusMsg = iconHeartEmpty() + "  " + T("playlist_unliked")
+			}
+		}
+		return a, nil
+
+	case playlistPlayMsg:
+		// Replace the local library filteredIdxs with the playlist track order.
+		// First, ensure all playlist tracks are present in a.tracks; add missing ones.
+		existing := make(map[string]int, len(a.tracks))
+		for i, t := range a.tracks {
+			existing[t.ID] = i
+		}
+		newIdxs := make([]int, 0, len(msg.tracks))
+		for _, pt := range msg.tracks {
+			if idx, ok := existing[pt.ID]; ok {
+				newIdxs = append(newIdxs, idx)
+			}
+		}
+		if len(newIdxs) == 0 {
+			return a, nil
+		}
+		a.filteredIdxs = newIdxs
+		pos := msg.startPos
+		if pos >= len(newIdxs) {
+			pos = 0
+		}
+		a.cursorPos = pos
+		a.syncRowMarquee()
+		return a, a.cmdPlayTrack(pos)
 
 	case noopMsg:
 		return a, nil

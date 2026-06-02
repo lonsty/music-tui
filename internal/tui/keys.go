@@ -1,11 +1,14 @@
 package tui
 
 import (
+	"fmt"
 	"os"
 	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/bubbles/textinput"
 
+	"github.com/lonsty/music-tui/internal/library"
 	"github.com/lonsty/music-tui/internal/store"
 )
 
@@ -106,6 +109,13 @@ func (a *App) handleKey(msg tea.KeyMsg) tea.Cmd {
 		return a.handleSearchKey(msg)
 	case overlaySettings:
 		return a.handleSettingsKey(msg)
+	case overlayAddToPlaylist:
+		return a.handleAddToPlaylistKey(msg)
+	}
+
+	// Playlist tab has its own key handler.
+	if a.activeTab == tabPlaylist {
+		return a.handlePlaylistKey(msg)
 	}
 
 	return a.handleNormalKey(msg)
@@ -234,12 +244,41 @@ func (a *App) handleNormalKey(msg tea.KeyMsg) tea.Cmd {
 	case ",":
 		a.openSettings()
 
+	case "L":
+		// Like / Unlike — toggle the current cursor track (Library) or
+		// playing track in Favorites.
+		var target *library.Track
+		if a.activeTab == tabLocal {
+			target = a.cursorTrack()
+		} else if a.currentTrack != nil {
+			target = a.currentTrack
+		}
+		if target != nil {
+			return a.cmdToggleFavorite(*target)
+		}
+
+	case "a":
+		// Add cursor track to a playlist (Library tab only).
+		if a.activeTab == tabLocal {
+			if ct := a.cursorTrack(); ct != nil {
+				a.activeOvl = overlayAddToPlaylist
+				a.ovlScrollRow = 0
+				// Load the playlist list for the overlay.
+				a.ovlPlaylists = a.playlists
+				a.ovlPlCursor = 0
+				if len(a.ovlPlaylists) == 0 {
+					return a.cmdLoadPlaylists()
+				}
+			}
+		}
+
 	case "tab":
-		// Cycle only through tabs that have a working UI.
-		// tabPlaylist exists in the enum but is not yet rendered; skip it.
-		// Update this constant when more tabs are implemented.
-		const activeTabCount = 2 // tabLocal + tabOnline
-		a.activeTab = (a.activeTab + 1) % activeTabCount
+		// Cycle through all implemented tabs.
+		a.activeTab = (a.activeTab + 1) % tabCount
+		// When switching to the Playlist tab, ensure playlists are loaded.
+		if a.activeTab == tabPlaylist && len(a.playlists) == 0 {
+			return a.cmdLoadPlaylists()
+		}
 
 	case "esc":
 		a.activeOvl = overlayNone
@@ -581,6 +620,256 @@ func (a *App) settingsCommitField() tea.Cmd {
 		}
 		a.chipPath = ""
 		a.chipOrigin = ""
+	}
+	return nil
+}
+
+// ── Playlist tab keys ─────────────────────────────────────────────────────────
+
+// handlePlaylistKey handles keypresses when the Playlist tab is active.
+func (a *App) handlePlaylistKey(msg tea.KeyMsg) tea.Cmd {
+	// Global quit still works.
+	if msg.String() == "q" {
+		return a.cmdQuit()
+	}
+
+	// When name input is active, only Esc/Enter are control keys.
+	if a.inputMode != playlistInputNone {
+		switch msg.String() {
+		case "esc":
+			a.inputMode = playlistInputNone
+			a.nameInput.SetValue("")
+			a.nameInput.Blur()
+		case "enter":
+			name := strings.TrimSpace(a.nameInput.Value())
+			prevMode := a.inputMode
+			a.inputMode = playlistInputNone
+			a.nameInput.SetValue("")
+			a.nameInput.Blur()
+			if name == "" {
+				return nil
+			}
+			if prevMode == playlistInputCreate {
+				return a.cmdCreatePlaylist(name)
+			}
+			// rename
+			if pl := a.currentPlaylist(); pl.ID != "" {
+				return a.cmdRenamePlaylist(pl.ID, name)
+			}
+		default:
+			var cmd tea.Cmd
+			a.nameInput, cmd = a.nameInput.Update(msg)
+			return cmd
+		}
+		return nil
+	}
+
+	// Add-tracks mode: forward to dedicated handler.
+	if a.addingTracks {
+		return a.handleAddTracksKey(msg)
+	}
+
+	if a.depth == playlistDepthTracks {
+		return a.handlePlaylistTracksKey(msg)
+	}
+	return a.handlePlaylistListKey(msg)
+}
+
+// handlePlaylistListKey handles keys at the playlist-list depth.
+func (a *App) handlePlaylistListKey(msg tea.KeyMsg) tea.Cmd {
+	switch msg.String() {
+	case "j", "down":
+		if a.listCursor < len(a.playlists)-1 {
+			a.listCursor++
+		}
+	case "k", "up":
+		if a.listCursor > 0 {
+			a.listCursor--
+		}
+	case "g":
+		a.listCursor = 0
+	case "G":
+		if len(a.playlists) > 0 {
+			a.listCursor = len(a.playlists) - 1
+		}
+	case "enter":
+		if len(a.playlists) == 0 {
+			return nil
+		}
+		a.depth = playlistDepthTracks
+		a.trackCursor = 0
+		a.confirmDel = false
+		pl := a.currentPlaylist()
+		return a.cmdLoadPlaylistTracks(pl.ID)
+	case "n":
+		// New playlist.
+		a.confirmDel = false
+		a.inputMode = playlistInputCreate
+		a.nameInput.SetValue("")
+		a.nameInput.Placeholder = T("playlist_new_prompt")
+		a.nameInput.Focus()
+		return textinput.Blink
+	case "r":
+		// Rename selected playlist (not Favorites).
+		if pl := a.currentPlaylist(); pl.ID != "" && pl.ID != store.FavoritesPlaylistID {
+			a.inputMode = playlistInputRename
+			a.nameInput.SetValue(pl.Name)
+			a.nameInput.Placeholder = T("playlist_rename_prompt")
+			a.nameInput.Focus()
+			return textinput.Blink
+		}
+	case "d":
+		// Delete selected playlist (not Favorites).
+		if pl := a.currentPlaylist(); pl.ID != "" && pl.ID != store.FavoritesPlaylistID {
+			if a.confirmDel {
+				a.confirmDel = false
+				return a.cmdDeletePlaylist(pl.ID)
+			}
+			a.confirmDel = true
+		}
+	case "esc":
+		a.confirmDel = false
+		// Switch back to Local tab on Esc from playlist list root.
+		a.activeTab = tabLocal
+	case "tab":
+		a.activeTab = (a.activeTab + 1) % tabCount
+	// Pass through playback keys.
+	case " ":
+		return a.cmdTogglePause()
+	case "f":
+		a.currentView = viewFullscreen
+	case "L":
+		if a.currentTrack != nil {
+			return a.cmdToggleFavorite(*a.currentTrack)
+		}
+	case ",":
+		a.openSettings()
+	}
+	return nil
+}
+
+// handlePlaylistTracksKey handles keys at the playlist-tracks depth.
+func (a *App) handlePlaylistTracksKey(msg tea.KeyMsg) tea.Cmd {
+	tracks := a.plTracks
+	switch msg.String() {
+	case "j", "down":
+		if a.trackCursor < len(tracks)-1 {
+			a.trackCursor++
+		}
+	case "k", "up":
+		if a.trackCursor > 0 {
+			a.trackCursor--
+		}
+	case "g":
+		a.trackCursor = 0
+	case "G":
+		if len(tracks) > 0 {
+			a.trackCursor = len(tracks) - 1
+		}
+	case "enter":
+		if len(tracks) == 0 {
+			return nil
+		}
+		pl := a.currentPlaylist()
+		return a.cmdPlayPlaylist(pl.ID, a.trackCursor)
+	case "x":
+		// Remove track from playlist.
+		if a.trackCursor >= 0 && a.trackCursor < len(tracks) {
+			pl := a.currentPlaylist()
+			trackID := tracks[a.trackCursor].ID
+			a.statusMsg = T("playlist_removed")
+			return a.cmdRemoveTrackFromPlaylist(pl.ID, trackID)
+		}
+	case "a":
+		// Open inline add-tracks panel.
+		a.addingTracks = true
+		a.addInput.SetValue("")
+		a.addInput.Focus()
+		a.applyAddFilter()
+		a.addCursor = 0
+		return textinput.Blink
+	case "esc":
+		// Return to playlist list.
+		a.depth = playlistDepthList
+		a.confirmDel = false
+	case " ":
+		return a.cmdTogglePause()
+	case "f":
+		a.currentView = viewFullscreen
+	case "L":
+		if a.currentTrack != nil {
+			return a.cmdToggleFavorite(*a.currentTrack)
+		}
+	case "tab":
+		a.activeTab = (a.activeTab + 1) % tabCount
+	case ",":
+		a.openSettings()
+	}
+	return nil
+}
+
+// handleAddTracksKey handles keys in the inline add-tracks search panel.
+func (a *App) handleAddTracksKey(msg tea.KeyMsg) tea.Cmd {
+	switch msg.String() {
+	case "esc":
+		a.addingTracks = false
+		a.addInput.Blur()
+		a.addInput.SetValue("")
+	case "enter":
+		// Add the selected track to the current playlist.
+		if a.addCursor < 0 || a.addCursor >= len(a.addResults) {
+			return nil
+		}
+		idx := a.addResults[a.addCursor]
+		t := a.tracks[idx]
+		pl := a.currentPlaylist()
+		// Don't close the panel — allow continuous adding.
+		return a.cmdAddTrackToPlaylist(pl.ID, t.ID)
+	case "j", "down":
+		if a.addCursor < len(a.addResults)-1 {
+			a.addCursor++
+		}
+	case "k", "up":
+		if a.addCursor > 0 {
+			a.addCursor--
+		}
+	default:
+		var cmd tea.Cmd
+		a.addInput, cmd = a.addInput.Update(msg)
+		a.applyAddFilter()
+		a.addCursor = 0
+		return cmd
+	}
+	return nil
+}
+
+// handleAddToPlaylistKey handles keys in the overlayAddToPlaylist overlay.
+func (a *App) handleAddToPlaylistKey(msg tea.KeyMsg) tea.Cmd {
+	switch msg.String() {
+	case "esc":
+		a.closeOverlay()
+	case "j", "down":
+		if a.ovlPlCursor < len(a.ovlPlaylists)-1 {
+			a.ovlPlCursor++
+		}
+	case "k", "up":
+		if a.ovlPlCursor > 0 {
+			a.ovlPlCursor--
+		}
+	case "enter":
+		if a.ovlPlCursor < 0 || a.ovlPlCursor >= len(a.ovlPlaylists) {
+			a.closeOverlay()
+			return nil
+		}
+		pl := a.ovlPlaylists[a.ovlPlCursor]
+		ct := a.cursorTrack()
+		if ct == nil {
+			a.closeOverlay()
+			return nil
+		}
+		a.closeOverlay()
+		a.statusMsg = fmt.Sprintf(T("playlist_added"), pl.Name)
+		return a.cmdAddTrackToPlaylist(pl.ID, ct.ID)
 	}
 	return nil
 }

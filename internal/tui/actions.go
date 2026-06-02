@@ -597,6 +597,159 @@ func chip8CacheKey(path string) string {
 }
 
 // shellSplit splits a string into tokens the way a POSIX shell would,
+// ── Playlist commands ─────────────────────────────────────────────────────────
+
+// cmdLoadPlaylists fetches all playlists from the DB and returns them via
+// playlistsLoadedMsg.
+func (a *App) cmdLoadPlaylists() tea.Cmd {
+	return func() tea.Msg {
+		if a.st == nil {
+			return playlistsLoadedMsg{}
+		}
+		pls, err := a.st.GetPlaylists()
+		return playlistsLoadedMsg{playlists: pls, err: err}
+	}
+}
+
+// cmdLoadPlaylistTracks fetches the tracks for playlistID from the DB.
+func (a *App) cmdLoadPlaylistTracks(playlistID string) tea.Cmd {
+	return func() tea.Msg {
+		if a.st == nil {
+			return playlistTracksLoadedMsg{}
+		}
+		tracks, err := a.st.GetPlaylistTracks(playlistID)
+		return playlistTracksLoadedMsg{tracks: tracks, err: err}
+	}
+}
+
+// cmdCreatePlaylist creates a new playlist with name and reloads the list.
+func (a *App) cmdCreatePlaylist(name string) tea.Cmd {
+	return func() tea.Msg {
+		if a.st == nil {
+			return playlistsLoadedMsg{}
+		}
+		if _, err := a.st.CreatePlaylist(name); err != nil {
+			return playlistsLoadedMsg{err: err}
+		}
+		pls, err := a.st.GetPlaylists()
+		return playlistsLoadedMsg{playlists: pls, err: err}
+	}
+}
+
+// cmdDeletePlaylist deletes the playlist with id and reloads the list.
+func (a *App) cmdDeletePlaylist(id string) tea.Cmd {
+	return func() tea.Msg {
+		if a.st == nil {
+			return playlistsLoadedMsg{}
+		}
+		if err := a.st.DeletePlaylist(id); err != nil {
+			return playlistsLoadedMsg{err: err}
+		}
+		pls, err := a.st.GetPlaylists()
+		return playlistsLoadedMsg{playlists: pls, err: err}
+	}
+}
+
+// cmdRenamePlaylist renames the playlist with id and reloads the list.
+func (a *App) cmdRenamePlaylist(id, name string) tea.Cmd {
+	return func() tea.Msg {
+		if a.st == nil {
+			return playlistsLoadedMsg{}
+		}
+		if err := a.st.RenamePlaylist(id, name); err != nil {
+			return playlistsLoadedMsg{err: err}
+		}
+		pls, err := a.st.GetPlaylists()
+		return playlistsLoadedMsg{playlists: pls, err: err}
+	}
+}
+
+// cmdAddTrackToPlaylist adds trackID to playlistID and reloads the playlist's
+// track list if we are currently viewing that playlist.
+func (a *App) cmdAddTrackToPlaylist(playlistID, trackID string) tea.Cmd {
+	return func() tea.Msg {
+		if a.st == nil {
+			return playlistTracksLoadedMsg{}
+		}
+		// Use current track count as append position.
+		count, _ := a.st.PlaylistTrackCount(playlistID)
+		if err := a.st.AddTrackToPlaylist(playlistID, trackID, count); err != nil {
+			return playlistTracksLoadedMsg{err: err}
+		}
+		tracks, err := a.st.GetPlaylistTracks(playlistID)
+		return playlistTracksLoadedMsg{tracks: tracks, err: err}
+	}
+}
+
+// cmdRemoveTrackFromPlaylist removes trackID from playlistID and reloads.
+func (a *App) cmdRemoveTrackFromPlaylist(playlistID, trackID string) tea.Cmd {
+	return func() tea.Msg {
+		if a.st == nil {
+			return playlistTracksLoadedMsg{}
+		}
+		if err := a.st.RemoveTrackFromPlaylist(playlistID, trackID); err != nil {
+			return playlistTracksLoadedMsg{err: err}
+		}
+		tracks, err := a.st.GetPlaylistTracks(playlistID)
+		return playlistTracksLoadedMsg{tracks: tracks, err: err}
+	}
+}
+
+// cmdToggleFavorite adds or removes the current track from the Favorites
+// playlist and returns a favoriteChangedMsg with the new state.
+func (a *App) cmdToggleFavorite(track library.Track) tea.Cmd {
+	return func() tea.Msg {
+		if a.st == nil {
+			return noopMsg{}
+		}
+		in, err := a.st.IsTrackInPlaylist(store.FavoritesPlaylistID, track.ID)
+		if err != nil {
+			return noopMsg{}
+		}
+		if in {
+			_ = a.st.RemoveTrackFromPlaylist(store.FavoritesPlaylistID, track.ID)
+			return favoriteChangedMsg{trackID: track.ID, isFavorite: false}
+		}
+		count, _ := a.st.PlaylistTrackCount(store.FavoritesPlaylistID)
+		_ = a.st.AddTrackToPlaylist(store.FavoritesPlaylistID, track.ID, count)
+		return favoriteChangedMsg{trackID: track.ID, isFavorite: true}
+	}
+}
+
+// cmdCheckFavorite queries whether trackID is in Favorites and returns
+// a favoriteChangedMsg so the UI can update isFavorite.
+func (a *App) cmdCheckFavorite(trackID string) tea.Cmd {
+	return func() tea.Msg {
+		if a.st == nil {
+			return favoriteChangedMsg{trackID: trackID, isFavorite: false}
+		}
+		in, _ := a.st.IsTrackInPlaylist(store.FavoritesPlaylistID, trackID)
+		return favoriteChangedMsg{trackID: trackID, isFavorite: in}
+	}
+}
+
+// cmdPlayPlaylist loads playlistID's tracks and plays from position pos.
+// It replaces filteredIdxs with the playlist's track order.
+func (a *App) cmdPlayPlaylist(playlistID string, pos int) tea.Cmd {
+	return func() tea.Msg {
+		if a.st == nil {
+			return noopMsg{}
+		}
+		tracks, err := a.st.GetPlaylistTracks(playlistID)
+		if err != nil || len(tracks) == 0 || pos >= len(tracks) {
+			return noopMsg{}
+		}
+		return playlistPlayMsg{tracks: tracks, startPos: pos}
+	}
+}
+
+// playlistPlayMsg asks Update to replace filteredIdxs with the playlist
+// track order and play from startPos.
+type playlistPlayMsg struct {
+	tracks   []library.Track
+	startPos int
+}
+
 // respecting single-quoted and double-quoted sub-strings.
 // Malformed quoting (unclosed quotes) is handled leniently.
 func shellSplit(s string) []string {

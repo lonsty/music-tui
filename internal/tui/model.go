@@ -7,6 +7,7 @@ import (
 
 	"github.com/lonsty/music-tui/internal/library"
 	"github.com/lonsty/music-tui/internal/lyrics"
+	"github.com/lonsty/music-tui/internal/store"
 )
 
 // ── View ─────────────────────────────────────────────────────────────────────
@@ -128,11 +129,12 @@ func iconSetDisplayLabel(s iconSet) string {
 type overlay int
 
 const (
-	overlayNone     overlay = iota
-	overlayHelp             // ? key
-	overlaySearch           // / key
-	overlayInfo             // i key — track detail
-	overlaySettings         // , key — settings
+	overlayNone          overlay = iota
+	overlayHelp                  // ? key
+	overlaySearch                // / key
+	overlayInfo                  // i key — track detail
+	overlaySettings              // , key — settings
+	overlayAddToPlaylist         // a key in Library tab — add cursor track to a playlist
 )
 
 // ── Tab ───────────────────────────────────────────────────────────────────────
@@ -143,8 +145,27 @@ type tabID int
 const (
 	tabLocal    tabID = iota
 	tabOnline         // online music search — placeholder
-	tabPlaylist       // playlist management — placeholder
+	tabPlaylist       // playlist management
 	tabCount          // sentinel — must be the last constant
+)
+
+// ── Playlist navigation ───────────────────────────────────────────────────────
+
+// playlistDepth controls which level of the playlist tab is shown.
+type playlistDepth int
+
+const (
+	playlistDepthList   playlistDepth = iota // top level: list of all playlists
+	playlistDepthTracks                      // drill-down: tracks inside one playlist
+)
+
+// playlistInputMode identifies the purpose of the inline text-input box.
+type playlistInputMode int
+
+const (
+	playlistInputNone   playlistInputMode = iota // no input active
+	playlistInputCreate                          // creating a new playlist
+	playlistInputRename                          // renaming the selected playlist
 )
 
 // ── Play mode ────────────────────────────────────────────────────────────────
@@ -258,6 +279,25 @@ type playResultMsg struct {
 // noopMsg is returned by Cmds that have no state to communicate.
 // Never return nil from a tea.Cmd — it causes a panic.
 type noopMsg struct{}
+
+// playlistsLoadedMsg carries the result of loading all playlists from the DB.
+type playlistsLoadedMsg struct {
+	playlists []store.Playlist
+	err       error
+}
+
+// playlistTracksLoadedMsg carries the tracks for one playlist.
+type playlistTracksLoadedMsg struct {
+	tracks []library.Track
+	err    error
+}
+
+// favoriteChangedMsg is sent after a Like/Unlike operation completes.
+// isFavorite is the new state after the toggle.
+type favoriteChangedMsg struct {
+	trackID    string
+	isFavorite bool
+}
 
 // chip8DoneMsg is sent by the background goroutine that runs p2chip.
 // On success chipPath holds the converted mp3 path; err is non-nil on failure.

@@ -4,6 +4,8 @@ import (
 	"strings"
 
 	"github.com/charmbracelet/lipgloss"
+
+	"github.com/lonsty/music-tui/internal/store"
 )
 
 // overlayInnerW returns the usable content width (columns) for an overlay box
@@ -480,4 +482,48 @@ func (a *App) renderScrollableOverlay(titleRows, bodyRows, hintRows []string, in
 	// the terminal is too short.
 	return strings.Repeat("\n", topPad) +
 		lipgloss.Place(a.W, a.H-topPad, lipgloss.Center, lipgloss.Center, box)
+}
+
+// ── Add-to-playlist overlay ───────────────────────────────────────────────────
+
+// renderAddToPlaylistOverlay renders the playlist-picker overlay shown when
+// the user presses 'a' in the Library tab.
+func (a *App) renderAddToPlaylistOverlay() string {
+	innerW := a.overlayInnerW(idealOverlayW, minOverlayW)
+	div := styleOverlayMuted.Render(strings.Repeat("─", innerW))
+
+	titleRows := []string{
+		styleOverlayTitle.Render(iconWithSpace(iconPlaylist()) + T("playlist_add_title")),
+		div,
+	}
+
+	var bodyRows []string
+	if len(a.ovlPlaylists) == 0 {
+		bodyRows = append(bodyRows, "  "+styleOverlayMuted.Render(T("playlist_empty")))
+	} else {
+		for i, pl := range a.ovlPlaylists {
+			isSelected := i == a.ovlPlCursor
+			name := pl.Name
+			if pl.ID == store.FavoritesPlaylistID {
+				name = T("playlist_favorites_name")
+			}
+			var row string
+			if isSelected {
+				row = styleTrackRowSelected.Render("  ▶ " + name)
+			} else {
+				row = styleTrackRowDefault.Render("    " + name)
+			}
+			bodyRows = append(bodyRows, row)
+		}
+	}
+
+	enterKey := styleOverlayKey.Render("❮Enter❯")
+	escKey := styleOverlayKey.Render("❮Esc❯")
+	hintRows := []string{
+		div,
+		"  " + enterKey + styleOverlayMuted.Render(" add  ") +
+			escKey + styleOverlayMuted.Render(" cancel"),
+	}
+
+	return a.renderScrollableOverlay(titleRows, bodyRows, hintRows, innerW)
 }

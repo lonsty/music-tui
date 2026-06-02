@@ -20,6 +20,37 @@ type Playlist struct {
 	CreatedAt time.Time
 }
 
+// FavoritesPlaylistID is the fixed ID of the built-in "Favorites" playlist.
+// It is never derived from user input, so it is a stable constant rather than
+// a hash.  The corresponding row is inserted by EnsureFavorites on startup.
+const FavoritesPlaylistID = "favorites"
+
+// EnsureFavorites creates the built-in Favorites playlist if it does not
+// already exist.  Safe to call on every startup (INSERT OR IGNORE).
+func (s *Store) EnsureFavorites() error {
+	_, err := s.db.Exec(
+		`INSERT OR IGNORE INTO playlists(id, name, created_at) VALUES (?, ?, ?)`,
+		FavoritesPlaylistID, "我的最爱", 0,
+	)
+	if err != nil {
+		return fmt.Errorf("ensure favorites: %w", err)
+	}
+	return nil
+}
+
+// IsTrackInPlaylist returns true when trackID is in playlistID.
+func (s *Store) IsTrackInPlaylist(playlistID, trackID string) (bool, error) {
+	var n int
+	err := s.db.QueryRow(
+		`SELECT COUNT(*) FROM playlist_tracks WHERE playlist_id = ? AND track_id = ?`,
+		playlistID, trackID,
+	).Scan(&n)
+	if err != nil {
+		return false, fmt.Errorf("is track in playlist: %w", err)
+	}
+	return n > 0, nil
+}
+
 // ── Playlist CRUD ──────────────────────────────────────────────────────────────
 
 // CreatePlaylist creates a new playlist with the given name and returns it.

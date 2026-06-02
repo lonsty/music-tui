@@ -142,6 +142,17 @@ func iconHelp() string { return icon("󰋼", "?", "?") }
 // icon.
 func iconInfo() string { return icon("󰋽", "i", "i") }
 
+// iconPlaylist returns the playlist / queue glyph for the Playlists tab.
+func iconPlaylist() string { return icon("󰲸", "♫", "") }
+
+// iconHeartFilled returns the filled heart glyph (track is in Favorites).
+// NF: nf-fa-heart  Emoji: ❤  Plain: <3
+func iconHeartFilled() string { return icon("\uf004", "❤", "<3") }
+
+// iconHeartEmpty returns the outline heart glyph (track is NOT in Favorites).
+// NF: nf-fa-heart-o  Emoji: ♡  Plain: "" (invisible — only filled heart is shown)
+func iconHeartEmpty() string { return icon("\uf08a", "♡", "") }
+
 // iconWithSpace returns the icon followed by two spaces when the icon is
 // non-empty, or an empty string when the icon is empty (Plain mode).
 // Use this instead of icon() + "  " to avoid orphaned spaces in Plain mode.
