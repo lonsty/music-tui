@@ -7,6 +7,7 @@ import (
 	"math/rand"
 	"os"
 	"strconv"
+	"time"
 
 	"github.com/charmbracelet/bubbles/progress"
 	"github.com/charmbracelet/bubbles/textinput"
@@ -84,14 +85,33 @@ type ChipState struct {
 }
 
 // PlaylistState holds playlist management state.
-// It is embedded in App and accessed via a.playlists, a.playlistCursor, etc.
-// Fields are declared here for future playlist tab implementation;
-// they are intentionally unused until the playlist UI is built.
-//
-//nolint:unused
+// It is embedded in App and accessed via a.playlists, a.listCursor, etc.
 type PlaylistState struct {
-	playlists      []store.Playlist // cached list of all playlists
-	playlistCursor int              // index of the selected playlist in a.playlists
+	depth       playlistDepth    // current navigation level
+	playlists   []store.Playlist // cached list of all playlists (index 0 = Favorites)
+	listCursor  int              // cursor in the playlist list (depth == list)
+	plTracks    []library.Track  // tracks of the currently open playlist
+	trackCursor int              // cursor in the track list (depth == tracks)
+	inputMode   playlistInputMode // purpose of nameInput (none / create / rename)
+	nameInput   textinput.Model   // inline input for new-playlist name or rename
+	confirmDel  bool              // true while waiting for second 'd' to confirm delete
+
+	// addingTracks is true while the inline "add tracks" search panel is open.
+	addingTracks bool
+	addInput     textinput.Model // search box inside the add-tracks panel
+	addResults   []int           // indices into a.tracks that match addInput
+	addCursor    int             // cursor in addResults
+
+	// ovlPlaylists is the cached playlist list used by overlayAddToPlaylist.
+	// It is loaded when the overlay opens.
+	ovlPlaylists  []store.Playlist
+	ovlPlCursor   int // cursor inside the overlay list
+
+	// pendingTrackAnchor is set to true when entering a playlist's track
+	// list and the cursor should be anchored to the currently playing track
+	// once the tracks are loaded.  Cleared in the playlistTracksLoadedMsg
+	// handler after the anchor is resolved.
+	pendingTrackAnchor bool
 }
 
 // OnlineState holds the state for the online music search tab.
@@ -187,7 +207,9 @@ type App struct {
 	rightCollapsed bool           // true = right panel hidden, track list takes full width
 
 	// ── Status / feedback ────────────────────────────────────────────────────
-	statusMsg string
+	statusMsg       string
+	statusMsgExpiry   time.Time // when non-zero, statusMsg is cleared after this time
+	libScanFromReload bool        // true when the current scan was triggered by Ctrl+R (not startup)
 
 	// ── Loading ──────────────────────────────────────────────────────────────
 	loading bool
@@ -210,13 +232,19 @@ type App struct {
 	mqMeta   *Marquee // "artist · album" line
 	mqArtist *Marquee // artist-only (fullscreen)
 	mqAlbum  *Marquee // album-only  (fullscreen)
-	mqRow    *Marquee // selected list row "artist — title"
+	mqRow    *Marquee // selected track-list row (Local tab + Playlist track level)
+	mqPlRow  *Marquee // selected playlist-list row (Playlist list level)
 
 	// ── Cover art cache ───────────────────────────────────────────────────────
 	// Pre-rendered terminal art string for the current track's cover.
 	// Invalidated whenever the track changes or the box size changes.
 	coverRendered string
 	coverW        int // outerCols value used to produce coverRendered
+
+	// ── Favorites / Like ─────────────────────────────────────────────────────
+	// isFavorite caches whether the currently playing track is in the
+	// Favorites playlist.  Updated on track change and after Like/Unlike.
+	isFavorite bool
 }
 
 // NewApp creates the application model. Call WithProgram after tea.NewProgram.
@@ -277,6 +305,21 @@ func NewApp(player *audio.Player, st *store.Store, musicDir string, tracks []lib
 	di.CharLimit = 512
 	di.Width = 42
 
+	// Playlist inline name-input (new / rename).
+	ni := textinput.New()
+	ni.Placeholder = T("playlist_new_prompt")
+	ni.CharLimit = 64
+
+	// Playlist "add tracks" search input.
+	ai := textinput.New()
+	ai.Placeholder = T("search_placeholder")
+	ai.CharLimit = 128
+
+	// Ensure the built-in Favorites playlist exists in the DB.
+	if st != nil {
+		_ = st.EnsureFavorites()
+	}
+
 	prog := progress.New(
 		progress.WithGradient("#89B4FA", "#CBA6F7"),
 		progress.WithoutPercentage(),
@@ -317,11 +360,16 @@ func NewApp(player *audio.Player, st *store.Store, musicDir string, tracks []lib
 		mqArtist:       NewMarquee("", marqueeSep),
 		mqAlbum:        NewMarquee("", marqueeSep),
 		mqRow:          NewMarquee("", marqueeSep),
+		mqPlRow:        NewMarquee("", marqueeSep),
 		session:        sess,
 		providerMap:    map[string]provider.TrackProvider{},
 		netCancel:      func() {}, // no-op until a network request is started
 		rightCollapsed: rightCollapsed,
 		rightMode:      rightMode,
+		PlaylistState: PlaylistState{
+			nameInput: ni,
+			addInput:  ai,
+		},
 		PlaybackState: PlaybackState{
 			volume:   vol,
 			playMode: mode,
@@ -354,7 +402,9 @@ func NewApp(player *audio.Player, st *store.Store, musicDir string, tracks []lib
 		// filtered list is consistent with the user's persisted settings.
 		app.applyFilter()
 		app.rebuildShuffleIDs()
-		app.statusMsg = fmt.Sprintf("Loaded %d tracks", len(tracks))
+		// DO NOT set statusMsg here — the "Loaded N tracks" message should
+		// only appear after an explicit library reload (Ctrl+R → scanDoneMsg).
+		// Setting it on every startup causes a visible status-bar flash/jump.
 		// Pre-populate currentTrack so the first rendered frame already shows
 		// the correct playing state (no flash/blank period while the async
 		// restore Cmd is in flight).
@@ -374,6 +424,12 @@ func NewApp(player *audio.Player, st *store.Store, musicDir string, tracks []lib
 				app.syncRowMarquee()
 				break
 			}
+		}
+		// Always initialise mqRow for the cursor position so that row 0 is
+		// never blank on startup (e.g. after sequential playback ended and
+		// currentTrack was cleared before the last quit).
+		if app.currentTrack == nil {
+			app.syncRowMarquee()
 		}
 	} else {
 		app.statusMsg = T("no_tracks_hint")
@@ -497,8 +553,11 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		if msg.err != nil {
 			a.statusMsg = "Sync error: " + msg.err.Error()
-		} else if a.currentTrack != nil || len(a.tracks) == 0 {
+		} else if a.libScanFromReload {
+			// Only show "Loaded N tracks" when the scan was explicitly
+			// triggered by Ctrl+R in Settings, not on every startup.
 			a.statusMsg = fmt.Sprintf("Loaded %d tracks", len(a.tracks))
+			a.libScanFromReload = false
 		}
 		return a, nil
 
@@ -527,7 +586,15 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		a.statusMsg = ""
 		a.syncMarquees()
-		a.syncRowMarquee()
+		// Sync the correct row marquee depending on the active view.
+		// When the Playlist tab's track level is visible, mqRow must
+		// reflect plTracks[trackCursor]; otherwise it follows the
+		// Local tab's cursorPos.
+		if a.activeTab == tabPlaylist && a.depth == playlistDepthTracks {
+			a.syncPlaylistTrackMarquee()
+		} else {
+			a.syncRowMarquee()
+		}
 
 		// Reset lyrics and kick off background load for the new track.
 		a.lines = nil
@@ -540,6 +607,9 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		a.browseTicks = 0
 		a.browseExpired = false
 
+		// Reset isFavorite for the new track; will be updated by cmdCheckFavorite.
+		a.isFavorite = false
+
 		var cmds []tea.Cmd
 		// If we were in chip mode, automatically start converting the new track.
 		if wasChipMode {
@@ -547,8 +617,105 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		if msg.track != nil {
 			cmds = append(cmds, a.cmdLoadLyrics(*msg.track))
+			cmds = append(cmds, a.cmdCheckFavorite(msg.track.ID))
 		}
 		return a, tea.Batch(cmds...)
+
+	case playlistsLoadedMsg:
+		if msg.err != nil {
+			a.statusMsg = T("playlist_load_error") + ": " + msg.err.Error()
+		} else {
+			a.playlists = msg.playlists
+			// Clamp cursor after reload (e.g. after delete).
+			if a.listCursor >= len(a.playlists) {
+				a.listCursor = len(a.playlists) - 1
+			}
+			if a.listCursor < 0 {
+				a.listCursor = 0
+			}
+			// Sync the playlist row marquee after any list reload.
+			a.syncPlaylistRowMarquee()
+		}
+		return a, nil
+
+	case playlistTracksLoadedMsg:
+		if msg.err != nil {
+			a.statusMsg = T("playlist_load_error") + ": " + msg.err.Error()
+		} else {
+			a.plTracks = msg.tracks
+			if a.trackCursor >= len(a.plTracks) {
+				a.trackCursor = len(a.plTracks) - 1
+			}
+			if a.trackCursor < 0 {
+				a.trackCursor = 0
+			}
+			// Anchor cursor to the currently playing track when entering
+			// a playlist's track list (pendingTrackAnchor == true),
+			// matching the behaviour of mature players (cmus, ncmpcpp)
+			// that jump to the playing song when entering a new list.
+			// Only anchor on explicit entry, not on background reloads
+			// (e.g. favoriteChangedMsg) which should preserve the cursor.
+			if a.pendingTrackAnchor {
+				a.anchorPlaylistTrackCursor()
+			}
+			a.pendingTrackAnchor = false
+			// Sync mqRow so the selected row renders the correct track
+			// text immediately, rather than showing stale content from a
+			// previous tab or playlist.
+			a.syncPlaylistTrackMarquee()
+		}
+		return a, nil
+
+	case favoriteChangedMsg:
+		if msg.trackID == "" {
+			return a, nil
+		}
+		// Update isFavorite only when this is about the currently playing track.
+		if a.currentTrack != nil && msg.trackID == a.currentTrack.ID {
+			a.isFavorite = msg.isFavorite
+		}
+		// Show feedback only for explicit user actions (trackTitle is set by
+		// cmdToggleFavorite; cmdCheckFavorite leaves it empty).
+		if msg.trackTitle != "" {
+			if msg.isFavorite {
+				a.statusMsg = iconHeartFilled() + "  " + msg.trackTitle
+			} else {
+				a.statusMsg = iconHeartEmpty() + "  " + msg.trackTitle
+			}
+			a.statusMsgExpiry = time.Now().Add(2 * time.Second)
+		}
+		// If we're viewing the Favorites playlist, reload its track list.
+		if a.activeTab == tabPlaylist &&
+			a.depth == playlistDepthTracks &&
+			a.currentPlaylist().ID == store.FavoritesPlaylistID {
+			return a, a.cmdLoadPlaylistTracks(store.FavoritesPlaylistID)
+		}
+		return a, nil
+
+	case playlistPlayMsg:
+		// Replace the local library filteredIdxs with the playlist track order.
+		// First, ensure all playlist tracks are present in a.tracks; add missing ones.
+		existing := make(map[string]int, len(a.tracks))
+		for i, t := range a.tracks {
+			existing[t.ID] = i
+		}
+		newIdxs := make([]int, 0, len(msg.tracks))
+		for _, pt := range msg.tracks {
+			if idx, ok := existing[pt.ID]; ok {
+				newIdxs = append(newIdxs, idx)
+			}
+		}
+		if len(newIdxs) == 0 {
+			return a, nil
+		}
+		a.filteredIdxs = newIdxs
+		pos := msg.startPos
+		if pos >= len(newIdxs) {
+			pos = 0
+		}
+		a.cursorPos = pos
+		a.syncRowMarquee()
+		return a, a.cmdPlayTrack(pos)
 
 	case noopMsg:
 		return a, nil
@@ -605,9 +772,29 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		a.lyricsLoading = false
 		return a, nil
 
+	case playbackEndedMsg:
+		// Sequential mode reached the end of the list — clear the playing
+		// state so the status bar correctly shows Stopped.
+		a.currentTrack = nil
+		a.isFavorite = false
+		a.syncMarquees()
+		// Re-anchor cursor row text so row 0 isn't blank.  Sync the
+		// correct marquee depending on the active view.
+		if a.activeTab == tabPlaylist && a.depth == playlistDepthTracks {
+			a.syncPlaylistTrackMarquee()
+		} else {
+			a.syncRowMarquee()
+		}
+		return a, nil
+
 	case tickMsg:
 		a.tickMarquees()
 		a.syncLyricsActive()
+		// Clear transient status messages after their expiry time.
+		if !a.statusMsgExpiry.IsZero() && time.Now().After(a.statusMsgExpiry) {
+			a.statusMsg = ""
+			a.statusMsgExpiry = time.Time{}
+		}
 		// Browse cursor expiry: count ticks while cursor is active.
 		// Do NOT reset immediately — wait for the next line change so the
 		// snap-back happens at a natural lyric boundary (smooth transition).
@@ -891,9 +1078,18 @@ func (a *App) tickMarquees() {
 		midAvail = 4
 	}
 
+	// Playlist list level: left icon (2) + right count (8).
+	const plRightColW = 8
+	plMidAvail := listW - leftFixW - plRightColW
+	if plMidAvail < 4 {
+		plMidAvail = 4
+	}
+
 	miniW := a.miniPlayerW() - 4
 	if miniW <= 0 {
-		miniW = 20
+		// Collapsed / narrow: use a small threshold so that even short
+		// titles (e.g. 10 CJK chars = 20 display cols) trigger scrolling.
+		miniW = 16
 	}
 	fullW := a.fullPlayerInnerW() - 4
 	if fullW <= 0 {
@@ -901,10 +1097,54 @@ func (a *App) tickMarquees() {
 	}
 
 	a.mqRow.Tick(midAvail)
+	a.mqPlRow.Tick(plMidAvail)
 	a.mqTitle.Tick(miniW)
 	a.mqMeta.Tick(miniW)
 	a.mqArtist.Tick(fullW)
 	a.mqAlbum.Tick(fullW)
+}
+
+// syncPlaylistRowMarquee updates mqPlRow to match the currently selected
+// playlist in the playlist list level.
+func (a *App) syncPlaylistRowMarquee() {
+	if a.listCursor < 0 || a.listCursor >= len(a.playlists) {
+		a.mqPlRow.SetText("")
+		return
+	}
+	pl := a.playlists[a.listCursor]
+	name := pl.Name
+	// Use the localised Favorites name so the scrolling text matches display.
+	if pl.ID == store.FavoritesPlaylistID {
+		name = T("playlist_favorites_name")
+	}
+	a.mqPlRow.SetText(name)
+}
+
+// anchorPlaylistTrackCursor moves trackCursor to the currently playing
+// track when it exists in the playlist, matching the behaviour of mature
+// players (cmus, ncmpcpp) that always jump to the playing song when
+// entering or switching to a track list.
+func (a *App) anchorPlaylistTrackCursor() {
+	if a.currentTrack != nil && len(a.plTracks) > 0 {
+		for i, t := range a.plTracks {
+			if t.ID == a.currentTrack.ID {
+				a.trackCursor = i
+				return
+			}
+		}
+	}
+}
+
+// syncPlaylistTrackMarquee updates mqRow to match the currently selected
+// track in the playlist track level.  This is necessary because the Playlist
+// tab's track level shares mqRow with the Local tab; without syncing, the
+// selected row may render stale text from a different view.
+func (a *App) syncPlaylistTrackMarquee() {
+	if a.trackCursor >= 0 && a.trackCursor < len(a.plTracks) {
+		a.mqRow.SetText(rowMidText(a.plTracks[a.trackCursor]))
+	} else {
+		a.mqRow.SetText("")
+	}
 }
 
 // syncLyricsActive updates activeIdx to the lyric line that should be

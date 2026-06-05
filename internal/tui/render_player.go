@@ -44,6 +44,17 @@ func (a *App) renderMiniPlayer() string {
 }
 
 func (a *App) buildMiniPlayerContent(w, h int) string {
+	// Stopped state: do NOT show the cover art placeholder box.
+	// Just show the text prompt so the UI is clean and consistent.
+	if a.currentTrack == nil {
+		idle := lipgloss.JoinVertical(lipgloss.Center,
+			"",
+			stylePlayerArtist.Width(w).Render(T("no_track_selected")),
+			stylePlayerMuted().Width(w).Render(T("press_enter_to_play")),
+		)
+		return lipgloss.Place(w, h, lipgloss.Center, lipgloss.Center, idle)
+	}
+
 	// Fixed rows consumed by everything below the cover art:
 	//   ""(1) + title(1) + meta(1) + ""(1) + div(1) + lyric(1) + div(1) +
 	//   ""(1) + bar(1) + timeStr(1) + ""(1) + controls(1) = 12
@@ -64,16 +75,6 @@ func (a *App) buildMiniPlayerContent(w, h int) string {
 
 	cover := a.getCoverArt(coverOuterCols, coverOuterRows)
 	coverLine := styleCentered.Width(w).Render(cover)
-
-	if a.currentTrack == nil {
-		idle := lipgloss.JoinVertical(lipgloss.Center,
-			coverLine,
-			"",
-			stylePlayerArtist.Width(w).Render(T("no_track_selected")),
-			stylePlayerMuted().Width(w).Render(T("press_enter_to_play")),
-		)
-		return idle
-	}
 
 	div := styleDivider.Render(strings.Repeat("─", w-2))
 
@@ -149,7 +150,18 @@ func (a *App) buildControls(w int) string {
 	}
 	volPct := int(a.volume / maxVolume * 100)
 
-	ctrl := iconPrev() + "  " + playIcon + "  " + iconNext() + "    " + modeIcon + "  " + volIcon + " " + fmt.Sprintf("%d%%", volPct)
+	// Heart icon: filled when the current track is in Favorites, empty otherwise.
+	// Only show when an icon is available (not empty in Plain mode).
+	heartIcon := iconHeartEmpty()
+	if a.isFavorite {
+		heartIcon = styleModeIcon.Render(iconHeartFilled())
+	}
+	var heartPart string
+	if heartIcon != "" {
+		heartPart = "    " + heartIcon
+	}
+
+	ctrl := iconPrev() + "  " + playIcon + "  " + iconNext() + "    " + modeIcon + "  " + volIcon + " " + fmt.Sprintf("%d%%", volPct) + heartPart
 	return styleControls.Width(w).Render(ctrl)
 }
 
@@ -651,7 +663,12 @@ func (a *App) renderMiniLyrics() string {
 
 func (a *App) buildMiniLyricsContent(w, h int) string {
 	if a.currentTrack == nil {
-		idle := stylePlayerArtist.Width(w).Render(T("no_track_selected"))
+		// Stopped state: no cover placeholder box — just text prompt.
+		idle := lipgloss.JoinVertical(lipgloss.Center,
+			"",
+			stylePlayerArtist.Width(w).Render(T("no_track_selected")),
+			stylePlayerMuted().Width(w).Render(T("press_enter_to_play")),
+		)
 		return lipgloss.Place(w, h, lipgloss.Center, lipgloss.Center, idle)
 	}
 

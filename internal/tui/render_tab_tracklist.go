@@ -1,7 +1,6 @@
 package tui
 
 import (
-	"fmt"
 	"strings"
 
 	"github.com/charmbracelet/lipgloss"
@@ -19,12 +18,10 @@ func (a *App) renderTabBar() string {
 		icon  string
 		label string
 	}
-	// Only show tabs with a working implementation.
-	// tabPlaylist is declared but its UI is not yet built;
-	// add it back here once the playlist panel is implemented.
 	tabs := []tabDef{
 		{tabLocal, iconLibrary(), T("tab_local")},
 		{tabOnline, iconOnline(), T("tab_online")},
+		{tabPlaylist, iconPlaylist(), T("tab_playlist")},
 	}
 
 	// activeMark is the left marker rendered on the active tab.
@@ -62,12 +59,10 @@ func (a *App) renderNormalBody() string {
 	case tabOnline:
 		return a.renderOnlinePlaceholder()
 	case tabPlaylist:
-		// Playlist UI is not yet implemented; fall through to the local list
-		// so an accidental Tab keypress does not show a blank screen.
-		fallthrough
+		return a.renderPlaylistTab()
 	default:
 	}
-	left := a.renderTrackList()
+	left := a.renderSharedTrackList(a.localTrackListCtx(), a.trackListInnerW(), a.panelInnerH())
 	if !a.showMiniPlayer() {
 		return left
 	}
@@ -116,156 +111,6 @@ func (a *App) renderOnlinePlaceholder() string {
 	return stylePanelBorder.Width(innerW).Height(innerH).Render(centered)
 }
 
-// ── Track list ────────────────────────────────────────────────────────────────
-
-func (a *App) renderTrackList() string {
-	innerW := a.trackListInnerW()
-	innerH := a.panelInnerH()
-
-	var sb strings.Builder
-
-	// ── Header ──
-	if a.activeOvl == overlaySearch {
-		prompt := styleSearchPrompt.Render(iconSearch() + " ")
-		sb.WriteString(prompt + a.searchInput.View() + "\n")
-	} else {
-		title := stylePanelTitle.Render(iconWithSpace(iconLibrary()) + T("library_title"))
-		// Show "pos / total" when a track from the filtered list is playing.
-		var countText string
-		if a.currentTrack != nil {
-			if pos := a.filteredPos(a.currentTrack.ID); pos >= 0 {
-				countText = fmt.Sprintf("  "+T("library_count_playing"), pos+1, a.filteredLen())
-			} else {
-				countText = fmt.Sprintf("  "+T("library_count"), a.filteredLen())
-			}
-		} else {
-			countText = fmt.Sprintf("  "+T("library_count"), a.filteredLen())
-		}
-		count := styleTrackMeta.Render(countText)
-
-		// When the right panel is hidden (collapsed or narrow terminal), show
-		// a compact playback status on the right side of the header line.
-		// The info is dropped progressively as available width shrinks:
-		//   full:      ▶ title ████░ 1:23/3:24
-		//   no time:   ▶ title ████░
-		//   no bar:    ▶ title
-		//   icon only: ▶
-		//   nothing:   (omitted)
-		var playStatus string
-		if !a.showMiniPlayer() && a.currentTrack != nil {
-			titleW := strWidth(title)
-			countW := strWidth(countText)
-			// -2 = small gap between count and status block
-			remainW := innerW - titleW - countW - 2
-			playStatus = a.buildCollapsedPlayStatus(remainW)
-		}
-
-		if playStatus != "" {
-			// Right-align the playback status within the remaining header space.
-			titleAndCount := title + count
-			usedW := strWidth(title) + strWidth(countText)
-			gap := innerW - usedW - strWidth(playStatus)
-			if gap < 1 {
-				gap = 1
-			}
-			sb.WriteString(titleAndCount + strings.Repeat(" ", gap) + playStatus + "\n")
-		} else {
-			sb.WriteString(title + count + "\n")
-		}
-	}
-	sb.WriteString(styleDivider.Render(strings.Repeat("─", innerW)) + "\n")
-
-	const headerLines = 2
-	maxRows := innerH - headerLines
-	if maxRows < 0 {
-		maxRows = 0
-	}
-
-	start, end := visibleWindow(a.cursorPos, a.filteredLen(), maxRows)
-
-	for i := start; i < end; i++ {
-		t := a.filteredTrack(i)
-		isSelected := i == a.cursorPos
-		isPlaying := a.currentTrack != nil && a.currentTrack.ID == t.ID
-
-		// ── Left: icon, fixed 2 display columns ───────────────────────────
-		// The Nerd Font glyph 󰎆 occupies 2 terminal columns; the plain
-		// space pair also occupies exactly 2.  We hard-code the width rather
-		// than relying on strWidth which may mis-measure private-use glyphs.
-		const leftFixW = 2
-		icon := "  " // 2 spaces (no-play state)
-		if isPlaying {
-			icon = iconPlaying() + " " // glyph(1 col) + 1 space = 2 cols
-		}
-
-		// ── Right: format + duration (fixed 10 cols, right-aligned) ──────
-		const rightColW = 10
-		rightText := t.Format() + " " + formatDuration(t.Duration)
-		rightPadded := padLeft(rightText, rightColW)
-
-		// ── Middle: Album · Artist · Title (elastic, marquee on selected) ─
-		// Total line width = leftFixW + midAvail + rightColW = innerW
-		midAvail := innerW - leftFixW - rightColW
-		if midAvail < 4 {
-			midAvail = 4
-		}
-
-		midText := rowMidText(t)
-		var midPadded string
-		if isSelected {
-			midPadded = a.mqRow.Render(midAvail)
-			if isPlaying {
-				midPadded = gradientText(strings.TrimRight(midPadded, " "), true, gradientColors...) +
-					padRight("", midAvail-strWidth(strings.TrimRight(midPadded, " ")))
-			}
-		} else {
-			if strWidth(midText) <= midAvail {
-				if isPlaying {
-					midPadded = gradientText(midText, true, gradientColors...) +
-						padRight("", midAvail-strWidth(midText))
-				} else {
-					midPadded = padRight(midText, midAvail)
-				}
-			} else {
-				cut := truncate(midText, midAvail)
-				if isPlaying {
-					midPadded = gradientText(cut, true, gradientColors...) +
-						padRight("", midAvail-strWidth(cut))
-				} else {
-					midPadded = padRight(cut, midAvail)
-				}
-			}
-		}
-
-		// For playing rows: colour the icon and right column with the playing
-		// accent so they match the gradient on the mid column visually.
-		var line string
-		if isPlaying {
-			line = styleTrackRowPlayingAccent.Render(icon) + midPadded + styleTrackRowPlayingAccent.Render(rightPadded)
-		} else {
-			line = icon + midPadded + rightPadded
-		}
-
-		var style lipgloss.Style
-		switch {
-		case isPlaying && isSelected:
-			style = styleTrackRowPlayingSelected
-		case isPlaying:
-			style = styleTrackRowPlaying
-		case isSelected:
-			style = styleTrackRowSelected
-		default:
-			style = styleTrackRowDefault
-		}
-
-		sb.WriteString(style.Render(line) + "\n")
-	}
-
-	// TrimRight removes the trailing newline that would cause lipgloss to add
-	// an extra blank row when padding content up to Height.
-	content := strings.TrimRight(sb.String(), "\n")
-	return stylePanelBorder.Width(innerW).Height(innerH).Render(content)
-}
 
 // buildCollapsedPlayStatus builds a compact playback-status string that fits
 // within availW columns.  It is shown on the right side of the Library header
@@ -299,16 +144,6 @@ func (a *App) buildCollapsedPlayStatus(availW int) string {
 	const sep = " · "
 	const sepW = 3
 
-	renderNatural := func(mq *Marquee, natW, maxW int) (string, int) {
-		if maxW <= 0 {
-			return "", 0
-		}
-		if natW <= maxW {
-			return mq.text, natW
-		}
-		return mq.Render(maxW), maxW
-	}
-
 	// ── Play mode icon (lowest priority — dropped first) ──────────────────
 	modeRune := iconPlayMode(a.playMode)
 	modeStr := styleModeIcon.Render(modeRune)
@@ -321,15 +156,33 @@ func (a *App) buildCollapsedPlayStatus(availW int) string {
 		textNatW += sepW + artistNatW
 	}
 
+	// renderBlock renders title[+artist] tightly (no trailing padding).
+	// The returned string width equals the actual content width, not textAvail.
+	// This lets the caller's gap calculation produce correct right-alignment
+	// without the title slot being artificially padded with spaces.
+	//
+	// Title goes through mqTitle.Render() when it overflows textAvail so the
+	// marquee scrolling offset is visible.  When it fits, mq.text is used
+	// directly (no padding) — the offset is irrelevant when text fits anyway.
 	renderBlock := func(textAvail int) string {
-		tStr, tUsed := renderNatural(a.mqTitle, titleNatW, textAvail)
-		tRendered := styleTrackRowPlayingAccent.Render(tStr)
-		artistAvail := textAvail - tUsed - sepW
-		if artistAvail < 1 || artistNatW == 0 {
-			return tRendered
+		if textAvail <= 0 {
+			return ""
 		}
-		aStr, _ := renderNatural(a.mqArtist, artistNatW, artistAvail)
-		return tRendered + styleTrackMeta.Render(sep) + styleTrackMeta.Render(aStr)
+		if titleNatW+sepW+artistNatW <= textAvail {
+			// Both title and artist fit — show both, no truncation.
+			if artistNatW > 0 {
+				return styleTrackRowPlayingAccent.Render(a.mqTitle.text) +
+					styleTrackMeta.Render(sep+a.mqArtist.text)
+			}
+			return styleTrackRowPlayingAccent.Render(a.mqTitle.text)
+		}
+		if titleNatW <= textAvail {
+			// Title fits but artist doesn't — show title only, no padding.
+			return styleTrackRowPlayingAccent.Render(a.mqTitle.text)
+		}
+		// Title overflows — use marquee window (scrolling, no padding).
+		tStr := a.mqTitle.Render(textAvail)
+		return styleTrackRowPlayingAccent.Render(strings.TrimRight(tStr, " "))
 	}
 
 	// Variant 1: mode + title[+artist] + time
@@ -343,15 +196,9 @@ func (a *App) buildCollapsedPlayStatus(availW int) string {
 		return modeStr + " " + renderBlock(availW-modeW)
 	}
 
-	// Variant 3: mode + title  (drop artist)
-	if availW-modeW >= titleNatW {
-		return modeStr + " " + styleTrackRowPlayingAccent.Render(a.mqTitle.text)
-	}
-
-	// Variant 4: mode + title  (title too wide → Marquee scroll)
+	// Variant 3: mode + title (title may overflow → renderBlock handles marquee)
 	if availW-modeW >= 1 {
-		tStr, _ := renderNatural(a.mqTitle, titleNatW, availW-modeW)
-		return modeStr + " " + styleTrackRowPlayingAccent.Render(tStr)
+		return modeStr + " " + renderBlock(availW-modeW)
 	}
 
 	// Variant 5: mode only

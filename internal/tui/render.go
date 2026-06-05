@@ -222,6 +222,10 @@ func (a *App) render() string {
 		return a.renderInfoOverlay()
 	case overlaySettings:
 		return a.renderSettingsOverlay()
+	case overlayAddToPlaylist:
+		return a.renderAddToPlaylistOverlay()
+	case overlayDeletePlaylist:
+		return a.renderDeletePlaylistOverlay()
 	}
 
 	tab := a.renderTabBar()
@@ -309,17 +313,38 @@ var gradientStops = []rgbStop{
 // its position in the total display-column count.
 // bold controls whether the output is rendered in bold ANSI.
 //
+// bgHex, when non-empty, specifies a background colour ("#RRGGBB") that is
+// restored after every per-character reset.  This ensures that a caller who
+// wraps the result in an outer lipgloss.Style.Render with a background colour
+// does NOT lose that background in the gaps between characters or in any
+// trailing padding appended after the call.  Pass "" to disable.
+//
 // Performance: colours are pre-parsed to []rgbStop before the rune loop.
 // The output is built using direct ANSI 24-bit colour escape codes rather than
 // creating a lipgloss.Style per rune, which eliminates the per-character heap
 // allocation that was the primary hot-path cost.
 func gradientText(s string, bold bool, colors ...string) string {
+	return gradientTextBg(s, bold, "", colors...)
+}
+
+// gradientTextBg is the background-aware variant of gradientText.
+// bgHex may be "" (no background), in which case behaviour is identical to
+// gradientText.
+func gradientTextBg(s string, bold bool, bgHex string, colors ...string) string {
 	if len(s) == 0 || len(colors) < 2 {
 		return s
 	}
 	totalW := strWidth(s)
 	if totalW == 0 {
 		return s
+	}
+
+	// Pre-parse background colour once.
+	var bgR, bgG, bgB uint8
+	hasBg := bgHex != ""
+	if hasBg {
+		bg := parseHexStop(bgHex)
+		bgR, bgG, bgB = clampU8(bg.r), clampU8(bg.g), clampU8(bg.b)
 	}
 
 	// Use pre-parsed stops when the caller passes the default palette.
@@ -337,15 +362,31 @@ func gradientText(s string, bold bool, colors ...string) string {
 	}
 
 	var out strings.Builder
-	// Pre-grow: each rune needs at most ~20 bytes of ANSI overhead + 4 bytes UTF-8.
-	out.Grow(len(s) * 24)
+	// Pre-grow: each rune needs at most ~40 bytes of ANSI overhead + 4 bytes UTF-8.
+	out.Grow(len(s) * 40)
 
 	// ANSI SGR prefix constants.
 	const (
 		boldOn      = "\x1b[1m"
 		reset       = "\x1b[0m"
 		fgTrueColor = "\x1b[38;2;"
+		bgTrueColor = "\x1b[48;2;"
 	)
+
+	// bgSeq is the background-restore sequence written after every reset.
+	// Pre-build it once to avoid repeated allocations in the hot loop.
+	var bgSeq string
+	if hasBg {
+		var bb strings.Builder
+		bb.WriteString(bgTrueColor)
+		writeUint8(&bb, bgR)
+		bb.WriteByte(';')
+		writeUint8(&bb, bgG)
+		bb.WriteByte(';')
+		writeUint8(&bb, bgB)
+		bb.WriteByte('m')
+		bgSeq = bb.String()
+	}
 
 	col := 0
 	for _, r := range s {
@@ -357,20 +398,27 @@ func gradientText(s string, bold bool, colors ...string) string {
 		c := interpolateStops(stops, t)
 		r8, g8, b8 := clampU8(c.r), clampU8(c.g), clampU8(c.b)
 
-		// Write: ESC[38;2;R;G;Bm [ESC[1m] char ESC[0m
+		// Write: ESC[38;2;R;G;Bm [ESC[48;2;...m] [ESC[1m] char ESC[0m [ESC[48;2;...m]
 		out.WriteString(fgTrueColor)
-		// Inline integer formatting to avoid fmt.Sprintf allocation.
 		writeUint8(&out, r8)
 		out.WriteByte(';')
 		writeUint8(&out, g8)
 		out.WriteByte(';')
 		writeUint8(&out, b8)
 		out.WriteByte('m')
+		if hasBg {
+			out.WriteString(bgSeq)
+		}
 		if bold {
 			out.WriteString(boldOn)
 		}
 		out.WriteRune(r)
 		out.WriteString(reset)
+		// After reset, restore background so trailing padding / next segment
+		// inherit the correct background colour.
+		if hasBg {
+			out.WriteString(bgSeq)
+		}
 		col += rw
 	}
 	return out.String()
@@ -411,6 +459,64 @@ func absInt(n int) int {
 // using the same wcwidth table that lipgloss uses internally.
 func strWidth(s string) int {
 	return ansi.StringWidth(s)
+}
+
+// fgColor returns s wrapped in a 24-bit ANSI foreground colour sequence
+// WITHOUT a trailing reset, so the caller's outer lipgloss.Style.Render can
+// apply its own background and reset correctly.
+// fgHex must be a "#RRGGBB" string.
+func fgColor(s, fgHex string) string {
+	c := parseHexStop(fgHex)
+	var b strings.Builder
+	b.WriteString("\x1b[38;2;")
+	writeUint8(&b, clampU8(c.r))
+	b.WriteByte(';')
+	writeUint8(&b, clampU8(c.g))
+	b.WriteByte(';')
+	writeUint8(&b, clampU8(c.b))
+	b.WriteByte('m')
+	b.WriteString(s)
+	return b.String()
+}
+
+// fgColorBold is like fgColor but also enables bold.
+func fgColorBold(s, fgHex string) string {
+	c := parseHexStop(fgHex)
+	var b strings.Builder
+	b.WriteString("\x1b[1;38;2;")
+	writeUint8(&b, clampU8(c.r))
+	b.WriteByte(';')
+	writeUint8(&b, clampU8(c.g))
+	b.WriteByte(';')
+	writeUint8(&b, clampU8(c.b))
+	b.WriteByte('m')
+	b.WriteString(s)
+	return b.String()
+}
+
+// fgColorBoldBg applies foreground colour + bold to s, and also sets a
+// background colour.  Neither a leading nor a trailing reset is emitted, so
+// the sequence can be placed inside an outer lipgloss.Style.Render without
+// disrupting that style's background.
+func fgColorBoldBg(s, fgHex, bgHex string) string {
+	fg := parseHexStop(fgHex)
+	bg := parseHexStop(bgHex)
+	var b strings.Builder
+	b.WriteString("\x1b[1;38;2;")
+	writeUint8(&b, clampU8(fg.r))
+	b.WriteByte(';')
+	writeUint8(&b, clampU8(fg.g))
+	b.WriteByte(';')
+	writeUint8(&b, clampU8(fg.b))
+	b.WriteString(";48;2;")
+	writeUint8(&b, clampU8(bg.r))
+	b.WriteByte(';')
+	writeUint8(&b, clampU8(bg.g))
+	b.WriteByte(';')
+	writeUint8(&b, clampU8(bg.b))
+	b.WriteByte('m')
+	b.WriteString(s)
+	return b.String()
 }
 
 

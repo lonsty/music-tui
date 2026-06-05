@@ -1,10 +1,12 @@
 package tui
 
 import (
+	"fmt"
 	"os"
 	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/bubbles/textinput"
 
 	"github.com/lonsty/music-tui/internal/store"
 )
@@ -28,6 +30,20 @@ func (a *App) openSettings() {
 	a.musicDirInput.Blur()
 	a.settingsInput.SetValue(a.chip8Options)
 	a.settingsInput.Blur()
+}
+
+// restoreLocalFilter re-applies the search filter so that the Local tab shows
+// the full (unfiltered or search-filtered) library after returning from the
+// Playlist tab, which may have replaced filteredIdxs with a playlist subset.
+// The cursor is anchored to the currently playing track when possible.
+func (a *App) restoreLocalFilter() {
+	a.applyFilter()
+	if a.currentTrack != nil {
+		if pos := a.filteredPos(a.currentTrack.ID); pos >= 0 {
+			a.cursorPos = pos
+		}
+	}
+	a.syncRowMarquee()
 }
 
 // closeSettings dismisses the settings overlay and unfocuses inputs.
@@ -106,6 +122,15 @@ func (a *App) handleKey(msg tea.KeyMsg) tea.Cmd {
 		return a.handleSearchKey(msg)
 	case overlaySettings:
 		return a.handleSettingsKey(msg)
+	case overlayAddToPlaylist:
+		return a.handleAddToPlaylistKey(msg)
+	case overlayDeletePlaylist:
+		return a.handleDeletePlaylistKey(msg)
+	}
+
+	// Playlist tab has its own key handler.
+	if a.activeTab == tabPlaylist {
+		return a.handlePlaylistKey(msg)
 	}
 
 	return a.handleNormalKey(msg)
@@ -114,138 +139,7 @@ func (a *App) handleKey(msg tea.KeyMsg) tea.Cmd {
 // ── Normal mode ───────────────────────────────────────────────────────────────
 
 func (a *App) handleNormalKey(msg tea.KeyMsg) tea.Cmd {
-	switch msg.String() {
-	case "q":
-		return a.cmdQuit()
-
-	// ── Navigation ──────────────────────────────────────────────────────────
-	case "j", "down":
-		if a.cursorPos < a.filteredLen()-1 {
-			a.cursorPos++
-			a.syncRowMarquee()
-		}
-
-	case "k", "up":
-		if a.cursorPos > 0 {
-			a.cursorPos--
-			a.syncRowMarquee()
-		}
-
-	case "g":
-		a.cursorPos = 0
-		a.syncRowMarquee()
-
-	case "G":
-		if a.filteredLen() > 0 {
-			a.cursorPos = a.filteredLen() - 1
-			a.syncRowMarquee()
-		}
-
-	// ── Playback ─────────────────────────────────────────────────────────────
-	case "enter":
-		// Second Enter on the currently-playing track → open fullscreen.
-		if a.currentTrack != nil {
-			if ct := a.cursorTrack(); ct != nil && ct.ID == a.currentTrack.ID {
-				a.currentView = viewFullscreen
-				return nil
-			}
-		}
-		// Otherwise play the selected track.
-		a.lastEnterID = ""
-		if ct := a.cursorTrack(); ct != nil {
-			a.lastEnterID = ct.ID
-		}
-		return a.cmdPlayTrack(a.cursorPos)
-
-	case " ":
-		return a.cmdTogglePause()
-
-	case "n":
-		return a.cmdPlayNext()
-
-	case "p":
-		return a.cmdPlayPrev()
-
-	// ── Play mode ─────────────────────────────────────────────────────────────
-	case "m":
-		return a.cmdNextPlayMode()
-
-	// ── 8-bit chip mode ───────────────────────────────────────────────────────
-	case "b":
-		return a.cmdToggleChip()
-
-	// ── Retro lo-fi effect (r/R) ──────────────────────────────────────────────
-	case "r":
-		return a.cmdRetroUp()
-	case "R":
-		return a.cmdRetroDown()
-
-	// ── Volume ────────────────────────────────────────────────────────────────
-	case "+", "=":
-		a.adjustVolume(+volumeStep)
-
-	case "-":
-		a.adjustVolume(-volumeStep)
-
-	// ── Seek ──────────────────────────────────────────────────────────────────
-	case "<":
-		return a.cmdSeek(-seekStep)
-
-	case ">":
-		return a.cmdSeek(+seekStep)
-
-	// ── Views / overlays ──────────────────────────────────────────────────────
-	case "f":
-		a.currentView = viewFullscreen
-
-	case "l":
-		// Toggle the right panel between player mode and lyrics mode.
-		// Only has effect when the mini-player panel is visible.
-		if a.showMiniPlayer() {
-			if a.rightMode == rightPanelLyrics {
-				a.rightMode = rightPanelPlayer
-			} else {
-				a.rightMode = rightPanelLyrics
-			}
-		}
-
-	case `\`:
-		// Collapse or expand the right player panel.
-		a.rightCollapsed = !a.rightCollapsed
-
-	case "i":
-		a.activeOvl = overlayInfo
-		a.ovlScrollRow = 0
-
-	case "/":
-		a.activeOvl = overlaySearch
-		a.searchInput.Focus()
-		a.searchInput.SetValue("")
-		// Apply the empty query immediately so filteredIdxs and lastQuery are
-		// consistent with the cleared input when search opens.  The list will
-		// show the full (unfiltered) results until the user starts typing.
-		a.applyFilter()
-		a.syncRowMarquee()
-
-	case "?":
-		a.activeOvl = overlayHelp
-		a.ovlScrollRow = 0
-
-	case ",":
-		a.openSettings()
-
-	case "tab":
-		// Cycle only through tabs that have a working UI.
-		// tabPlaylist exists in the enum but is not yet rendered; skip it.
-		// Update this constant when more tabs are implemented.
-		const activeTabCount = 2 // tabLocal + tabOnline
-		a.activeTab = (a.activeTab + 1) % activeTabCount
-
-	case "esc":
-		a.activeOvl = overlayNone
-	}
-
-	return nil
+	return a.handleSharedTrackListKey(a.localTrackListCtx(), msg)
 }
 
 // ── Fullscreen mode ───────────────────────────────────────────────────────────
@@ -585,6 +479,245 @@ func (a *App) settingsCommitField() tea.Cmd {
 	return nil
 }
 
+// ── Playlist tab keys ─────────────────────────────────────────────────────────
+
+// handlePlaylistKey handles keypresses when the Playlist tab is active.
+func (a *App) handlePlaylistKey(msg tea.KeyMsg) tea.Cmd {
+	// Global quit still works.
+	if msg.String() == "q" {
+		return a.cmdQuit()
+	}
+
+	// When name input is active, only Esc/Enter are control keys.
+	if a.inputMode != playlistInputNone {
+		switch msg.String() {
+		case "esc":
+			a.inputMode = playlistInputNone
+			a.nameInput.SetValue("")
+			a.nameInput.Blur()
+		case "enter":
+			name := strings.TrimSpace(a.nameInput.Value())
+			prevMode := a.inputMode
+			a.inputMode = playlistInputNone
+			a.nameInput.SetValue("")
+			a.nameInput.Blur()
+			if name == "" {
+				return nil
+			}
+			if prevMode == playlistInputCreate {
+				return a.cmdCreatePlaylist(name)
+			}
+			// rename
+			if pl := a.currentPlaylist(); pl.ID != "" {
+				return a.cmdRenamePlaylist(pl.ID, name)
+			}
+		default:
+			var cmd tea.Cmd
+			a.nameInput, cmd = a.nameInput.Update(msg)
+			return cmd
+		}
+		return nil
+	}
+
+	// Add-tracks mode: forward to dedicated handler.
+	if a.addingTracks {
+		return a.handleAddTracksKey(msg)
+	}
+
+	if a.depth == playlistDepthTracks {
+		return a.handlePlaylistTracksKey(msg)
+	}
+	return a.handlePlaylistListKey(msg)
+}
+
+// handlePlaylistListKey handles keys at the playlist-list depth.
+func (a *App) handlePlaylistListKey(msg tea.KeyMsg) tea.Cmd {
+	switch msg.String() {
+	case "j", "down":
+		if a.listCursor < len(a.playlists)-1 {
+			a.listCursor++
+			a.syncPlaylistRowMarquee()
+		}
+	case "k", "up":
+		if a.listCursor > 0 {
+			a.listCursor--
+			a.syncPlaylistRowMarquee()
+		}
+	case "g":
+		a.listCursor = 0
+		a.syncPlaylistRowMarquee()
+	case "G":
+		if len(a.playlists) > 0 {
+			a.listCursor = len(a.playlists) - 1
+			a.syncPlaylistRowMarquee()
+		}
+	case "enter":
+		if len(a.playlists) == 0 {
+			return nil
+		}
+		a.depth = playlistDepthTracks
+		a.trackCursor = 0
+		a.pendingTrackAnchor = true
+		pl := a.currentPlaylist()
+		return a.cmdLoadPlaylistTracks(pl.ID)
+	case "n":
+		// New playlist.
+		a.inputMode = playlistInputCreate
+		a.nameInput.SetValue("")
+		a.nameInput.Placeholder = T("playlist_new_prompt")
+		a.nameInput.Focus()
+		return textinput.Blink
+	case "r":
+		// Rename selected playlist (not Favorites).
+		if pl := a.currentPlaylist(); pl.ID != "" && pl.ID != store.FavoritesPlaylistID {
+			a.inputMode = playlistInputRename
+			a.nameInput.SetValue(pl.Name)
+			a.nameInput.Placeholder = T("playlist_rename_prompt")
+			a.nameInput.Focus()
+			return textinput.Blink
+		}
+	case "d":
+		// Delete selected playlist (not Favorites) — open confirm overlay.
+		if pl := a.currentPlaylist(); pl.ID != "" && pl.ID != store.FavoritesPlaylistID {
+			a.activeOvl = overlayDeletePlaylist
+			a.ovlScrollRow = 0
+		}
+	case "esc":
+		// Switch back to Local tab on Esc from playlist list root.
+		a.activeTab = tabLocal
+		a.restoreLocalFilter()
+	case "tab":
+		a.activeTab = (a.activeTab + 1) % tabCount
+		if a.activeTab == tabLocal {
+			a.restoreLocalFilter()
+		}
+	// Pass through playback and panel keys.
+	case " ":
+		return a.cmdTogglePause()
+	case "f":
+		a.currentView = viewFullscreen
+	case "l":
+		// Toggle the right panel between player mode and lyrics mode.
+		if a.showMiniPlayer() {
+			if a.rightMode == rightPanelLyrics {
+				a.rightMode = rightPanelPlayer
+			} else {
+				a.rightMode = rightPanelLyrics
+			}
+		}
+	case `\`:
+		a.rightCollapsed = !a.rightCollapsed
+	case "L":
+		if a.currentTrack != nil {
+			return a.cmdToggleFavorite(*a.currentTrack)
+		}
+	case ",":
+		a.openSettings()
+	}
+	return nil
+}
+
+// handlePlaylistTracksKey handles keys at the playlist-tracks depth.
+// It delegates entirely to the shared track-list engine with the playlist
+// context, so the Playlist track level inherits every Local-tab feature.
+func (a *App) handlePlaylistTracksKey(msg tea.KeyMsg) tea.Cmd {
+	return a.handleSharedTrackListKey(a.playlistTrackCtx(), msg)
+}
+
+// handleAddTracksKey handles keys in the inline add-tracks search panel.
+func (a *App) handleAddTracksKey(msg tea.KeyMsg) tea.Cmd {
+	switch msg.String() {
+	case "esc":
+		a.addingTracks = false
+		a.addInput.Blur()
+		a.addInput.SetValue("")
+	case "enter":
+		// Toggle: if already in playlist → remove; otherwise → add.
+		if a.addCursor < 0 || a.addCursor >= len(a.addResults) {
+			return nil
+		}
+		idx := a.addResults[a.addCursor]
+		t := a.tracks[idx]
+		pl := a.currentPlaylist()
+		// Check if track is already in the playlist.
+		inPlaylist := false
+		for _, pt := range a.plTracks {
+			if pt.ID == t.ID {
+				inPlaylist = true
+				break
+			}
+		}
+		// Don't close the panel — allow continuous editing.
+		if inPlaylist {
+			return a.cmdRemoveTrackFromPlaylist(pl.ID, t.ID)
+		}
+		return a.cmdAddTrackToPlaylist(pl.ID, t.ID)
+	case "j", "down":
+		if a.addCursor < len(a.addResults)-1 {
+			a.addCursor++
+		}
+	case "k", "up":
+		if a.addCursor > 0 {
+			a.addCursor--
+		}
+	default:
+		var cmd tea.Cmd
+		a.addInput, cmd = a.addInput.Update(msg)
+		a.applyAddFilter()
+		a.addCursor = 0
+		return cmd
+	}
+	return nil
+}
+
+// handleAddToPlaylistKey handles keys in the overlayAddToPlaylist overlay.
+func (a *App) handleAddToPlaylistKey(msg tea.KeyMsg) tea.Cmd {
+	switch msg.String() {
+	case "esc":
+		a.closeOverlay()
+	case "j", "down":
+		if a.ovlPlCursor < len(a.ovlPlaylists)-1 {
+			a.ovlPlCursor++
+		}
+	case "k", "up":
+		if a.ovlPlCursor > 0 {
+			a.ovlPlCursor--
+		}
+	case "enter":
+		if a.ovlPlCursor < 0 || a.ovlPlCursor >= len(a.ovlPlaylists) {
+			a.closeOverlay()
+			return nil
+		}
+		pl := a.ovlPlaylists[a.ovlPlCursor]
+		ct := a.cursorTrack()
+		if ct == nil {
+			a.closeOverlay()
+			return nil
+		}
+		a.closeOverlay()
+		a.statusMsg = fmt.Sprintf(T("playlist_added"), pl.Name)
+		return a.cmdAddTrackToPlaylist(pl.ID, ct.ID)
+	}
+	return nil
+}
+
+// handleDeletePlaylistKey handles key presses inside the delete-confirm overlay.
+// "d" confirms the deletion; any other key (Esc, Enter, …) cancels.
+func (a *App) handleDeletePlaylistKey(msg tea.KeyMsg) tea.Cmd {
+	switch msg.String() {
+	case "d":
+		a.activeOvl = overlayNone
+		pl := a.currentPlaylist()
+		if pl.ID != "" && pl.ID != store.FavoritesPlaylistID {
+			return a.cmdDeletePlaylist(pl.ID)
+		}
+		return nil
+	default:
+		a.activeOvl = overlayNone
+		return nil
+	}
+}
+
 // settingsReloadLibrary saves the current dir value and triggers a library scan.
 func (a *App) settingsReloadLibrary() tea.Cmd {
 	a.settingsEditing = false
@@ -606,5 +739,6 @@ func (a *App) settingsReloadLibrary() tea.Cmd {
 	a.closeSettings()
 	a.loading = true
 	a.statusMsg = "Reloading library…"
+	a.libScanFromReload = true // trigger "Loaded N tracks" on next scanDoneMsg
 	return a.cmdSyncLibrary()
 }

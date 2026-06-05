@@ -1,0 +1,69 @@
+package tui
+
+import (
+	tea "github.com/charmbracelet/bubbletea"
+
+	"github.com/lonsty/music-tui/internal/library"
+)
+
+// localTrackListCtx returns the TrackListContext for the Local tab.
+// It wires up Local-specific data accessors and callbacks so that
+// renderSharedTrackList / handleSharedTrackListKey produce behaviour
+// identical to the original renderTrackList / handleNormalKey.
+func (a *App) localTrackListCtx() TrackListContext {
+	return TrackListContext{
+		// ── Data ─────────────────────────────────────────────────────────
+		Tracks: func() []library.Track {
+			out := make([]library.Track, len(a.filteredIdxs))
+			for i, idx := range a.filteredIdxs {
+				out[i] = a.tracks[idx]
+			}
+			return out
+		},
+		CursorPos: &a.cursorPos,
+		TotalCount: func() int {
+			return a.filteredLen()
+		},
+		PlayingPos: func(id string) int {
+			return a.filteredPos(id)
+		},
+
+		// ── Rendering ────────────────────────────────────────────────────
+		HeaderTitle: func() string {
+			return stylePanelTitle.Render(iconWithSpace(iconLibrary()) + T("library_title"))
+		},
+		HeaderRight:   func() string { return "" },
+		UseMarquee:    true,
+		ShowSearchBar: true,
+
+		// ── Key callbacks ─────────────────────────────────────────────────
+		OnEnter: func(a *App, pos int) tea.Cmd {
+			return a.cmdPlayTrack(pos)
+		},
+		OnExtraKeys: func(a *App, msg tea.KeyMsg) (bool, tea.Cmd) {
+			if msg.String() == "a" {
+				// Add cursor track to a playlist.
+				if ct := a.cursorTrack(); ct != nil {
+					a.activeOvl = overlayAddToPlaylist
+					a.ovlScrollRow = 0
+					a.ovlPlaylists = a.playlists
+					a.ovlPlCursor = 0
+					if len(a.ovlPlaylists) == 0 {
+						return true, a.cmdLoadPlaylists()
+					}
+				}
+				return true, nil
+			}
+			return false, nil
+		},
+		OnEsc: func(a *App) {
+			a.activeOvl = overlayNone
+		},
+		LikeTarget: func(a *App) *library.Track {
+			return a.cursorTrack()
+		},
+
+		// ── Status-bar hints ──────────────────────────────────────────────
+		ExtraHints: func(a *App) []statusHint { return nil },
+	}
+}

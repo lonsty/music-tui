@@ -82,14 +82,12 @@ func (a *App) renderStatusBar() string {
 	// Fixed prefix: always rendered.
 	// Play mode icon is intentionally omitted here — it is shown in the
 	// mini/fullscreen player controls and in the collapsed-header status line.
-	prefix := " " + stateChipStr + retroChip + chipChip + "  "
-	prefixW := strWidth(prefix)
-
-	// statusMsg overrides hints entirely.
+	var msgChip string
 	if a.statusMsg != "" {
-		line := prefix + styleStatusHintLabel.Render(a.statusMsg)
-		return styleStatusLine.Render(line)
+		msgChip = "  " + styleStatusState.Render(" "+a.statusMsg+" ")
 	}
+	prefix := " " + stateChipStr + retroChip + chipChip + msgChip + "  "
+	prefixW := strWidth(prefix)
 
 	// Build the prioritised hint list for the current state.
 	// priority 1 = always shown (quit), priority 5 = dropped first (help, search).
@@ -110,66 +108,29 @@ func (a *App) renderStatusBar() string {
 			{"m", T("hint_mode"), 4},
 			{"b", "8-bit", 5},
 		}
-	} else {
-		// l hint: only shown when the right panel is visible and not collapsed.
-		// In collapsed state the panel is hidden so the mode switch has no effect.
-		lyricsHintLabel := T("hint_lyrics")
-		if a.rightMode == rightPanelLyrics {
-			lyricsHintLabel = T("hint_player")
-		}
-		showLyricsHint := a.showMiniPlayer() // false when collapsed or too narrow
-
+	} else if a.activeTab == tabPlaylist && a.depth == playlistDepthTracks {
+		// Playlist track level: delegate to the shared hint builder which
+		// adds x/a hints and suppresses the "/" search hint.
+		hints = buildTrackListHints(a, a.playlistTrackCtx(), displayState)
+	} else if a.activeTab == tabPlaylist {
+		// Playlist list level: show playlist-management hints.
 		collapseHintLabel := T("hint_collapse")
 		if a.rightCollapsed {
 			collapseHintLabel = T("hint_expand")
 		}
-
-		switch {
-		case displayState == audio.StatePlaying:
-			hints = []statusHint{
-				{"Spc", T("hint_pause"), 1},
-				{"q", T("hint_quit"), 1},
-				{"n", T("hint_next"), 2},
-				{"p", T("hint_prev"), 2},
-				{"</>", T("hint_seek"), 3},
-				{"+/-", T("hint_vol"), 3},
-			}
-			if showLyricsHint {
-				hints = append(hints, statusHint{"l", lyricsHintLabel, 4})
-			}
-			hints = append(hints,
-				statusHint{`\`, collapseHintLabel, 4},
-				statusHint{"/", T("hint_search"), 5},
-				statusHint{"?", T("hint_help"), 5},
-			)
-		case displayState == audio.StatePaused, a.currentTrack != nil:
-			hints = []statusHint{
-				{"Spc", T("hint_resume"), 1},
-				{"q", T("hint_quit"), 1},
-				{"n", T("hint_next"), 2},
-				{"p", T("hint_prev"), 2},
-				{"</>", T("hint_seek"), 3},
-				{"+/-", T("hint_vol"), 3},
-			}
-			if showLyricsHint {
-				hints = append(hints, statusHint{"l", lyricsHintLabel, 4})
-			}
-			hints = append(hints,
-				statusHint{`\`, collapseHintLabel, 4},
-				statusHint{"/", T("hint_search"), 5},
-				statusHint{"?", T("hint_help"), 5},
-			)
-		default:
-			// No track — guide the user.
-			hints = []statusHint{
-				{"Enter", T("hint_play"), 1},
-				{"q", T("hint_quit"), 1},
-				{"/", T("hint_search"), 2},
-				{`\`, collapseHintLabel, 3},
-				{",", T("hint_settings"), 3},
-				{"?", T("hint_help"), 4},
-			}
+		hints = []statusHint{
+			{"Enter", T("hint_play"), 1},
+			{"q", T("hint_quit"), 1},
+			{"n", T("hint_playlist_new"), 2},
+			{"r", T("hint_playlist_rename"), 3},
+			{"d", T("hint_playlist_delete"), 3},
+			{`\`, collapseHintLabel, 4},
+			{",", T("hint_settings"), 4},
+			{"?", T("hint_help"), 5},
 		}
+	} else {
+		// Local tab (and Online placeholder): delegate to the shared hint builder.
+		hints = buildTrackListHints(a, a.localTrackListCtx(), displayState)
 	}
 
 	// Render a hint chip: [key] label

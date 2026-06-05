@@ -10,5 +10,6 @@ playtest
 # Go test cache
 *.test
 
+.codebuddy/
 examples/
 docs/
