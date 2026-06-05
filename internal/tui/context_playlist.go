@@ -1,13 +1,13 @@
 package tui
 
 import (
+	"fmt"
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 
 	"github.com/charmbracelet/bubbles/textinput"
 	"github.com/lonsty/music-tui/internal/library"
-	"github.com/lonsty/music-tui/internal/store"
 )
 
 // playlistTrackCtx returns the TrackListContext for the Playlist tab's track
@@ -22,11 +22,7 @@ func (a *App) playlistTrackCtx() TrackListContext {
 		},
 		CursorPos: &a.trackCursor,
 		TotalCount: func() int {
-			if a.st == nil {
-				return len(a.plTracks)
-			}
-			c, _ := a.st.PlaylistTrackCount(a.currentPlaylist().ID)
-			return c
+			return a.plTrackCount
 		},
 		PlayingPos: func(id string) int {
 			for i, t := range a.plTracks {
@@ -40,14 +36,12 @@ func (a *App) playlistTrackCtx() TrackListContext {
 		// ── Rendering ────────────────────────────────────────────────────
 		HeaderTitle: func() string {
 			pl := a.currentPlaylist()
-			plName := pl.Name
-			if pl.ID == store.FavoritesPlaylistID {
-				plName = T("playlist_favorites_name")
-			}
-			return stylePanelTitle.Render(iconWithSpace(iconPlaylist()) + plName)
+			return stylePanelTitle.Render(
+				iconWithSpace(iconPlaylist()) + T("playlist_header") +
+					breadcrumbSep() + a.playlistDisplayName(pl))
 		},
 		HeaderRight: func() string {
-			return styleTrackMeta.Render("  " + T("playlist_back_hint"))
+			return styleTrackMeta.Render(" " + T("playlist_back_hint"))
 		},
 		// Enable marquee so the selected track row scrolls just like Local tab.
 		UseMarquee:    true,
@@ -65,15 +59,16 @@ func (a *App) playlistTrackCtx() TrackListContext {
 				tracks := a.plTracks
 				if a.trackCursor >= 0 && a.trackCursor < len(tracks) {
 					pl := a.currentPlaylist()
-					trackID := tracks[a.trackCursor].ID
-					a.statusMsg = T("playlist_removed")
-					a.statusMsgExpiry = time.Now().Add(2 * time.Second)
-					return true, a.cmdRemoveTrackFromPlaylist(pl.ID, trackID)
+					t := tracks[a.trackCursor]
+					a.statusMsg = fmt.Sprintf(T("playlist_removed_detail"), t.DisplayTitle())
+					a.statusMsgExpiry = time.Now().Add(statusMsgDuration)
+					return true, a.cmdRemoveTrackFromPlaylist(pl.ID, t.ID)
 				}
 				return true, nil
 			case "a":
 				// Open inline add-tracks search panel.
 				a.addingTracks = true
+				a.addDelta = make(map[string]int)
 				a.addInput.SetValue("")
 				a.addInput.Focus()
 				a.applyAddFilter()
@@ -106,11 +101,6 @@ func (a *App) playlistTrackCtx() TrackListContext {
 		EmptyMsg: "playlist_tracks_empty",
 
 		// ── Status-bar hints ──────────────────────────────────────────────
-		ExtraHints: func(a *App) []statusHint {
-			return []statusHint{
-				{"x", T("hint_playlist_remove_track"), 4},
-				{"a", T("hint_playlist_add_track"), 4},
-			}
-		},
+		ExtraHints: func(a *App) []statusHint { return nil },
 	}
 }

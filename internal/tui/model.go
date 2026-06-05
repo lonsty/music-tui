@@ -32,12 +32,12 @@ const (
 type settingsField int
 
 const (
-	settingsFieldMusicDir  settingsField = iota // music library directory input
-	settingsFieldChipOpts                       // p2chip options input
-	settingsFieldLanguage                       // language toggle (no text input)
-	settingsFieldFormat                         // format preference toggle (no text input)
-	settingsFieldIconSet                        // icon set toggle (no text input)
-	settingsFieldCount                          // sentinel — must be last
+	settingsFieldMusicDir settingsField = iota // music library directory input
+	settingsFieldChipOpts                      // p2chip options input
+	settingsFieldLanguage                      // language toggle (no text input)
+	settingsFieldFormat                        // format preference toggle (no text input)
+	settingsFieldIconSet                       // icon set toggle (no text input)
+	settingsFieldCount                         // sentinel — must be last
 )
 
 // ── Right panel mode ─────────────────────────────────────────────────────────
@@ -129,13 +129,13 @@ func iconSetDisplayLabel(s iconSet) string {
 type overlay int
 
 const (
-	overlayNone            overlay = iota
-	overlayHelp                    // ? key
-	overlaySearch                  // / key
-	overlayInfo                    // i key — track detail
-	overlaySettings                // , key — settings
-	overlayAddToPlaylist           // a key in Library tab — add cursor track to a playlist
-	overlayDeletePlaylist          // d key in Playlist list — confirm delete
+	overlayNone           overlay = iota
+	overlayHelp                   // ? key
+	overlaySearch                 // / key
+	overlayInfo                   // i key — track detail
+	overlaySettings               // , key — settings
+	overlayAddToPlaylist          // a key in Library tab — add cursor track to a playlist
+	overlayDeletePlaylist         // d key in Playlist list — confirm delete
 )
 
 // ── Tab ───────────────────────────────────────────────────────────────────────
@@ -144,10 +144,10 @@ const (
 type tabID int
 
 const (
-	tabLocal     tabID = iota
-	tabPlaylist            // playlist management (sibling of Local)
-	tabOnline              // online music search — placeholder
-	tabCount               // sentinel — must be the last constant
+	tabPlaylist tabID = iota // playlist management
+	tabLocal                 // local music library
+	tabOnline                // online music search — placeholder
+	tabCount                 // sentinel — must be the last constant
 )
 
 // ── Playlist navigation ───────────────────────────────────────────────────────
@@ -287,8 +287,9 @@ type playbackEndedMsg struct{}
 
 // playlistsLoadedMsg carries the result of loading all playlists from the DB.
 type playlistsLoadedMsg struct {
-	playlists []store.Playlist
-	err       error
+	playlists  []store.Playlist
+	err        error
+	successMsg string // optional status-bar message shown on success
 }
 
 // playlistTracksLoadedMsg carries the tracks for one playlist.

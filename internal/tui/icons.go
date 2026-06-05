@@ -147,18 +147,36 @@ func iconPlaylist() string { return icon("󰲸", "♫", "") }
 
 // iconHeartFilled returns the filled heart glyph (track is in Favorites).
 // NF: nf-fa-heart  Emoji: ❤  Plain: <3
-func iconHeartFilled() string { return icon("\uf004", "❤", "<3") }
+func iconHeartFilled() string { return icon("", "❤", "L") }
 
 // iconHeartEmpty returns the outline heart glyph (track is NOT in Favorites).
 // NF: nf-fa-heart-o  Emoji: ♡  Plain: "" (invisible — only filled heart is shown)
-func iconHeartEmpty() string { return icon("\uf08a", "♡", "") }
+func iconHeartEmpty() string { return icon("", "♡", "U") }
 
-// iconWithSpace returns the icon followed by two spaces when the icon is
+// iconBreadcrumb returns the breadcrumb separator glyph.
+// NF: »  Emoji: ▸  Plain: >
+func iconBreadcrumb() string { return icon("»", "▸", ">") }
+
+// iconCursor returns the cursor-indicator glyph shown on the selected row.
+// NF: ▶  Emoji: ▸  Plain: >
+func iconCursor() string { return icon("\u25b6", "\u25b8", ">") }
+
+// iconWithSpace returns the icon followed by a single space when the icon is
 // non-empty, or an empty string when the icon is empty (Plain mode).
-// Use this instead of icon() + "  " to avoid orphaned spaces in Plain mode.
+// Use this instead of icon() + " " to avoid orphaned spaces in Plain mode.
 func iconWithSpace(ic string) string {
 	if ic == "" {
 		return ""
 	}
-	return ic + "  "
+	return ic + " "
+}
+
+// breadcrumbSep returns the breadcrumb separator with surrounding spaces,
+// or " > " in Plain mode.
+func breadcrumbSep() string {
+	sep := iconBreadcrumb()
+	if sep == "" {
+		return " > "
+	}
+	return " " + sep + " "
 }

@@ -64,6 +64,8 @@ func (a *App) localTrackListCtx() TrackListContext {
 		},
 
 		// ── Status-bar hints ──────────────────────────────────────────────
-		ExtraHints: func(a *App) []statusHint { return nil },
+		ExtraHints: func(a *App) []statusHint {
+			return []statusHint{{"L", T("hint_like_toggle")}}
+		},
 	}
 }

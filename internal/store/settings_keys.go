@@ -36,6 +36,18 @@ const (
 	// Valid values are defined by the iconSet enum in the tui package.
 	// Absent or unknown values default to ValIconSetNerdFont.
 	KeyIconSet = "icon_set"
+	// KeyLastActiveTab stores the numeric tabID of the last used tab.
+	// It is written on every tab switch and restored on startup.
+	KeyLastActiveTab = "last_active_tab"
+	// KeyPlaylistDepth stores the depth within the Playlist tab.
+	// "list" or "tracks".  Written on exit, restored on startup.
+	KeyPlaylistDepth = "playlist_depth"
+	// KeyPlaylistCursor stores the listCursor position in the playlist view.
+	KeyPlaylistCursor = "playlist_cursor"
+	// KeyPlaylistTrackCursor stores the trackCursor position within a playlist's track list.
+	KeyPlaylistTrackCursor = "playlist_track_cursor"
+	// KeyPlaylistID stores the currently open playlist ID when depth == tracks.
+	KeyPlaylistID = "playlist_id"
 )
 
 // Settings value constants for keys with a fixed set of valid values.

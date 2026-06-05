@@ -6,6 +6,7 @@ import (
 
 	"github.com/charmbracelet/lipgloss"
 
+	"github.com/lonsty/music-tui/internal/library"
 	"github.com/lonsty/music-tui/internal/store"
 )
 
@@ -72,7 +73,6 @@ func (a *App) renderPlaylistListLevel(innerW, innerH int) string {
 		inputLines = 1
 	}
 
-
 	maxRows := innerH - headerLines - inputLines
 	if maxRows < 0 {
 		maxRows = 0
@@ -83,18 +83,11 @@ func (a *App) renderPlaylistListLevel(innerW, innerH int) string {
 		centered := lipgloss.Place(innerW, maxRows, lipgloss.Center, lipgloss.Center, empty)
 		sb.WriteString(centered)
 	} else {
-		// Compute the right-column width dynamically so that even two-digit
-		// (or three-digit) track counts never cause line wrapping.
-		rightColW := 4
-		if a.st != nil {
-			for i := 0; i < len(a.playlists); i++ {
-				if c, _ := a.st.PlaylistTrackCount(a.playlists[i].ID); c > 0 {
-						w := strWidth(fmt.Sprintf(T("playlist_track_count"), c))
-						if w > rightColW {
-							rightColW = w
-						}
-				}
-			}
+		// Use the cached right-column width (computed once when playlists
+		// are loaded / modified) to avoid N DB queries per render frame.
+		rightColW := a.plListMaxColW
+		if rightColW < 4 {
+			rightColW = 4
 		}
 		const leftFixW = 2
 
@@ -128,11 +121,7 @@ func (a *App) renderPlaylistListLevel(innerW, innerH int) string {
 				// Use the marquee scroller for the selected row.
 				namePadded = a.mqPlRow.Render(midAvail)
 			} else {
-				name := pl.Name
-				if isFav {
-					name = T("playlist_favorites_name")
-				}
-				namePadded = padRight(truncate(name, midAvail), midAvail)
+				namePadded = padRight(truncate(a.playlistDisplayName(pl), midAvail), midAvail)
 			}
 
 			line := leftIcon + namePadded + rightStr
@@ -166,13 +155,11 @@ func (a *App) renderPlaylistTracks(innerW, innerH int) string {
 func (a *App) renderPlaylistAddPanel(innerW, innerH int) string {
 	var sb strings.Builder
 
-	// Header: playlist name + back hint.
+	// Header: breadcrumb navigation — Playlists > playlist name + back hint.
 	pl := a.currentPlaylist()
-	plName := pl.Name
-	if pl.ID == store.FavoritesPlaylistID {
-		plName = T("playlist_favorites_name")
-	}
-	title := stylePanelTitle.Render(iconWithSpace(iconPlaylist()) + plName)
+	title := stylePanelTitle.Render(
+		iconWithSpace(iconPlaylist()) + T("playlist_header") +
+			breadcrumbSep() + a.playlistDisplayName(pl))
 	backHint := styleTrackMeta.Render("  " + T("playlist_back_hint"))
 	sb.WriteString(title + backHint + "\n")
 	sb.WriteString(styleDivider.Render(strings.Repeat("─", innerW)) + "\n")
@@ -202,9 +189,18 @@ func (a *App) renderAddTrackResults(sb *strings.Builder, innerW, maxRows int) {
 	}
 
 	// Build a set of track IDs already in this playlist for ✓ marking.
+	// Merge delta changes from the current add-tracks session so that
+	// recently toggled tracks show the correct icon immediately.
 	inPlaylist := make(map[string]bool, len(a.plTracks))
 	for _, t := range a.plTracks {
 		inPlaylist[t.ID] = true
+	}
+	for id, v := range a.addDelta {
+		if v > 0 {
+			inPlaylist[id] = true
+		} else if v < 0 {
+			delete(inPlaylist, id)
+		}
 	}
 
 	start, end := visibleWindow(a.addCursor, len(results), maxRows)
@@ -268,20 +264,27 @@ func (a *App) currentPlaylist() store.Playlist {
 // applyAddFilter rebuilds a.addResults from a.tracks using the addInput query.
 func (a *App) applyAddFilter() {
 	q := strings.ToLower(strings.TrimSpace(a.addInput.Value()))
+	var src []library.Track
 	if q == "" {
-		// Show all tracks when query is empty.
-		idxs := make([]int, len(a.tracks))
-		for i := range a.tracks {
-			idxs[i] = i
+		src = a.tracks
+	} else {
+		for _, t := range a.tracks {
+			haystack := strings.ToLower(t.Title + " " + t.Artist + " " + t.Album)
+			if strings.Contains(haystack, q) {
+				src = append(src, t)
+			}
 		}
-		a.addResults = idxs
-		return
 	}
+	// Apply format preference so add results stay consistent with
+	// the Local tab's filtered view.
+	filtered := applyFormatPreference(src, a.formatPref)
 	var results []int
-	for i, t := range a.tracks {
-		haystack := strings.ToLower(t.Title + " " + t.Artist + " " + t.Album)
-		if strings.Contains(haystack, q) {
-			results = append(results, i)
+	for _, t := range filtered {
+		for i := range a.tracks {
+			if a.tracks[i].ID == t.ID {
+				results = append(results, i)
+				break
+			}
 		}
 	}
 	a.addResults = results

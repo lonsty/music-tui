@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"fmt"
+	"log"
 	"math/rand"
 	"os/exec"
 	"path/filepath"
@@ -661,7 +662,7 @@ func (a *App) cmdRenamePlaylist(id, name string) tea.Cmd {
 			return playlistsLoadedMsg{err: err}
 		}
 		pls, err := a.st.GetPlaylists()
-		return playlistsLoadedMsg{playlists: pls, err: err}
+		return playlistsLoadedMsg{playlists: pls, err: err, successMsg: fmt.Sprintf(T("playlist_renamed"), name)}
 	}
 }
 
@@ -705,14 +706,21 @@ func (a *App) cmdToggleFavorite(track library.Track) tea.Cmd {
 		}
 		in, err := a.st.IsTrackInPlaylist(store.FavoritesPlaylistID, track.ID)
 		if err != nil {
+			log.Printf("cmdToggleFavorite: check in playlist: %v", err)
 			return noopMsg{}
 		}
 		if in {
-			_ = a.st.RemoveTrackFromPlaylist(store.FavoritesPlaylistID, track.ID)
+			if err := a.st.RemoveTrackFromPlaylist(store.FavoritesPlaylistID, track.ID); err != nil {
+				log.Printf("cmdToggleFavorite: remove from favorites: %v", err)
+				return noopMsg{}
+			}
 			return favoriteChangedMsg{trackID: track.ID, trackTitle: track.DisplayTitle(), isFavorite: false}
 		}
 		count, _ := a.st.PlaylistTrackCount(store.FavoritesPlaylistID)
-		_ = a.st.AddTrackToPlaylist(store.FavoritesPlaylistID, track.ID, count)
+		if err := a.st.AddTrackToPlaylist(store.FavoritesPlaylistID, track.ID, count); err != nil {
+			log.Printf("cmdToggleFavorite: add to favorites: %v", err)
+			return noopMsg{}
+		}
 		return favoriteChangedMsg{trackID: track.ID, trackTitle: track.DisplayTitle(), isFavorite: true}
 	}
 }
@@ -724,7 +732,10 @@ func (a *App) cmdCheckFavorite(trackID string) tea.Cmd {
 		if a.st == nil {
 			return favoriteChangedMsg{trackID: trackID, isFavorite: false}
 		}
-		in, _ := a.st.IsTrackInPlaylist(store.FavoritesPlaylistID, trackID)
+		in, err := a.st.IsTrackInPlaylist(store.FavoritesPlaylistID, trackID)
+		if err != nil {
+			log.Printf("cmdCheckFavorite: %v", err)
+		}
 		return favoriteChangedMsg{trackID: trackID, isFavorite: in}
 	}
 }
@@ -737,18 +748,26 @@ func (a *App) cmdPlayPlaylist(playlistID string, pos int) tea.Cmd {
 			return noopMsg{}
 		}
 		tracks, err := a.st.GetPlaylistTracks(playlistID)
-		if err != nil || len(tracks) == 0 || pos >= len(tracks) {
-			return noopMsg{}
+		if err != nil {
+			return playlistPlayMsg{err: fmt.Errorf("load playlist: %w", err)}
+		}
+		if len(tracks) == 0 {
+			return playlistPlayMsg{err: fmt.Errorf("%s", T("playlist_tracks_empty"))}
+		}
+		if pos >= len(tracks) {
+			pos = 0
 		}
 		return playlistPlayMsg{tracks: tracks, startPos: pos}
 	}
 }
 
 // playlistPlayMsg asks Update to replace filteredIdxs with the playlist
-// track order and play from startPos.
+// track order and play from startPos.  When err is set, the playlist could
+// not be loaded and no track list replacement should happen.
 type playlistPlayMsg struct {
 	tracks   []library.Track
 	startPos int
+	err      error
 }
 
 // respecting single-quoted and double-quoted sub-strings.

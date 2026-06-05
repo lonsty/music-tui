@@ -183,7 +183,7 @@ func (a *App) renderFullPlayer() string {
 	var content string
 	if a.currentTrack == nil {
 		content = lipgloss.Place(innerW, innerH, lipgloss.Center, lipgloss.Center,
-			styleModeIcon.Render(iconMusic()+"\n\nNo track selected"))
+			stylePlayerArtist.Align(lipgloss.Center).Width(innerW).Render(T("no_track_selected")))
 	} else {
 		content = a.buildFullPlayerContent(innerW, innerH)
 	}

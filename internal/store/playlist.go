@@ -30,7 +30,7 @@ const FavoritesPlaylistID = "favorites"
 func (s *Store) EnsureFavorites() error {
 	_, err := s.db.Exec(
 		`INSERT OR IGNORE INTO playlists(id, name, created_at) VALUES (?, ?, ?)`,
-		FavoritesPlaylistID, "我的最爱", 0,
+		FavoritesPlaylistID, "Favorites", 0,
 	)
 	if err != nil {
 		return fmt.Errorf("ensure favorites: %w", err)

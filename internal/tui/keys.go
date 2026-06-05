@@ -4,9 +4,10 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"time"
 
-	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/bubbles/textinput"
+	tea "github.com/charmbracelet/bubbletea"
 
 	"github.com/lonsty/music-tui/internal/store"
 )
@@ -42,6 +43,18 @@ func (a *App) restoreLocalFilter() {
 		if pos := a.filteredPos(a.currentTrack.ID); pos >= 0 {
 			a.cursorPos = pos
 		}
+	}
+	// Clamp cursor after returning from a different tab (e.g. Playlist)
+	// where the track list may be shorter than the previous position.
+	if n := a.filteredLen(); n > 0 {
+		if a.cursorPos >= n {
+			a.cursorPos = n - 1
+		}
+		if a.cursorPos < 0 {
+			a.cursorPos = 0
+		}
+	} else {
+		a.cursorPos = 0
 	}
 	a.syncRowMarquee()
 }
@@ -164,9 +177,6 @@ func (a *App) handleFullscreenKey(msg tea.KeyMsg) tea.Cmd {
 	case "b":
 		return a.cmdToggleChip()
 
-	case ",":
-		a.openSettings()
-
 	case "r":
 		return a.cmdRetroUp()
 	case "R":
@@ -177,6 +187,11 @@ func (a *App) handleFullscreenKey(msg tea.KeyMsg) tea.Cmd {
 
 	case "-":
 		a.adjustVolume(-volumeStep)
+
+	// ── Help ──────────────────────────────────────────────────────────────────
+	case "?":
+		a.activeOvl = overlayHelp
+		a.ovlScrollRow = 0
 
 	// ── Seek ──────────────────────────────────────────────────────────────────
 	case "<":
@@ -459,7 +474,8 @@ func (a *App) settingsCommitField() tea.Cmd {
 
 	if a.settingsActive == settingsFieldMusicDir && newDir != a.musicDir && newDir != "" {
 		if info, err := os.Stat(newDir); err != nil || !info.IsDir() {
-			a.statusMsg = iconError() + "  Directory not found: " + newDir
+			a.statusMsg = iconError() + " Directory not found: " + newDir
+			a.statusMsgExpiry = time.Now().Add(statusMsgDuration)
 			return nil
 		}
 		a.musicDir = newDir
@@ -582,15 +598,14 @@ func (a *App) handlePlaylistListKey(msg tea.KeyMsg) tea.Cmd {
 			a.activeOvl = overlayDeletePlaylist
 			a.ovlScrollRow = 0
 		}
-	case "esc":
-		// Switch back to Local tab on Esc from playlist list root.
-		a.activeTab = tabLocal
-		a.restoreLocalFilter()
 	case "tab":
 		a.activeTab = (a.activeTab + 1) % tabCount
 		if a.activeTab == tabLocal {
 			a.restoreLocalFilter()
 		}
+	case "?":
+		a.activeOvl = overlayHelp
+		a.ovlScrollRow = 0
 	// Pass through playback and panel keys.
 	case " ":
 		return a.cmdTogglePause()
@@ -631,6 +646,20 @@ func (a *App) handleAddTracksKey(msg tea.KeyMsg) tea.Cmd {
 		a.addingTracks = false
 		a.addInput.Blur()
 		a.addInput.SetValue("")
+		// Compute net add/remove counts from the delta map.
+		var addN, remN int
+		for _, v := range a.addDelta {
+			if v > 0 {
+				addN++
+			} else if v < 0 {
+				remN++
+			}
+		}
+		if addN > 0 || remN > 0 {
+			a.statusMsg = fmt.Sprintf(T("playlist_add_remove_summary"), addN, remN)
+			a.statusMsgExpiry = time.Now().Add(statusMsgDuration)
+		}
+		a.addDelta = nil
 	case "enter":
 		// Toggle: if already in playlist → remove; otherwise → add.
 		if a.addCursor < 0 || a.addCursor >= len(a.addResults) {
@@ -639,7 +668,8 @@ func (a *App) handleAddTracksKey(msg tea.KeyMsg) tea.Cmd {
 		idx := a.addResults[a.addCursor]
 		t := a.tracks[idx]
 		pl := a.currentPlaylist()
-		// Check if track is already in the playlist.
+		// Check if track is already in the playlist, accounting for
+		// delta changes made during this add-tracks session.
 		inPlaylist := false
 		for _, pt := range a.plTracks {
 			if pt.ID == t.ID {
@@ -647,10 +677,28 @@ func (a *App) handleAddTracksKey(msg tea.KeyMsg) tea.Cmd {
 				break
 			}
 		}
+		if a.addDelta[t.ID] > 0 {
+			inPlaylist = true
+		} else if a.addDelta[t.ID] < 0 {
+			inPlaylist = false
+		}
 		// Don't close the panel — allow continuous editing.
-		if inPlaylist {
+		// Toggle semantics: if this track was already toggled in this
+		// session, cancel the previous operation (set delta back to 0).
+		// Otherwise, toggle between add (+1) and remove (-1).
+		if a.addDelta[t.ID] > 0 {
+			a.addDelta[t.ID] = 0
 			return a.cmdRemoveTrackFromPlaylist(pl.ID, t.ID)
 		}
+		if a.addDelta[t.ID] < 0 {
+			a.addDelta[t.ID] = 0
+			return a.cmdAddTrackToPlaylist(pl.ID, t.ID)
+		}
+		if inPlaylist {
+			a.addDelta[t.ID] = -1
+			return a.cmdRemoveTrackFromPlaylist(pl.ID, t.ID)
+		}
+		a.addDelta[t.ID] = +1
 		return a.cmdAddTrackToPlaylist(pl.ID, t.ID)
 	case "j", "down":
 		if a.addCursor < len(a.addResults)-1 {
@@ -678,10 +726,12 @@ func (a *App) handleAddToPlaylistKey(msg tea.KeyMsg) tea.Cmd {
 	case "j", "down":
 		if a.ovlPlCursor < len(a.ovlPlaylists)-1 {
 			a.ovlPlCursor++
+			a.keepOvlCursorVisible()
 		}
 	case "k", "up":
 		if a.ovlPlCursor > 0 {
 			a.ovlPlCursor--
+			a.keepOvlCursorVisible()
 		}
 	case "enter":
 		if a.ovlPlCursor < 0 || a.ovlPlCursor >= len(a.ovlPlaylists) {
@@ -705,7 +755,7 @@ func (a *App) handleAddToPlaylistKey(msg tea.KeyMsg) tea.Cmd {
 // "d" confirms the deletion; any other key (Esc, Enter, …) cancels.
 func (a *App) handleDeletePlaylistKey(msg tea.KeyMsg) tea.Cmd {
 	switch msg.String() {
-	case "d":
+	case "enter":
 		a.activeOvl = overlayNone
 		pl := a.currentPlaylist()
 		if pl.ID != "" && pl.ID != store.FavoritesPlaylistID {
@@ -729,7 +779,8 @@ func (a *App) settingsReloadLibrary() tea.Cmd {
 		a.musicDir = strings.TrimSpace(a.musicDirInput.Placeholder)
 	}
 	if info, err := os.Stat(a.musicDir); err != nil || !info.IsDir() {
-		a.statusMsg = iconError() + "  Directory not found: " + a.musicDir
+		a.statusMsg = iconError() + " Directory not found: " + a.musicDir
+		a.statusMsgExpiry = time.Now().Add(statusMsgDuration)
 		a.closeSettings()
 		return nil
 	}

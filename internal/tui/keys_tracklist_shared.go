@@ -173,9 +173,14 @@ func (a *App) handleSharedTrackListKey(ctx TrackListContext, msg tea.KeyMsg) tea
 			// When at track level, anchor the cursor to the currently playing
 			// track (matching cmus/ncmpcpp behaviour) and sync the track row
 			// marquee so the selected row renders the correct text immediately.
+			// Also re-load tracks from DB so that changes made in other tabs
+			// (e.g. like/unlike in Local tab) are reflected.
 			if a.depth == playlistDepthTracks {
 				a.anchorPlaylistTrackCursor()
 				a.syncPlaylistTrackMarquee()
+				if pl := a.currentPlaylist(); pl.ID != "" {
+					return a.cmdLoadPlaylistTracks(pl.ID)
+				}
 			}
 		}
 
@@ -223,63 +228,128 @@ func buildTrackListHints(a *App, ctx TrackListContext, displayState audio.State)
 		collapseHintLabel = T("hint_expand")
 	}
 
+	isLocal := ctx.ShowSearchBar
+
 	var hints []statusHint
 	switch displayState {
 	case audio.StatePlaying:
-		hints = []statusHint{
-			{"Spc", T("hint_pause"), 1},
-			{"q", T("hint_quit"), 1},
-			{"n", T("hint_next"), 2},
-			{"p", T("hint_prev"), 2},
-			{"</>", T("hint_seek"), 3},
-			{"+/-", T("hint_vol"), 3},
+		if isLocal {
+			// Local: ? Spc n/p </> m l f \ L / , Tab q
+			hints = []statusHint{
+				{"?", T("hint_help")},
+				{"Spc", T("hint_pause")},
+				{"n/p", T("hint_next_prev")},
+				{"</>", T("hint_seek")},
+				{"m", T("hint_mode")},
+			}
+			if showLyricsHint {
+				hints = append(hints, statusHint{"l", lyricsHintLabel})
+			}
+			hints = append(hints,
+				statusHint{"f", T("hint_fullscreen")},
+				statusHint{`\`, collapseHintLabel},
+				statusHint{"L", T("hint_like_toggle")},
+				statusHint{"/", T("hint_search")},
+				statusHint{",", T("hint_settings")},
+				statusHint{"Tab", T("hint_switch_tab")},
+				statusHint{"q", T("hint_quit")},
+			)
+		} else {
+			// Playlist: ? Spc n/p </> m l f \ a x L , Esc Tab q
+			hints = []statusHint{
+				{"?", T("hint_help")},
+				{"Spc", T("hint_pause")},
+				{"n/p", T("hint_next_prev")},
+				{"</>", T("hint_seek")},
+				{"m", T("hint_mode")},
+			}
+			if showLyricsHint {
+				hints = append(hints, statusHint{"l", lyricsHintLabel})
+			}
+			hints = append(hints,
+				statusHint{"f", T("hint_fullscreen")},
+				statusHint{`\`, collapseHintLabel},
+				statusHint{"a", T("hint_playlist_add_track")},
+				statusHint{"x", T("hint_playlist_remove_track")},
+				statusHint{"L", T("hint_like_toggle")},
+				statusHint{",", T("hint_settings")},
+				statusHint{"Esc", T("hint_back")},
+				statusHint{"Tab", T("hint_switch_tab")},
+				statusHint{"q", T("hint_quit")},
+			)
 		}
-		if showLyricsHint {
-			hints = append(hints, statusHint{"l", lyricsHintLabel, 4})
-		}
-		hints = append(hints, statusHint{`\`, collapseHintLabel, 4})
-		if ctx.ShowSearchBar {
-			hints = append(hints, statusHint{"/", T("hint_search"), 5})
-		}
-		hints = append(hints, statusHint{"?", T("hint_help"), 5})
 
 	case audio.StatePaused:
-		hints = []statusHint{
-			{"Spc", T("hint_resume"), 1},
-			{"q", T("hint_quit"), 1},
-			{"n", T("hint_next"), 2},
-			{"p", T("hint_prev"), 2},
-			{"</>", T("hint_seek"), 3},
-			{"+/-", T("hint_vol"), 3},
+		if isLocal {
+			hints = []statusHint{
+				{"?", T("hint_help")},
+				{"Spc", T("hint_resume")},
+				{"n/p", T("hint_next_prev")},
+				{"</>", T("hint_seek")},
+				{"m", T("hint_mode")},
+			}
+			if showLyricsHint {
+				hints = append(hints, statusHint{"l", lyricsHintLabel})
+			}
+			hints = append(hints,
+				statusHint{"f", T("hint_fullscreen")},
+				statusHint{`\`, collapseHintLabel},
+				statusHint{"L", T("hint_like_toggle")},
+				statusHint{"/", T("hint_search")},
+				statusHint{",", T("hint_settings")},
+				statusHint{"Tab", T("hint_switch_tab")},
+				statusHint{"q", T("hint_quit")},
+			)
+		} else {
+			hints = []statusHint{
+				{"?", T("hint_help")},
+				{"Spc", T("hint_resume")},
+				{"n/p", T("hint_next_prev")},
+				{"</>", T("hint_seek")},
+				{"m", T("hint_mode")},
+			}
+			if showLyricsHint {
+				hints = append(hints, statusHint{"l", lyricsHintLabel})
+			}
+			hints = append(hints,
+				statusHint{"f", T("hint_fullscreen")},
+				statusHint{`\`, collapseHintLabel},
+				statusHint{"a", T("hint_playlist_add_track")},
+				statusHint{"x", T("hint_playlist_remove_track")},
+				statusHint{"L", T("hint_like_toggle")},
+				statusHint{",", T("hint_settings")},
+				statusHint{"Esc", T("hint_back")},
+				statusHint{"Tab", T("hint_switch_tab")},
+				statusHint{"q", T("hint_quit")},
+			)
 		}
-		if showLyricsHint {
-			hints = append(hints, statusHint{"l", lyricsHintLabel, 4})
-		}
-		hints = append(hints, statusHint{`\`, collapseHintLabel, 4})
-		if ctx.ShowSearchBar {
-			hints = append(hints, statusHint{"/", T("hint_search"), 5})
-		}
-		hints = append(hints, statusHint{"?", T("hint_help"), 5})
 
 	default:
-		// No track loaded (StateStopped with no currentTrack).
-		hints = []statusHint{
-			{"Enter", T("hint_play"), 1},
-			{"q", T("hint_quit"), 1},
+		if isLocal {
+			// Local: ? Enter L / , Tab q
+			hints = []statusHint{
+				{"?", T("hint_help")},
+				{"Enter", T("hint_play")},
+				{"L", T("hint_like_toggle")},
+				{"/", T("hint_search")},
+				{",", T("hint_settings")},
+				{"Tab", T("hint_switch_tab")},
+				{"q", T("hint_quit")},
+			}
+		} else {
+			// Playlist: ? Enter a x L , Esc Tab q
+			hints = []statusHint{
+				{"?", T("hint_help")},
+				{"Enter", T("hint_play")},
+				{"a", T("hint_playlist_add_track")},
+				{"x", T("hint_playlist_remove_track")},
+				{"L", T("hint_like_toggle")},
+				{",", T("hint_settings")},
+				{"Esc", T("hint_back")},
+				{"Tab", T("hint_switch_tab")},
+				{"q", T("hint_quit")},
+			}
 		}
-		if ctx.ShowSearchBar {
-			hints = append(hints, statusHint{"/", T("hint_search"), 2})
-		}
-		hints = append(hints,
-			statusHint{`\`, collapseHintLabel, 3},
-			statusHint{",", T("hint_settings"), 3},
-			statusHint{"?", T("hint_help"), 4},
-		)
-	}
-
-	// Append context-specific extra hints.
-	if ctx.ExtraHints != nil {
-		hints = append(hints, ctx.ExtraHints(a)...)
 	}
 
 	return hints

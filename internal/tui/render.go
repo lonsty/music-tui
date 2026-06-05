@@ -98,8 +98,8 @@ var (
 	styleCentered = lipgloss.NewStyle().Align(lipgloss.Center)
 
 	stylePlayerArtist = lipgloss.NewStyle().
-			Foreground(lipgloss.Color(subtext0)).
-			Align(lipgloss.Center)
+				Foreground(lipgloss.Color(subtext0)).
+				Align(lipgloss.Center)
 
 	stylePlayerAlbum = lipgloss.NewStyle().
 				Foreground(lipgloss.Color(overlay1)).
@@ -519,7 +519,6 @@ func fgColorBoldBg(s, fgHex, bgHex string) string {
 	return b.String()
 }
 
-
 // truncate shortens s so its display width ≤ maxW, appending "…" if cut.
 func truncate(s string, maxW int) string {
 	if strWidth(s) <= maxW {
@@ -577,9 +576,9 @@ func wrapText(s string, maxW int) []string {
 	for len(s) > 0 {
 		// Single-pass scan: track columns, last soft-break, and hard-break.
 		col := 0
-		consumed := 0    // bytes consumed so far
-		breakAt := -1   // byte offset of last '/' or ' ' break (inclusive)
-		hardAt := -1    // byte offset at which we first exceed maxW
+		consumed := 0 // bytes consumed so far
+		breakAt := -1 // byte offset of last '/' or ' ' break (inclusive)
+		hardAt := -1  // byte offset at which we first exceed maxW
 
 		rest := s
 		for len(rest) > 0 {

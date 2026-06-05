@@ -19,9 +19,9 @@ func (a *App) renderTabBar() string {
 		label string
 	}
 	tabs := []tabDef{
+		{tabPlaylist, iconPlaylist(), T("tab_playlist")},
 		{tabLocal, iconLibrary(), T("tab_local")},
 		{tabOnline, iconOnline(), T("tab_online")},
-		{tabPlaylist, iconPlaylist(), T("tab_playlist")},
 	}
 
 	// activeMark is the left marker rendered on the active tab.
@@ -35,14 +35,14 @@ func (a *App) renderTabBar() string {
 		ic := t.icon
 		sep := ""
 		if ic != "" {
-			sep = "  " // gap between icon and label only when icon is present
+			sep = " " // gap between icon and label only when icon is present
 		}
 		body := ic + sep + t.label
 		if t.id == a.activeTab {
 			mark := styleTabActive.Render(activeMark)
-			parts = append(parts, mark+styleTabActive.Render(body)+styleTabActive.Render("  "))
+			parts = append(parts, mark+styleTabActive.Render(body)+styleTabActive.Render(" "))
 		} else {
-			parts = append(parts, styleTabInactive.Render(inactiveMark+body+"  "))
+			parts = append(parts, styleTabInactive.Render(inactiveMark+body+" "))
 		}
 	}
 
@@ -98,8 +98,8 @@ func (a *App) renderOnlinePlaceholder() string {
 	)
 	for _, f := range features {
 		icon := styleModeIcon.Render(f.icon)
-		label := styleOverlayValue.Render("  " + f.text)
-		lines = append(lines, "  "+icon+label)
+		label := styleOverlayValue.Render(" " + f.text)
+		lines = append(lines, " "+icon+label)
 	}
 	lines = append(lines,
 		"",
@@ -110,7 +110,6 @@ func (a *App) renderOnlinePlaceholder() string {
 	centered := lipgloss.Place(innerW, innerH, lipgloss.Center, lipgloss.Center, block)
 	return stylePanelBorder.Width(innerW).Height(innerH).Render(centered)
 }
-
 
 // buildCollapsedPlayStatus builds a compact playback-status string that fits
 // within availW columns.  It is shown on the right side of the Library header

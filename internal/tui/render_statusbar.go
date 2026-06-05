@@ -24,12 +24,11 @@ func stateLabel(s audio.State) string {
 }
 
 // statusHint is a single keyboard-shortcut hint shown in the status bar.
-// priority controls which hints are dropped first when the terminal is narrow:
-// lower value = higher priority (kept longer).
+// When the terminal is too narrow to show all hints, they are dropped one
+// by one from right to left.
 type statusHint struct {
-	key      string
-	label    string
-	priority int
+	key   string
+	label string
 }
 
 // renderStatusBar renders the one-line status bar at the bottom of the screen.
@@ -82,9 +81,24 @@ func (a *App) renderStatusBar() string {
 	// Fixed prefix: always rendered.
 	// Play mode icon is intentionally omitted here — it is shown in the
 	// mini/fullscreen player controls and in the collapsed-header status line.
+	//
+	// Dynamic statusMsg width: when the status message is long, truncate it
+	// so that at least a few hint chips remain visible.  Otherwise the status
+	// bar would show only the message and no usable key hints.
 	var msgChip string
 	if a.statusMsg != "" {
-		msgChip = "  " + styleStatusState.Render(" "+a.statusMsg+" ")
+		msgText := a.statusMsg
+		// Reserve space for 2 hint chips (~12 cols each) plus the fixed prefix.
+		const minHintW = 24
+		basePrefix := " " + stateChipStr + retroChip + chipChip + " "
+		maxMsgW := a.W - strWidth(basePrefix) - minHintW - 2 // -2 = trailing "  "
+		if maxMsgW < 8 {
+			maxMsgW = 8
+		}
+		if strWidth(msgText) > maxMsgW {
+			msgText = truncate(msgText, maxMsgW-1) + "\u2026" // single ellipsis char
+		}
+		msgChip = " " + styleStatusState.Render(" "+msgText+" ")
 	}
 	prefix := " " + stateChipStr + retroChip + chipChip + msgChip + "  "
 	prefixW := strWidth(prefix)
@@ -98,35 +112,31 @@ func (a *App) renderStatusBar() string {
 			pauseLabel = T("hint_resume")
 		}
 		hints = []statusHint{
-			{"Esc", T("hint_back"), 1},
-			{"Spc", pauseLabel, 1},
-			{"q", T("hint_quit"), 1},
-			{"n", T("hint_next"), 2},
-			{"p", T("hint_prev"), 2},
-			{"</>", T("hint_seek"), 3},
-			{"+/-", T("hint_vol"), 3},
-			{"m", T("hint_mode"), 4},
-			{"b", "8-bit", 5},
+			{"?", T("hint_help")},
+			{"Spc", pauseLabel},
+			{"n/p", T("hint_next_prev")},
+			{"</>", T("hint_seek")},
+			{"+/-", T("hint_vol")},
+			{"m", T("hint_mode")},
+			{"b", "8-bit"},
+			{"r/R", T("hint_retro")},
+			{"Esc", T("hint_back")},
+			{"q", T("hint_quit")},
 		}
 	} else if a.activeTab == tabPlaylist && a.depth == playlistDepthTracks {
 		// Playlist track level: delegate to the shared hint builder which
 		// adds x/a hints and suppresses the "/" search hint.
 		hints = buildTrackListHints(a, a.playlistTrackCtx(), displayState)
 	} else if a.activeTab == tabPlaylist {
-		// Playlist list level: show playlist-management hints.
-		collapseHintLabel := T("hint_collapse")
-		if a.rightCollapsed {
-			collapseHintLabel = T("hint_expand")
-		}
 		hints = []statusHint{
-			{"Enter", T("hint_play"), 1},
-			{"q", T("hint_quit"), 1},
-			{"n", T("hint_playlist_new"), 2},
-			{"r", T("hint_playlist_rename"), 3},
-			{"d", T("hint_playlist_delete"), 3},
-			{`\`, collapseHintLabel, 4},
-			{",", T("hint_settings"), 4},
-			{"?", T("hint_help"), 5},
+			{"?", T("hint_help")},
+			{"Enter", T("hint_enter_playlist")},
+			{"n", T("hint_playlist_new")},
+			{"r", T("hint_playlist_rename")},
+			{"d", T("hint_playlist_delete")},
+			{",", T("hint_settings")},
+			{"Tab", T("hint_switch_tab")},
+			{"q", T("hint_quit")},
 		}
 	} else {
 		// Local tab (and Online placeholder): delegate to the shared hint builder.
@@ -136,50 +146,38 @@ func (a *App) renderStatusBar() string {
 	// Render a hint chip: [key] label
 	renderHint := func(h statusHint) string {
 		return styleStatusKey.Render(" "+h.key+" ") +
-			styleStatusHintLabel.Render(" "+h.label+"  ")
+			styleStatusHintLabel.Render(" "+h.label+" ")
 	}
 
 	// Compute the display width of a rendered hint (no ANSI codes in the
 	// measurement — use raw strings to estimate; close enough for layout).
 	hintWidth := func(h statusHint) int {
 		// styleStatusKey wraps " key " → 1+len(key)+1
-		// styleStatusHintLabel wraps " label  " → 1+len(label)+2
-		// Both styles add no extra padding beyond the text.
-		return 1 + strWidth(h.key) + 1 + 1 + strWidth(h.label) + 2
+		// styleStatusHintLabel wraps " label " → 1+len(label)+1
+		return 1 + strWidth(h.key) + 1 + 1 + strWidth(h.label) + 1
 	}
 
-	// Drop hints by priority (highest number first) until they fit.
-	// Derive the initial cutoff from the hints themselves so no magic number
-	// needs to stay in sync when priorities change.
+	// Drop hints from right to left until the remaining ones fit.
 	available := a.W - prefixW
 	if available < 0 {
 		available = 0
 	}
-	maxPriority := 0
-	for _, h := range hints {
-		if h.priority > maxPriority {
-			maxPriority = h.priority
-		}
-	}
-	cutoffPriority := maxPriority + 1
-	for {
+	// end is the first index to exclude (one past the last visible hint).
+	end := len(hints)
+	for end > 0 {
 		total := 0
-		for _, h := range hints {
-			if h.priority < cutoffPriority {
-				total += hintWidth(h)
-			}
+		for i := 0; i < end; i++ {
+			total += hintWidth(hints[i])
 		}
-		if total <= available || cutoffPriority <= 1 {
+		if total <= available {
 			break
 		}
-		cutoffPriority--
+		end--
 	}
 
 	var sb strings.Builder
-	for _, h := range hints {
-		if h.priority < cutoffPriority {
-			sb.WriteString(renderHint(h))
-		}
+	for i := 0; i < end; i++ {
+		sb.WriteString(renderHint(hints[i]))
 	}
 
 	line := prefix + sb.String()

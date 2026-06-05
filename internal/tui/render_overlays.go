@@ -4,8 +4,6 @@ import (
 	"strings"
 
 	"github.com/charmbracelet/lipgloss"
-
-	"github.com/lonsty/music-tui/internal/store"
 )
 
 // overlayInnerW returns the usable content width (columns) for an overlay box
@@ -47,38 +45,56 @@ const (
 
 func (a *App) renderHelpOverlay() string {
 	type binding struct{ key, action string }
-	bindings := []binding{
-		{"j / ↓", T("action_move_down")},
-		{"k / ↑", T("action_move_up")},
-		{"g / G", T("action_top_bottom")},
-		{"Enter", T("action_play")},
-		{"Space", T("action_pause_resume")},
-		{"n / p", T("action_next_prev")},
-		{"< / >", T("action_seek")},
-		{"m", T("action_cycle_mode")},
-		{"b", T("action_chip")},
-		{"r / R", T("action_lofi")},
-		{",", T("action_settings")},
-		{"/", T("action_search")},
-		{"i", T("action_track_info")},
-		{"f", T("action_fullscreen")},
-		{"l", T("action_lyrics_mode")},
-		{`\`, T("action_collapse_panel")},
-		{"+ / -", T("action_volume")},
-		{"Tab", T("action_switch_tab")},
-		{"?", T("action_this_help")},
-		{"q", T("action_quit")},
-		{"", ""},
-		{"F6 / F9", T("action_media_prev_next")},
-		{"F7", T("action_media_play")},
-		{"F11 / F12", T("action_media_vol")},
+	type section struct {
+		title    string
+		bindings []binding
 	}
 
-	// keyColW: fixed width reserved for the key chip column.
-	// actionW: remaining width for the action description.
+	sections := []section{
+		{T("help_section_global"), []binding{
+			{"j / ↓", T("action_move_down")},
+			{"k / ↑", T("action_move_up")},
+			{"g / G", T("action_top_bottom")},
+			{"Enter", T("action_play")},
+			{"Space", T("action_pause_resume")},
+			{"n / p", T("action_next_prev")},
+			{"< / >", T("action_seek")},
+			{"+ / -", T("action_volume")},
+			{"m", T("action_cycle_mode")},
+			{"r / R", T("action_lofi")},
+			{"b", T("action_chip")},
+			{"f", T("action_fullscreen")},
+			{"l", T("action_lyrics_mode")},
+			{`\`, T("action_collapse_panel")},
+			{",", T("action_settings")},
+			{"Tab", T("action_switch_tab")},
+			{"?", T("action_this_help")},
+			{"q", T("action_quit")},
+		}},
+		{T("help_section_local"), []binding{
+			{"/", T("action_search")},
+			{"i", T("action_track_info")},
+			{"L", T("action_like")},
+			{"a", T("action_add_to_playlist")},
+		}},
+		{T("help_section_playlist"), []binding{
+			{"Enter", T("action_open_playlist")},
+			{"n", T("action_new_playlist")},
+			{"r", T("action_rename_playlist")},
+			{"d", T("action_delete_playlist")},
+			{"x", T("action_remove_track")},
+			{"L", T("action_like")},
+		}},
+		{T("help_section_media"), []binding{
+			{"F6 / F9", T("action_media_prev_next")},
+			{"F7", T("action_media_play")},
+			{"F11 / F12", T("action_media_vol")},
+		}},
+	}
+
 	const keyColW = 14
 	innerW := a.overlayInnerW(idealOverlayW, minOverlayW)
-	actionW := innerW - 2 - keyColW - 2 // innerW - indent - keyColW - gap
+	actionW := innerW - 2 - keyColW - 2
 	if actionW < 8 {
 		actionW = 8
 	}
@@ -90,23 +106,25 @@ func (a *App) renderHelpOverlay() string {
 	}
 
 	var bodyRows []string
-	for _, b := range bindings {
-		if b.key == "" && b.action == "" {
-			bodyRows = append(bodyRows, "")
-			continue
-		}
+	renderBinding := func(b binding) string {
 		chip := styleOverlayKey.Render("❮" + b.key + "❯")
 		chipW := 2 + strWidth(b.key)
 		if chipW < keyColW {
 			chip += strings.Repeat(" ", keyColW-chipW)
 		}
-		// Truncate action text if terminal is too narrow to fit it.
 		action := b.action
 		if strWidth(action) > actionW {
 			action = truncate(action, actionW)
 		}
-		v := styleOverlayValue.Render(action)
-		bodyRows = append(bodyRows, "  "+chip+"  "+v)
+		return "  " + chip + "  " + styleOverlayValue.Render(action)
+	}
+
+	for _, sec := range sections {
+		bodyRows = append(bodyRows, styleOverlayMuted.Render("  "+sec.title))
+		for _, b := range sec.bindings {
+			bodyRows = append(bodyRows, renderBinding(b))
+		}
+		bodyRows = append(bodyRows, "")
 	}
 
 	hintRows := []string{"", styleOverlayMuted.Render("  " + T("overlay_hint_close"))}
@@ -496,10 +514,7 @@ func (a *App) renderDeletePlaylistOverlay() string {
 	div := styleOverlayMuted.Render(strings.Repeat("─", innerW))
 
 	pl := a.currentPlaylist()
-	plName := pl.Name
-	if pl.ID == store.FavoritesPlaylistID {
-		plName = T("playlist_favorites_name")
-	}
+	plName := a.playlistDisplayName(pl)
 
 	titleRows := []string{
 		styleOverlayTitle.Render(iconWithSpace(iconPlaylist()) + T("playlist_delete_title")),
@@ -514,7 +529,7 @@ func (a *App) renderDeletePlaylistOverlay() string {
 		"",
 	}
 
-	yKey := styleOverlayKey.Render("❮d❯")
+	yKey := styleOverlayKey.Render("❮Enter❯")
 	nKey := styleOverlayKey.Render("❮Esc❯")
 	hintRows := []string{
 		div,
@@ -544,15 +559,12 @@ func (a *App) renderAddToPlaylistOverlay() string {
 	} else {
 		for i, pl := range a.ovlPlaylists {
 			isSelected := i == a.ovlPlCursor
-			name := pl.Name
-			if pl.ID == store.FavoritesPlaylistID {
-				name = T("playlist_favorites_name")
-			}
+			name := a.playlistDisplayName(pl)
 			var row string
 			if isSelected {
-				row = styleTrackRowSelected.Render("  ▶ " + name)
+				row = styleTrackRowSelected.Render(padRight("  "+iconCursor()+" "+name, innerW))
 			} else {
-				row = styleTrackRowDefault.Render("    " + name)
+				row = styleTrackRowDefault.Render(padRight("    "+name, innerW))
 			}
 			bodyRows = append(bodyRows, row)
 		}

@@ -87,31 +87,42 @@ type ChipState struct {
 // PlaylistState holds playlist management state.
 // It is embedded in App and accessed via a.playlists, a.listCursor, etc.
 type PlaylistState struct {
-	depth       playlistDepth    // current navigation level
-	playlists   []store.Playlist // cached list of all playlists (index 0 = Favorites)
-	listCursor  int              // cursor in the playlist list (depth == list)
-	plTracks    []library.Track  // tracks of the currently open playlist
-	trackCursor int              // cursor in the track list (depth == tracks)
-	inputMode   playlistInputMode // purpose of nameInput (none / create / rename)
-	nameInput   textinput.Model   // inline input for new-playlist name or rename
-	confirmDel  bool              // true while waiting for second 'd' to confirm delete
+	depth        playlistDepth     // current navigation level
+	playlists    []store.Playlist  // cached list of all playlists (index 0 = Favorites)
+	listCursor   int               // cursor in the playlist list (depth == list)
+	plTracks     []library.Track   // tracks of the currently open playlist
+	trackCursor  int               // cursor in the track list (depth == tracks)
+	plTrackCount int               // cached track count for the open playlist (avoids per-frame DB query)
+	inputMode    playlistInputMode // purpose of nameInput (none / create / rename)
+	nameInput    textinput.Model   // inline input for new-playlist name or rename
 
 	// addingTracks is true while the inline "add tracks" search panel is open.
 	addingTracks bool
 	addInput     textinput.Model // search box inside the add-tracks panel
 	addResults   []int           // indices into a.tracks that match addInput
 	addCursor    int             // cursor in addResults
+	addDelta     map[string]int  // net change per track: +1 added, -1 removed, 0 cancelled
+
+	// plListMaxColW caches the max display width of the right-column
+	// track count across all playlists.  Recomputed in playlistsLoadedMsg
+	// so the render loop never queries the DB.
+	plListMaxColW int
 
 	// ovlPlaylists is the cached playlist list used by overlayAddToPlaylist.
 	// It is loaded when the overlay opens.
-	ovlPlaylists  []store.Playlist
-	ovlPlCursor   int // cursor inside the overlay list
+	ovlPlaylists []store.Playlist
+	ovlPlCursor  int // cursor inside the overlay list
 
 	// pendingTrackAnchor is set to true when entering a playlist's track
 	// list and the cursor should be anchored to the currently playing track
 	// once the tracks are loaded.  Cleared in the playlistTracksLoadedMsg
 	// handler after the anchor is resolved.
 	pendingTrackAnchor bool
+
+	// restorePlaylistID is set on startup when the session was inside a
+	// playlist's track list.  The playlistsLoadedMsg handler reads this
+	// and triggers a track load if the playlist still exists.
+	restorePlaylistID string
 }
 
 // OnlineState holds the state for the online music search tab.
@@ -197,19 +208,19 @@ type App struct {
 	lyricsVP viewport.Model
 
 	// ── UI state ─────────────────────────────────────────────────────────────
-	W, H           int
-	currentView    view
-	activeTab      tabID
-	activeOvl      overlay
-	ovlScrollRow   int  // scroll offset (in rows) for the active overlay
-	settingsEditing bool // true = text input active in settings overlay (editing mode)
-	rightMode      rightPanelMode // player or lyrics content in the right panel
-	rightCollapsed bool           // true = right panel hidden, track list takes full width
+	W, H            int
+	currentView     view
+	activeTab       tabID
+	activeOvl       overlay
+	ovlScrollRow    int            // scroll offset (in rows) for the active overlay
+	settingsEditing bool           // true = text input active in settings overlay (editing mode)
+	rightMode       rightPanelMode // player or lyrics content in the right panel
+	rightCollapsed  bool           // true = right panel hidden, track list takes full width
 
 	// ── Status / feedback ────────────────────────────────────────────────────
-	statusMsg       string
+	statusMsg         string
 	statusMsgExpiry   time.Time // when non-zero, statusMsg is cleared after this time
-	libScanFromReload bool        // true when the current scan was triggered by Ctrl+R (not startup)
+	libScanFromReload bool      // true when the current scan was triggered by Ctrl+R (not startup)
 
 	// ── Loading ──────────────────────────────────────────────────────────────
 	loading bool
@@ -291,6 +302,45 @@ func NewApp(player *audio.Player, st *store.Store, musicDir string, tracks []lib
 		}
 	}
 
+	// Restore last active tab. Default to tabLocal on first run.
+	initialTab := tabLocal
+	if st != nil {
+		if v, _ := st.GetSetting(store.KeyLastActiveTab); v != "" {
+			if id, err := strconv.Atoi(v); err == nil && id >= 0 && id < int(tabCount) {
+				initialTab = tabID(id)
+			}
+		}
+	}
+
+	// Restore playlist view depth if the last active tab was Playlists.
+	var initialDepth playlistDepth
+	var initialListCursor int
+	var initialTrackCursor int
+	var initialPlaylistID string
+	if initialTab == tabPlaylist && st != nil {
+		if v, _ := st.GetSetting(store.KeyPlaylistDepth); v == "tracks" {
+			initialDepth = playlistDepthTracks
+			if c, _ := st.GetSetting(store.KeyPlaylistCursor); c != "" {
+				if n, err := strconv.Atoi(c); err == nil && n >= 0 {
+					initialListCursor = n
+				}
+			}
+			if c, _ := st.GetSetting(store.KeyPlaylistTrackCursor); c != "" {
+				if n, err := strconv.Atoi(c); err == nil && n >= 0 {
+					initialTrackCursor = n
+				}
+			}
+			initialPlaylistID, _ = st.GetSetting(store.KeyPlaylistID)
+		} else {
+			initialDepth = playlistDepthList
+			if c, _ := st.GetSetting(store.KeyPlaylistCursor); c != "" {
+				if n, err := strconv.Atoi(c); err == nil && n >= 0 {
+					initialListCursor = n
+				}
+			}
+		}
+	}
+
 	ti := textinput.New()
 	ti.Placeholder = T("search_placeholder")
 	ti.CharLimit = 128
@@ -350,6 +400,7 @@ func NewApp(player *audio.Player, st *store.Store, musicDir string, tracks []lib
 		player:         player,
 		st:             st,
 		musicDir:       musicDir,
+		activeTab:      initialTab,
 		searchInput:    ti,
 		settingsInput:  si,
 		musicDirInput:  di,
@@ -367,8 +418,12 @@ func NewApp(player *audio.Player, st *store.Store, musicDir string, tracks []lib
 		rightCollapsed: rightCollapsed,
 		rightMode:      rightMode,
 		PlaylistState: PlaylistState{
-			nameInput: ni,
-			addInput:  ai,
+			depth:             initialDepth,
+			listCursor:        initialListCursor,
+			trackCursor:       initialTrackCursor,
+			nameInput:         ni,
+			addInput:          ai,
+			restorePlaylistID: initialPlaylistID,
 		},
 		PlaybackState: PlaybackState{
 			volume:   vol,
@@ -488,6 +543,20 @@ func (a *App) saveSession() {
 		store.KeyRightCollapsed: collapsedVal,
 		store.KeyRightPanelMode: rightPanelModeKey(a.rightMode),
 		store.KeyIconSet:        iconSetKey(ActiveIconSet()),
+		store.KeyLastActiveTab:  strconv.Itoa(int(a.activeTab)),
+	}
+	// Save playlist depth if currently in Playlists tab.
+	if a.activeTab == tabPlaylist {
+		if a.depth == playlistDepthTracks {
+			pairs[store.KeyPlaylistDepth] = "tracks"
+			pairs[store.KeyPlaylistCursor] = strconv.Itoa(a.listCursor)
+			pairs[store.KeyPlaylistTrackCursor] = strconv.Itoa(a.trackCursor)
+			pl := a.currentPlaylist()
+			pairs[store.KeyPlaylistID] = pl.ID
+		} else {
+			pairs[store.KeyPlaylistDepth] = "list"
+			pairs[store.KeyPlaylistCursor] = strconv.Itoa(a.listCursor)
+		}
 	}
 	if posMs > 0 || state != audio.StateStopped {
 		pairs[store.KeyLastPositionMs] = strconv.FormatInt(posMs, 10)
@@ -508,6 +577,10 @@ func (a *App) Init() tea.Cmd {
 	cmds := []tea.Cmd{tick()}
 	if a.session != nil && a.session.LastTrackID != "" {
 		cmds = append(cmds, a.cmdRestoreSession())
+	}
+	// Preload playlists when the initial tab is Playlists.
+	if a.activeTab == tabPlaylist && a.st != nil {
+		cmds = append(cmds, a.cmdLoadPlaylists())
 	}
 	return tea.Batch(cmds...)
 }
@@ -548,22 +621,41 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					a.currentTrack = nil
 					a.cursorPos = 0
 					a.statusMsg = T("track_removed")
+					a.statusMsgExpiry = time.Now().Add(statusMsgDuration)
 				}
+			}
+			// Always clamp cursor and sync the row marquee after a
+			// library reload, even when no track is playing.  Without
+			// this the first render frame shows a stale/empty row.
+			if n := a.filteredLen(); n > 0 {
+				if a.cursorPos >= n {
+					a.cursorPos = n - 1
+				}
+				if a.cursorPos < 0 {
+					a.cursorPos = 0
+				}
+				a.syncRowMarquee()
+			} else {
+				a.cursorPos = 0
+				a.mqRow.SetText("")
 			}
 		}
 		if msg.err != nil {
 			a.statusMsg = "Sync error: " + msg.err.Error()
+			a.statusMsgExpiry = time.Now().Add(statusMsgDuration)
 		} else if a.libScanFromReload {
 			// Only show "Loaded N tracks" when the scan was explicitly
 			// triggered by Ctrl+R in Settings, not on every startup.
 			a.statusMsg = fmt.Sprintf("Loaded %d tracks", len(a.tracks))
+			a.statusMsgExpiry = time.Now().Add(statusMsgDuration)
 			a.libScanFromReload = false
 		}
 		return a, nil
 
 	case playResultMsg:
 		if msg.err != nil {
-			a.statusMsg = iconError() + "  " + msg.err.Error()
+			a.statusMsg = iconError() + " " + msg.err.Error()
+			a.statusMsgExpiry = time.Now().Add(statusMsgDuration)
 			return a, nil
 		}
 
@@ -624,6 +716,7 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case playlistsLoadedMsg:
 		if msg.err != nil {
 			a.statusMsg = T("playlist_load_error") + ": " + msg.err.Error()
+			a.statusMsgExpiry = time.Now().Add(statusMsgDuration)
 		} else {
 			a.playlists = msg.playlists
 			// Clamp cursor after reload (e.g. after delete).
@@ -635,14 +728,36 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			// Sync the playlist row marquee after any list reload.
 			a.syncPlaylistRowMarquee()
+			// Recompute the right-column width cache after list changes.
+			a.refreshPlListMaxColW()
+			if msg.successMsg != "" {
+				a.statusMsg = msg.successMsg
+				a.statusMsgExpiry = time.Now().Add(statusMsgDuration)
+			}
 		}
-		return a, nil
+		// Restore track-level view on startup.
+		restoreCmd := a.maybeRestorePlaylistTracks()
+		return a, restoreCmd
 
 	case playlistTracksLoadedMsg:
 		if msg.err != nil {
 			a.statusMsg = T("playlist_load_error") + ": " + msg.err.Error()
+			a.statusMsgExpiry = time.Now().Add(statusMsgDuration)
 		} else {
 			a.plTracks = msg.tracks
+			// Cache the definitive count from the store for the header.
+			if a.st != nil {
+				if c, err := a.st.PlaylistTrackCount(a.currentPlaylist().ID); err == nil {
+					a.plTrackCount = c
+					// Also update the max-col-width cache if this playlist
+					// now has a wider track count display.
+					if w := strWidth(fmt.Sprintf(T("playlist_track_count"), c)); w > a.plListMaxColW {
+						a.plListMaxColW = w
+					}
+				}
+			} else {
+				a.plTrackCount = len(a.plTracks)
+			}
 			if a.trackCursor >= len(a.plTracks) {
 				a.trackCursor = len(a.plTracks) - 1
 			}
@@ -678,11 +793,11 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// cmdToggleFavorite; cmdCheckFavorite leaves it empty).
 		if msg.trackTitle != "" {
 			if msg.isFavorite {
-				a.statusMsg = iconHeartFilled() + "  " + msg.trackTitle
+				a.statusMsg = iconHeartFilled() + " " + msg.trackTitle
 			} else {
-				a.statusMsg = iconHeartEmpty() + "  " + msg.trackTitle
+				a.statusMsg = iconHeartEmpty() + " " + msg.trackTitle
 			}
-			a.statusMsgExpiry = time.Now().Add(2 * time.Second)
+			a.statusMsgExpiry = time.Now().Add(statusMsgDuration)
 		}
 		// If we're viewing the Favorites playlist, reload its track list.
 		if a.activeTab == tabPlaylist &&
@@ -695,6 +810,11 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case playlistPlayMsg:
 		// Replace the local library filteredIdxs with the playlist track order.
 		// First, ensure all playlist tracks are present in a.tracks; add missing ones.
+		if msg.err != nil {
+			a.statusMsg = T("playlist_load_error") + ": " + msg.err.Error()
+			a.statusMsgExpiry = time.Now().Add(statusMsgDuration)
+			return a, nil
+		}
 		existing := make(map[string]int, len(a.tracks))
 		for i, t := range a.tracks {
 			existing[t.ID] = i
@@ -706,7 +826,14 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		}
 		if len(newIdxs) == 0 {
+			a.statusMsg = T("no_tracks_hint")
+			a.statusMsgExpiry = time.Now().Add(statusMsgDuration)
 			return a, nil
+		}
+		// Warn when some playlist tracks are no longer in the library.
+		if len(newIdxs) < len(msg.tracks) {
+			a.statusMsg = fmt.Sprintf(T("playlist_tracks_missing"), len(msg.tracks)-len(newIdxs))
+			a.statusMsgExpiry = time.Now().Add(statusMsgDuration)
 		}
 		a.filteredIdxs = newIdxs
 		pos := msg.startPos
@@ -725,7 +852,8 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// Conversion failed — unlock and surface the error.
 			a.chipBusy = false
 			a.chipConverting = false
-			a.statusMsg = iconError() + "  8-bit convert failed: " + msg.err.Error()
+			a.statusMsg = iconError() + " 8-bit convert failed: " + msg.err.Error()
+			a.statusMsgExpiry = time.Now().Add(statusMsgDuration)
 			return a, nil
 		}
 		// Cache the result; conversion phase is done, crossfade phase begins.
@@ -860,6 +988,10 @@ const (
 
 	// marqueeSep is the separator inserted between repetitions of scrolling text.
 	marqueeSep = "  •  "
+
+	// statusMsgDuration is how long a status-bar message stays visible before
+	// it is automatically cleared.
+	statusMsgDuration = 2 * time.Second
 )
 
 // bodyH is the available height for the main content panels.
@@ -1104,6 +1236,71 @@ func (a *App) tickMarquees() {
 	a.mqAlbum.Tick(fullW)
 }
 
+// playlistDisplayName returns the display name for a playlist, using the
+// localised name when it is the built-in Favorites playlist.
+func (a *App) playlistDisplayName(pl store.Playlist) string {
+	if pl.ID == store.FavoritesPlaylistID {
+		return T("playlist_favorites_name")
+	}
+	return pl.Name
+}
+
+// keepOvlCursorVisible adjusts ovlScrollRow so that ovlPlCursor is inside
+// the visible body area of the playlist-picker overlay.
+func (a *App) keepOvlCursorVisible() {
+	// Approximate body-available rows: terminal height minus overlay chrome.
+	// renderScrollableOverlay: boxBorderH=2 + boxPadV=2 + outerMargin=2 +
+	// titleRows=2 + hintRows=2 = 10 total fixed rows.
+	const chromeRows = 10
+	bodyAvail := a.H - chromeRows
+	if bodyAvail < 1 {
+		bodyAvail = 1
+	}
+	if a.ovlPlCursor < a.ovlScrollRow {
+		a.ovlScrollRow = a.ovlPlCursor
+	} else if a.ovlPlCursor >= a.ovlScrollRow+bodyAvail {
+		a.ovlScrollRow = a.ovlPlCursor - bodyAvail + 1
+	}
+}
+
+// refreshPlListMaxColW recomputes the cached right-column width for playlist
+// track counts.  Must be called after playlists are loaded or track counts
+// change (add/remove).  Without a store the minimum width (4) is used.
+func (a *App) refreshPlListMaxColW() {
+	const minW = 4
+	a.plListMaxColW = minW
+	if a.st == nil {
+		return
+	}
+	for _, pl := range a.playlists {
+		c, err := a.st.PlaylistTrackCount(pl.ID)
+		if err != nil {
+			continue
+		}
+		if w := strWidth(fmt.Sprintf(T("playlist_track_count"), c)); w > a.plListMaxColW {
+			a.plListMaxColW = w
+		}
+	}
+}
+
+// maybeRestorePlaylistTracks triggers a track load for the playlist that was
+// last open when the app exited.  Returns the load command or nil.
+// Only effective once (clears restorePlaylistID after the first call).
+func (a *App) maybeRestorePlaylistTracks() tea.Cmd {
+	if a.restorePlaylistID == "" || a.depth != playlistDepthTracks {
+		return nil
+	}
+	plID := a.restorePlaylistID
+	a.restorePlaylistID = ""
+	// Verify the playlist still exists.
+	for _, pl := range a.playlists {
+		if pl.ID == plID {
+			return a.cmdLoadPlaylistTracks(plID)
+		}
+	}
+	return nil
+}
+
 // syncPlaylistRowMarquee updates mqPlRow to match the currently selected
 // playlist in the playlist list level.
 func (a *App) syncPlaylistRowMarquee() {
@@ -1112,11 +1309,7 @@ func (a *App) syncPlaylistRowMarquee() {
 		return
 	}
 	pl := a.playlists[a.listCursor]
-	name := pl.Name
-	// Use the localised Favorites name so the scrolling text matches display.
-	if pl.ID == store.FavoritesPlaylistID {
-		name = T("playlist_favorites_name")
-	}
+	name := a.playlistDisplayName(pl)
 	a.mqPlRow.SetText(name)
 }
 

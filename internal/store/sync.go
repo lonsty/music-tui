@@ -73,9 +73,9 @@ func SyncDir(
 
 	// ── Determine which files need (re-)parsing ───────────────────────────
 	type candidate struct {
-		path    string
-		mtime   int64
-		isNew   bool
+		path  string
+		mtime int64
+		isNew bool
 	}
 	existingPaths := make(map[string]struct{}, total)
 	var candidates []candidate
@@ -208,4 +208,3 @@ func SyncDir(
 
 	return added, updated, deleted, firstErr
 }
-
