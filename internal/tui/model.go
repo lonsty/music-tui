@@ -99,15 +99,73 @@ func parseRightPanelMode(s string) rightPanelMode {
 	}
 }
 
-// settingsFieldBodyRow maps each settingsField to its row index within the
-// Settings overlay's scrollable body.  Used to keep ovlScrollRow in sync
-// with the selected field when the user navigates with ↑/↓.
-var settingsFieldBodyRow = [settingsFieldCount]int{
-	settingsFieldMusicDir: 3,
-	settingsFieldChipOpts: 8,
-	settingsFieldLanguage: 15,
-	settingsFieldFormat:   19,
-	settingsFieldIconSet:  23,
+// settingsRow identifies one row of the settings overlay body.  The render
+// path and keyboard navigation both derive positions from settingsBodyPlan,
+// so adding or moving a row cannot silently desynchronise them.
+type settingsRow int
+
+const (
+	settingsRowBlank settingsRow = iota
+	settingsRowSectionLib
+	settingsRowDir
+	settingsRowReload
+	settingsRowSectionChip
+	settingsRowOpts
+	settingsRowOptsHint
+	settingsRowOptsEx
+	settingsRowSectionLang
+	settingsRowLang
+	settingsRowSectionFmt
+	settingsRowFmt
+	settingsRowSectionIcon
+	settingsRowIcon
+)
+
+var settingsBodyPlan = []settingsRow{
+	settingsRowBlank,
+	settingsRowSectionLib,
+	settingsRowBlank,
+	settingsRowDir,
+	settingsRowReload,
+	settingsRowBlank,
+	settingsRowSectionChip,
+	settingsRowBlank,
+	settingsRowOpts,
+	settingsRowBlank,
+	settingsRowOptsHint,
+	settingsRowOptsEx,
+	settingsRowBlank,
+	settingsRowSectionLang,
+	settingsRowBlank,
+	settingsRowLang,
+	settingsRowBlank,
+	settingsRowSectionFmt,
+	settingsRowBlank,
+	settingsRowFmt,
+	settingsRowBlank,
+	settingsRowSectionIcon,
+	settingsRowBlank,
+	settingsRowIcon,
+}
+
+// settingsFieldRows returns the body row index of each settings field.
+func settingsFieldRows() [settingsFieldCount]int {
+	var rows [settingsFieldCount]int
+	for i, row := range settingsBodyPlan {
+		switch row {
+		case settingsRowDir:
+			rows[settingsFieldMusicDir] = i
+		case settingsRowOpts:
+			rows[settingsFieldChipOpts] = i
+		case settingsRowLang:
+			rows[settingsFieldLanguage] = i
+		case settingsRowFmt:
+			rows[settingsFieldFormat] = i
+		case settingsRowIcon:
+			rows[settingsFieldIconSet] = i
+		}
+	}
+	return rows
 }
 
 // ── Icon set serialisation ────────────────────────────────────────────────────
@@ -356,6 +414,7 @@ type chipCrossfadeDoneMsg struct{ chipMode bool }
 type lyricsLoadedMsg struct {
 	trackID string
 	lines   []lyrics.Line
+	offset  time.Duration
 	err     error
 }
 

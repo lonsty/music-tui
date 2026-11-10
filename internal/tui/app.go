@@ -66,6 +66,7 @@ type PlaybackState struct {
 type LibraryState struct {
 	tracks       []library.Track
 	filteredIdxs []int            // positions in a.tracks that pass the current filter
+	posByID      map[string]int   // Track.ID → position in filteredIdxs (O(1) lookup)
 	shuffleIDs   []string         // Track.ID values in shuffled order (random play mode)
 	cursorPos    int              // position in filteredIdxs of the cursor-selected track
 	formatPref   formatPreference // active format-display preference
@@ -170,6 +171,7 @@ type LyricsState struct {
 	provider      lyrics.Provider // chain of local + online providers; set in NewApp
 	lyricsLoading bool            // true while a background fetch is in-flight
 	synced        bool            // true when at least one line has a non-zero timestamp
+	offset        time.Duration   // per-track timing offset; positive delays lyrics
 
 	// Manual browse state (fullscreen lyrics panel only).
 	//
@@ -720,6 +722,7 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		a.prevActiveIdx = -1
 		a.trackID = ""
 		a.synced = false
+		a.offset = 0
 		a.lyricsLoading = msg.track != nil // loading until lyricsLoadedMsg arrives
 		a.browseCenterIdx = -1
 		a.browseTicks = 0
@@ -874,6 +877,7 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			a.statusMsgExpiry = time.Now().Add(statusMsgDuration)
 		}
 		a.filteredIdxs = newIdxs
+		a.rebuildFilteredPos()
 		pos := msg.startPos
 		if pos >= len(newIdxs) {
 			pos = 0
@@ -921,6 +925,7 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				a.synced = false
 			} else {
 				a.lines = msg.lines
+				a.offset = msg.offset
 				a.activeIdx = -1
 				a.trackID = msg.trackID
 				// Determine whether any line carries a real timestamp.
@@ -1116,9 +1121,23 @@ func (a *App) filteredTrack(pos int) library.Track {
 	return a.tracks[a.filteredIdxs[pos]]
 }
 
+// rebuildFilteredPos rebuilds the ID → filtered-position cache.
+func (a *App) rebuildFilteredPos() {
+	a.posByID = make(map[string]int, len(a.filteredIdxs))
+	for pos, idx := range a.filteredIdxs {
+		a.posByID[a.tracks[idx].ID] = pos
+	}
+}
+
 // filteredPos returns the position of the track with the given ID in the
 // filtered list, or -1 if it is not present.
 func (a *App) filteredPos(id string) int {
+	if a.posByID != nil {
+		if pos, ok := a.posByID[id]; ok {
+			return pos
+		}
+		return -1
+	}
 	for i, idx := range a.filteredIdxs {
 		if a.tracks[idx].ID == id {
 			return i
@@ -1396,15 +1415,11 @@ func (a *App) syncLyricsActive() {
 		a.activeIdx = -1
 		return
 	}
-	pos := a.player.Position()
-	idx := -1
-	for i, l := range a.lines {
-		if l.Time <= pos {
-			idx = i
-		} else {
-			break
-		}
+	if a.player == nil {
+		return
 	}
+	pos := a.player.Position()
+	idx := lyricIndexAt(a.lines, pos, a.offset)
 
 	// Snap-back on natural line advance when browse has expired.
 	if a.browseExpired && idx != a.prevActiveIdx && idx >= 0 {

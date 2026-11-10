@@ -338,6 +338,7 @@ func (a *App) applyFilter() {
 		idxs = remapped
 	}
 	a.filteredIdxs = idxs
+	a.rebuildFilteredPos()
 	a.rebuildGroups()
 
 	// Invalidate shuffle so it is rebuilt from the new filtered list on next use.
@@ -476,10 +477,16 @@ func (a *App) cmdLoadLyrics(track library.Track) tea.Cmd {
 
 	id := track.ID
 	p := a.provider // capture; safe — provider is read-only after NewApp
+	st := a.st
 	return func() tea.Msg {
 		defer cancel()
 		lines, err := p.Fetch(ctx, track)
-		return lyricsLoadedMsg{trackID: id, lines: lines, err: err}
+		return lyricsLoadedMsg{
+			trackID: id,
+			lines:   lines,
+			offset:  loadLyricsOffset(st, id),
+			err:     err,
+		}
 	}
 }
 

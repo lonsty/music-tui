@@ -63,6 +63,7 @@ func (a *App) renderHelpOverlay() string {
 			{"Space", T("action_pause_resume")},
 			{"n / p", T("action_next_prev")},
 			{"< / >", T("action_seek")},
+			{"[ / ]", T("action_offset")},
 			{"+ / -", T("action_volume")},
 			{"m", T("action_cycle_mode")},
 			{"e / z", T("action_queue_add")},
@@ -381,31 +382,41 @@ func (a *App) renderSettingsOverlay() string {
 
 	titleRows := []string{title, topDiv}
 
-	bodyRows := []string{
-		"",
-		sectionLabel(T("settings_section_lib")),
-		"",
-		dirLine,
-		reloadHint,
-		"",
-		sectionLabel(T("settings_section_chip")),
-		"",
-		optsLine,
-		"",
-		optsHint,
-		optsEx,
-		"",
-		sectionLabel(T("settings_lang_label")),
-		"",
-		langLine,
-		"",
-		sectionLabel(T("settings_fmt_label")),
-		"",
-		fmtLine,
-		"",
-		sectionLabel(T("settings_icon_set_label")),
-		"",
-		iconSetLine,
+	rowText := func(row settingsRow) string {
+		switch row {
+		case settingsRowSectionLib:
+			return sectionLabel(T("settings_section_lib"))
+		case settingsRowDir:
+			return dirLine
+		case settingsRowReload:
+			return reloadHint
+		case settingsRowSectionChip:
+			return sectionLabel(T("settings_section_chip"))
+		case settingsRowOpts:
+			return optsLine
+		case settingsRowOptsHint:
+			return optsHint
+		case settingsRowOptsEx:
+			return optsEx
+		case settingsRowSectionLang:
+			return sectionLabel(T("settings_lang_label"))
+		case settingsRowLang:
+			return langLine
+		case settingsRowSectionFmt:
+			return sectionLabel(T("settings_fmt_label"))
+		case settingsRowFmt:
+			return fmtLine
+		case settingsRowSectionIcon:
+			return sectionLabel(T("settings_icon_set_label"))
+		case settingsRowIcon:
+			return iconSetLine
+		default:
+			return ""
+		}
+	}
+	bodyRows := make([]string, 0, len(settingsBodyPlan))
+	for _, row := range settingsBodyPlan {
+		bodyRows = append(bodyRows, rowText(row))
 	}
 
 	hintRows := []string{"", footer}

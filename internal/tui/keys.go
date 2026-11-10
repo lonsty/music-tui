@@ -215,6 +215,13 @@ func (a *App) handleFullscreenKey(msg tea.KeyMsg) tea.Cmd {
 	case ">":
 		return a.cmdSeek(+seekStep)
 
+	// ── Lyrics timing offset ──────────────────────────────────────────────────
+	case "[":
+		a.adjustLyricsOffset(-lyricsOffsetStep)
+
+	case "]":
+		a.adjustLyricsOffset(+lyricsOffsetStep)
+
 	// ── Lyrics browse (synced lyrics only) ────────────────────────────────────
 	// ↑/k scroll the visible window up (browse cursor moves toward earlier lines).
 	// ↓/j scroll down (browse cursor moves toward later lines).
@@ -259,7 +266,7 @@ func (a *App) handleFullscreenKey(msg tea.KeyMsg) tea.Cmd {
 	// Enter in browse mode: seek to the pinned line and resume playback.
 	case "enter":
 		if a.synced && a.browseCenterIdx >= 0 {
-			target := a.lines[a.browseCenterIdx].Time
+			target := lyricSeekTarget(a.lines[a.browseCenterIdx], a.offset)
 			a.browseCenterIdx = -1
 			a.browseTicks = 0
 			a.browseExpired = false
@@ -327,8 +334,8 @@ func (a *App) handleSearchKey(msg tea.KeyMsg) tea.Cmd {
 	// Let textinput handle typing; update filter on every keystroke.
 	var cmd tea.Cmd
 	a.searchInput, cmd = a.searchInput.Update(msg)
-	a.applyFilter()
 	a.syncSearchLibraryView(strings.TrimSpace(a.searchInput.Value()) != "")
+	a.applyFilter()
 	a.syncRowMarquee()
 	return cmd
 }
@@ -419,14 +426,16 @@ func (a *App) handleSettingsKey(msg tea.KeyMsg) tea.Cmd {
 // settingsMoveNext moves the selection to the next field, wrapping around,
 // and scrolls ovlScrollRow to keep the selected field visible.
 func (a *App) settingsMoveNext() {
+	rows := settingsFieldRows()
 	a.settingsActive = (a.settingsActive + 1) % settingsFieldCount
-	a.ovlScrollRow = settingsFieldBodyRow[a.settingsActive]
+	a.ovlScrollRow = rows[a.settingsActive]
 }
 
 // settingsMovePrev moves the selection to the previous field, wrapping around.
 func (a *App) settingsMovePrev() {
+	rows := settingsFieldRows()
 	a.settingsActive = (a.settingsActive + settingsFieldCount - 1) % settingsFieldCount
-	a.ovlScrollRow = settingsFieldBodyRow[a.settingsActive]
+	a.ovlScrollRow = rows[a.settingsActive]
 }
 
 // settingsActivateField handles Enter in browse mode.

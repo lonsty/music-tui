@@ -48,6 +48,9 @@ const (
 	KeyPlaylistTrackCursor = "playlist_track_cursor"
 	// KeyPlaylistID stores the currently open playlist ID when depth == tracks.
 	KeyPlaylistID = "playlist_id"
+	// KeyLyricsOffsetPrefix is the prefix for per-track lyrics timing offsets,
+	// stored in milliseconds.  Append the Track.ID to form the full key.
+	KeyLyricsOffsetPrefix = "lyrics_offset."
 )
 
 // Settings value constants for keys with a fixed set of valid values.

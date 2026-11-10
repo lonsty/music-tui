@@ -57,12 +57,14 @@ func T(key string) string {
 // values for every key defined in the LangEN map.
 var translations = map[Lang]map[string]string{LangEN: {
 	// ── Player ───────────────────────────────────────────────────────────
-	"no_track_selected":   "No track selected",
-	"press_enter_to_play": "Press Enter to play",
-	"no_lyrics":           "No lyrics",
-	"lyrics_loading":      "loading lyrics…", // icon prepended at call site
-	"lyrics_hint_lrc":     "Place a .lrc file next to the audio file",
-	"lyrics_panel_title":  "Lyrics",
+	"no_track_selected":         "No track selected",
+	"press_enter_to_play":       "Press Enter to play",
+	"no_lyrics":                 "No lyrics",
+	"lyrics_loading":            "loading lyrics…", // icon prepended at call site
+	"lyrics_hint_lrc":           "Place a .lrc file next to the audio file",
+	"lyrics_panel_title":        "Lyrics",
+	"lyrics_offset_status":      "Lyrics offset %+.1fs",
+	"lyrics_offset_synced_only": "Timing offset only applies to synced lyrics",
 
 	// ── Status bar ───────────────────────────────────────────────────────
 	"state_stopped":       "  Stopped ",
@@ -118,6 +120,7 @@ var translations = map[Lang]map[string]string{LangEN: {
 	"action_pause_resume":    "Pause / Resume",
 	"action_next_prev":       "Next / Previous",
 	"action_seek":            "Seek −5s / +5s",
+	"action_offset":          "Lyrics earlier / later  (0.5s)",
 	"action_cycle_mode":      "Cycle play mode",
 	"action_queue_add":       "Play next / add to queue",
 	"action_queue_open":      "Open play queue",
@@ -275,12 +278,14 @@ var translations = map[Lang]map[string]string{LangEN: {
 },
 	LangZH: {
 		// ── Player ───────────────────────────────────────────────────────────
-		"no_track_selected":   "未选择曲目",
-		"press_enter_to_play": "按 Enter 播放",
-		"no_lyrics":           "无歌词",
-		"lyrics_loading":      "歌词加载中…",
-		"lyrics_hint_lrc":     "将 .lrc 文件放在音频文件旁边",
-		"lyrics_panel_title":  "歌词",
+		"no_track_selected":         "未选择曲目",
+		"press_enter_to_play":       "按 Enter 播放",
+		"no_lyrics":                 "无歌词",
+		"lyrics_loading":            "歌词加载中…",
+		"lyrics_hint_lrc":           "将 .lrc 文件放在音频文件旁边",
+		"lyrics_panel_title":        "歌词",
+		"lyrics_offset_status":      "歌词偏移 %+.1fs",
+		"lyrics_offset_synced_only": "仅同步歌词支持时间偏移",
 
 		// ── Status bar ───────────────────────────────────────────────────────
 		"state_stopped":       "  已停止 ",
@@ -336,6 +341,7 @@ var translations = map[Lang]map[string]string{LangEN: {
 		"action_pause_resume":    "暂停 / 继续",
 		"action_next_prev":       "下一首 / 上一首",
 		"action_seek":            "快退 / 快进 5s",
+		"action_offset":          "歌词提前 / 延后 0.5 秒",
 		"action_cycle_mode":      "切换播放模式",
 		"action_queue_add":       "下一首播放 / 加入队列",
 		"action_queue_open":      "打开播放队列",

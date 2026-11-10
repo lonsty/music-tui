@@ -50,11 +50,12 @@ func (a *App) renderGroupList(innerW, innerH int) string {
 		isSelected := i == a.groupCursor
 
 		iconCol := "  "
-		switch {
-		case a.view == libraryViewAlbums:
-			iconCol = iconAlbum() + " "
-		default:
-			iconCol = iconArtist() + " "
+		ic := iconAlbum()
+		if a.view == libraryViewArtists {
+			ic = iconArtist()
+		}
+		if ic != "" {
+			iconCol = ic + " "
 		}
 
 		mid := a.groupTitle(g)

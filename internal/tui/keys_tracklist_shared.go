@@ -134,6 +134,10 @@ func (a *App) handleSharedTrackListKey(ctx TrackListContext, msg tea.KeyMsg) tea
 		return a.cmdSeek(-seekStep)
 	case ">":
 		return a.cmdSeek(+seekStep)
+	case "[":
+		a.adjustLyricsOffset(-lyricsOffsetStep)
+	case "]":
+		a.adjustLyricsOffset(+lyricsOffsetStep)
 
 	// ── Views / panel control ─────────────────────────────────────────────────
 	case "v":
