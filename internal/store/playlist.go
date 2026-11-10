@@ -18,6 +18,9 @@ type Playlist struct {
 	Name string
 	// CreatedAt is when the playlist was created.
 	CreatedAt time.Time
+	// TrackCount is the number of tracks currently in the playlist.  It is
+	// loaded with the playlist list so render code never queries per row.
+	TrackCount int
 }
 
 // FavoritesPlaylistID is the fixed ID of the built-in "Favorites" playlist.
@@ -73,10 +76,15 @@ func (s *Store) CreatePlaylist(name string) (Playlist, error) {
 }
 
 // GetPlaylists returns all playlists ordered by creation time (oldest first).
+// Track counts are included in the same query.
 func (s *Store) GetPlaylists() ([]Playlist, error) {
-	rows, err := s.db.Query(
-		`SELECT id, name, created_at FROM playlists ORDER BY created_at ASC`,
-	)
+	rows, err := s.db.Query(`
+		SELECT p.id, p.name, p.created_at, COUNT(pt.track_id)
+		FROM playlists p
+		LEFT JOIN playlist_tracks pt ON pt.playlist_id = p.id
+		GROUP BY p.id, p.name, p.created_at
+		ORDER BY p.created_at ASC
+	`)
 	if err != nil {
 		return nil, fmt.Errorf("get playlists: %w", err)
 	}
@@ -86,7 +94,7 @@ func (s *Store) GetPlaylists() ([]Playlist, error) {
 	for rows.Next() {
 		var p Playlist
 		var ts int64
-		if err := rows.Scan(&p.ID, &p.Name, &ts); err != nil {
+		if err := rows.Scan(&p.ID, &p.Name, &ts, &p.TrackCount); err != nil {
 			return nil, fmt.Errorf("scan playlist row: %w", err)
 		}
 		p.CreatedAt = time.Unix(ts, 0)

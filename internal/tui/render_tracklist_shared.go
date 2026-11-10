@@ -23,19 +23,23 @@ func (a *App) renderSharedTrackList(ctx TrackListContext, innerW, innerH int) st
 		title := ctx.HeaderTitle()
 
 		// Track count annotation.
-		tracks := ctx.Tracks()
-		total := len(tracks)
+		total := ctx.Count()
 		var countText string
-		if a.currentTrack != nil {
-			if pos := ctx.PlayingPos(a.currentTrack.ID); pos >= 0 {
-				countText = fmt.Sprintf("  "+T("library_count_playing"), pos+1, total)
-			} else {
-				countText = fmt.Sprintf("  "+T("library_count"), total)
-			}
+		if a.currentTrack != nil && ctx.PlayingPos(a.currentTrack.ID) >= 0 {
+			countText = fmt.Sprintf("  "+T("library_count_playing"), ctx.PlayingPos(a.currentTrack.ID)+1, total)
 		} else {
 			countText = fmt.Sprintf("  "+T("library_count"), total)
 		}
 		count := styleTrackMeta.Render(countText)
+
+		// Active search filter: keep it visible after the input closes so the
+		// shortened list is never unexplained.
+		var filterChip string
+		if ctx.ShowSearchBar && a.activeOvl != overlaySearch {
+			if q := strings.TrimSpace(a.searchInput.Value()); q != "" {
+				filterChip = styleSearchPrompt.Render("  " + fmt.Sprintf(T("search_filter_active"), q))
+			}
+		}
 
 		// Right annotation (e.g. "← Playlists" for the playlist track level).
 		rightAnnotation := ctx.HeaderRight()
@@ -45,21 +49,22 @@ func (a *App) renderSharedTrackList(ctx TrackListContext, innerW, innerH int) st
 		if !a.showMiniPlayer() && a.currentTrack != nil {
 			titleW := strWidth(title)
 			countW := strWidth(countText)
+			filterW := strWidth(filterChip)
 			rightAnnotationW := strWidth(rightAnnotation)
-			remainW := innerW - titleW - countW - rightAnnotationW - 2
+			remainW := innerW - titleW - countW - filterW - rightAnnotationW - 2
 			playStatus = a.buildCollapsedPlayStatus(remainW)
 		}
 
 		if playStatus != "" {
-			usedW := strWidth(title) + strWidth(countText) + strWidth(rightAnnotation)
+			usedW := strWidth(title) + strWidth(countText) + strWidth(filterChip) + strWidth(rightAnnotation)
 			gap := innerW - usedW - strWidth(playStatus)
 			if gap < 1 {
 				gap = 1
 			}
-			sb.WriteString(title + count + rightAnnotation +
+			sb.WriteString(title + count + filterChip + rightAnnotation +
 				strings.Repeat(" ", gap) + playStatus + "\n")
 		} else {
-			sb.WriteString(title + count + rightAnnotation + "\n")
+			sb.WriteString(title + count + filterChip + rightAnnotation + "\n")
 		}
 	}
 	sb.WriteString(styleDivider.Render(strings.Repeat("─", innerW)) + "\n")
@@ -71,25 +76,29 @@ func (a *App) renderSharedTrackList(ctx TrackListContext, innerW, innerH int) st
 	}
 
 	// ── Row rendering ────────────────────────────────────────────────────────
-	tracks := ctx.Tracks()
+	total := ctx.Count()
 	cursor := *ctx.CursorPos
 
-	if len(tracks) == 0 {
+	if total == 0 {
 		emptyKey := ctx.EmptyMsg
 		if emptyKey == "" {
 			emptyKey = "no_tracks_hint"
 		}
-		empty := styleOverlayMuted.Render(T(emptyKey))
+		emptyText := T(emptyKey)
+		if q := strings.TrimSpace(a.searchInput.Value()); q != "" && ctx.ShowSearchBar {
+			emptyText = fmt.Sprintf(T("no_search_results"), q) + "\n" + T("search_clear_hint")
+		}
+		empty := styleOverlayMuted.Render(emptyText)
 		centered := lipgloss.Place(innerW, maxRows, lipgloss.Center, lipgloss.Center, empty)
 		sb.WriteString(centered)
 		content := strings.TrimRight(sb.String(), "\n")
 		return stylePanelBorder.Width(innerW).Height(innerH).Render(content)
 	}
 
-	start, end := visibleWindow(cursor, len(tracks), maxRows)
+	start, end := visibleWindow(cursor, total, maxRows)
 
 	for i := start; i < end; i++ {
-		t := tracks[i]
+		t := ctx.TrackAt(i)
 		isSelected := i == cursor
 		isPlaying := a.currentTrack != nil && a.currentTrack.ID == t.ID
 

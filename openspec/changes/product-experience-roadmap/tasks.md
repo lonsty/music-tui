@@ -2,17 +2,17 @@
 
 ## 1. 阶段 1：止血与砍冗余
 
-- [ ] 1.1 删除 Online Tab：移除 `tabOnline`、`OnlineState`、`renderOnlinePlaceholder`、`renderNormalBody` 分支、Tab 栏条目与相关 i18n；验证 `CGO_ENABLED=1 go build ./...` 通过，且全文搜索不到 `online_coming_soon`。
-- [ ] 1.2 移除 `tea.WithMouseCellMotion()`；验证 `cmd/music-tui/main.go` 不再包含鼠标选项，手工拖选终端文本可正常复制。
-- [ ] 1.3 `App.Init` 在已配置音乐目录时追加 `cmdSyncLibrary()` 并设置 `loading=true`；验证新增单元测试断言 Init 触发扫描且状态为加载中，手工放入新文件后启动即可见。
-- [ ] 1.4 主视图接全局 `Ctrl+R` 重新扫描，且不干扰设置编辑框、搜索框、歌单命名框；验证按键单元测试覆盖三类输入态不触发。
-- [ ] 1.5 修正音量显示为 `min(volume,1)` 百分比，超过 1.0 追加增益标记；验证新增表驱动测试覆盖 0、0.5、1.0、1.5、2.0。
-- [ ] 1.6 搜索过滤在输入关闭后保持可见：列表头部显示查询 chip 与 Esc 清除提示，Esc 先清过滤；验证状态测试覆盖 Enter 播放后查询保留、Esc 清空并回到播放曲目。
-- [ ] 1.7 增加 `c` 跳到正在播放与 PageUp/PageDown、Ctrl+D/Ctrl+U 翻页；验证按键测试覆盖有播放曲目、无播放曲目、列表首尾边界。
-- [ ] 1.8 `store.Playlist` 增加 `TrackCount`，`GetPlaylists` 用 `LEFT JOIN ... GROUP BY` 一次取回；渲染层改读缓存，切到歌单 Tab 时刷新一次列表；验证 store 测试覆盖空歌单/多歌单计数，且 `render_tab_playlist.go` 不再引用 `a.st`。
-- [ ] 1.9 本地化全部硬编码用户文案（同步错误、曲目数量、扫描中、目录不存在、8-bit 转换失败、`Unknown Artist` 等）；验证中文模式测试断言无英文句子，全文搜索无残留硬编码提示。
-- [ ] 1.10 修正删除歌单确认文案与行为说明，确保 Enter 确认、Esc 取消与浮层提示一致；验证按键测试覆盖两个分支且注释与实现一致。
-- [ ] 1.11 更新 `README.md` 的 Tab 说明、快捷键表与首次启动行为；验证按 README 步骤执行命令与按键描述一致。
+- [x] 1.1 删除 Online Tab：移除 `tabOnline`、`OnlineState`、`renderOnlinePlaceholder`、`renderNormalBody` 分支、Tab 栏条目与相关 i18n；验证 `CGO_ENABLED=1 go build ./...` 通过，且全文搜索不到 `online_coming_soon`。
+- [x] 1.2 移除 `tea.WithMouseCellMotion()`；验证 `cmd/music-tui/main.go` 不再包含鼠标选项，手工拖选终端文本可正常复制。
+- [x] 1.3 `App.Init` 在已配置音乐目录时追加 `cmdSyncLibrary()` 并设置 `loading=true`；验证新增单元测试断言 Init 触发扫描且状态为加载中，手工放入新文件后启动即可见。
+- [x] 1.4 主视图接全局 `Ctrl+R` 重新扫描，且不干扰设置编辑框、搜索框、歌单命名框；验证按键单元测试覆盖三类输入态不触发。
+- [x] 1.5 修正音量显示为 `min(volume,1)` 百分比，超过 1.0 追加增益标记；验证新增表驱动测试覆盖 0、0.5、1.0、1.5、2.0。
+- [x] 1.6 搜索过滤在输入关闭后保持可见：列表头部显示查询 chip 与 Esc 清除提示，Esc 先清过滤；验证状态测试覆盖 Enter 播放后查询保留、Esc 清空并回到播放曲目。
+- [x] 1.7 增加 `c` 跳到正在播放与 PageUp/PageDown、Ctrl+D/Ctrl+U 翻页；验证按键测试覆盖有播放曲目、无播放曲目、列表首尾边界。
+- [x] 1.8 `store.Playlist` 增加 `TrackCount`，`GetPlaylists` 用 `LEFT JOIN ... GROUP BY` 一次取回；渲染层改读缓存，切到歌单 Tab 时刷新一次列表；验证 store 测试覆盖空歌单/多歌单计数，且 `render_tab_playlist.go` 不再引用 `a.st`。
+- [x] 1.9 本地化全部硬编码用户文案（同步错误、曲目数量、扫描中、目录不存在、8-bit 转换失败、`Unknown Artist` 等）；验证中文模式测试断言无英文句子，全文搜索无残留硬编码提示。
+- [x] 1.10 修正删除歌单确认文案与行为说明，确保 Enter 确认、Esc 取消与浮层提示一致；验证按键测试覆盖两个分支且注释与实现一致。
+- [x] 1.11 更新 `README.md` 的 Tab 说明、快捷键表与首次启动行为；验证按 README 步骤执行命令与按键描述一致。
 
 ## 2. 阶段 2：曲库发现
 

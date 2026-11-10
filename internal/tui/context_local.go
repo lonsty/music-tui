@@ -13,20 +13,18 @@ import (
 func (a *App) localTrackListCtx() TrackListContext {
 	return TrackListContext{
 		// ── Data ─────────────────────────────────────────────────────────
-		Tracks: func() []library.Track {
-			out := make([]library.Track, len(a.filteredIdxs))
-			for i, idx := range a.filteredIdxs {
-				out[i] = a.tracks[idx]
+		Count: a.filteredLen,
+		TrackAt: func(pos int) library.Track {
+			if pos < 0 || pos >= len(a.filteredIdxs) {
+				return library.Track{}
 			}
-			return out
+			return a.tracks[a.filteredIdxs[pos]]
 		},
 		CursorPos: &a.cursorPos,
-		TotalCount: func() int {
-			return a.filteredLen()
-		},
 		PlayingPos: func(id string) int {
 			return a.filteredPos(id)
 		},
+		PageSize: a.trackPageSize,
 
 		// ── Rendering ────────────────────────────────────────────────────
 		HeaderTitle: func() string {

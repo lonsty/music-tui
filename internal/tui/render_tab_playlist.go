@@ -103,12 +103,8 @@ func (a *App) renderPlaylistListLevel(innerW, innerH int) string {
 				leftIcon = fgColorBold(iconHeartFilled(), mauve) + " "
 			}
 
-			// Right: track count (dynamic width).
-			var count int
-			if a.st != nil {
-				count, _ = a.st.PlaylistTrackCount(pl.ID)
-			}
-			countStr := fmt.Sprintf(T("playlist_track_count"), count)
+			// Right: track count (loaded with the playlist list).
+			countStr := fmt.Sprintf(T("playlist_track_count"), pl.TrackCount)
 			rightStr := fgColor(padLeft(countStr, rightColW), overlay0)
 
 			// Middle: playlist name (elastic, marquee on selected row).

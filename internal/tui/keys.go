@@ -120,6 +120,16 @@ func (a *App) handleKey(msg tea.KeyMsg) tea.Cmd {
 		return nil
 	}
 
+	// Global library rescan. Text inputs (settings editing, search, playlist
+	// naming, add-tracks search) keep Ctrl+R for themselves or ignore it.
+	if msg.String() == "ctrl+r" &&
+		a.activeOvl == overlayNone &&
+		!a.settingsEditing &&
+		a.inputMode == playlistInputNone &&
+		!a.addingTracks {
+		return a.reloadLibrary()
+	}
+
 	// Fullscreen view has its own minimal key set.
 	if a.currentView == viewFullscreen {
 		return a.handleFullscreenKey(msg)
@@ -474,7 +484,7 @@ func (a *App) settingsCommitField() tea.Cmd {
 
 	if a.settingsActive == settingsFieldMusicDir && newDir != a.musicDir && newDir != "" {
 		if info, err := os.Stat(newDir); err != nil || !info.IsDir() {
-			a.statusMsg = iconError() + " Directory not found: " + newDir
+			a.statusMsg = fmt.Sprintf(T("dir_not_found"), newDir)
 			a.statusMsgExpiry = time.Now().Add(statusMsgDuration)
 			return nil
 		}
@@ -752,7 +762,7 @@ func (a *App) handleAddToPlaylistKey(msg tea.KeyMsg) tea.Cmd {
 }
 
 // handleDeletePlaylistKey handles key presses inside the delete-confirm overlay.
-// "d" confirms the deletion; any other key (Esc, Enter, …) cancels.
+// Enter confirms the deletion; any other key (Esc, …) cancels.
 func (a *App) handleDeletePlaylistKey(msg tea.KeyMsg) tea.Cmd {
 	switch msg.String() {
 	case "enter":
@@ -768,6 +778,19 @@ func (a *App) handleDeletePlaylistKey(msg tea.KeyMsg) tea.Cmd {
 	}
 }
 
+// reloadLibrary starts an incremental scan of the current music directory.
+// It is shared by the global Ctrl+R handler and the Settings overlay action.
+func (a *App) reloadLibrary() tea.Cmd {
+	if a.st == nil || a.musicDir == "" {
+		return nil
+	}
+	a.loading = true
+	a.statusMsg = T("reloading_library")
+	a.statusMsgExpiry = time.Time{}
+	a.libScanFromReload = true
+	return a.cmdSyncLibrary()
+}
+
 // settingsReloadLibrary saves the current dir value and triggers a library scan.
 func (a *App) settingsReloadLibrary() tea.Cmd {
 	a.settingsEditing = false
@@ -779,7 +802,7 @@ func (a *App) settingsReloadLibrary() tea.Cmd {
 		a.musicDir = strings.TrimSpace(a.musicDirInput.Placeholder)
 	}
 	if info, err := os.Stat(a.musicDir); err != nil || !info.IsDir() {
-		a.statusMsg = iconError() + " Directory not found: " + a.musicDir
+		a.statusMsg = fmt.Sprintf(T("dir_not_found"), a.musicDir)
 		a.statusMsgExpiry = time.Now().Add(statusMsgDuration)
 		a.closeSettings()
 		return nil
@@ -788,8 +811,5 @@ func (a *App) settingsReloadLibrary() tea.Cmd {
 		_ = a.st.SetSetting(store.KeyMusicDir, a.musicDir)
 	}
 	a.closeSettings()
-	a.loading = true
-	a.statusMsg = "Reloading library…"
-	a.libScanFromReload = true // trigger "Loaded N tracks" on next scanDoneMsg
-	return a.cmdSyncLibrary()
+	return a.reloadLibrary()
 }

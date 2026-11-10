@@ -17,13 +17,16 @@ import (
 func (a *App) playlistTrackCtx() TrackListContext {
 	return TrackListContext{
 		// ── Data ─────────────────────────────────────────────────────────
-		Tracks: func() []library.Track {
-			return a.plTracks
+		Count: func() int {
+			return len(a.plTracks)
+		},
+		TrackAt: func(pos int) library.Track {
+			if pos < 0 || pos >= len(a.plTracks) {
+				return library.Track{}
+			}
+			return a.plTracks[pos]
 		},
 		CursorPos: &a.trackCursor,
-		TotalCount: func() int {
-			return a.plTrackCount
-		},
 		PlayingPos: func(id string) int {
 			for i, t := range a.plTracks {
 				if t.ID == id {
@@ -32,6 +35,7 @@ func (a *App) playlistTrackCtx() TrackListContext {
 			}
 			return -1
 		},
+		PageSize: a.trackPageSize,
 
 		// ── Rendering ────────────────────────────────────────────────────
 		HeaderTitle: func() string {

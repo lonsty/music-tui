@@ -57,7 +57,6 @@ func main() {
 	p := tea.NewProgram(
 		app,
 		tea.WithAltScreen(),
-		tea.WithMouseCellMotion(),
 	)
 	app.WithProgram(p)
 

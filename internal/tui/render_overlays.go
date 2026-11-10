@@ -184,7 +184,7 @@ func (a *App) renderInfoOverlay() string {
 	if t != nil {
 		for _, lines := range [][]string{
 			row(T("label_title"), t.DisplayTitle()),
-			row(T("label_artist"), t.DisplayArtist()),
+			row(T("label_artist"), displayArtist(*t)),
 			row(T("label_album_artist"), t.AlbumArtist),
 			row(T("label_album"), t.Album),
 			row(T("label_year"), t.Year),

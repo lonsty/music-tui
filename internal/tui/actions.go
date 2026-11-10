@@ -617,10 +617,11 @@ func (a *App) cmdLoadPlaylists() tea.Cmd {
 func (a *App) cmdLoadPlaylistTracks(playlistID string) tea.Cmd {
 	return func() tea.Msg {
 		if a.st == nil {
-			return playlistTracksLoadedMsg{}
+			return playlistTracksLoadedMsg{playlistID: playlistID}
 		}
 		tracks, err := a.st.GetPlaylistTracks(playlistID)
-		return playlistTracksLoadedMsg{tracks: tracks, err: err}
+		count, _ := a.st.PlaylistTrackCount(playlistID)
+		return playlistTracksLoadedMsg{playlistID: playlistID, tracks: tracks, count: count, err: err}
 	}
 }
 
@@ -671,15 +672,16 @@ func (a *App) cmdRenamePlaylist(id, name string) tea.Cmd {
 func (a *App) cmdAddTrackToPlaylist(playlistID, trackID string) tea.Cmd {
 	return func() tea.Msg {
 		if a.st == nil {
-			return playlistTracksLoadedMsg{}
+			return playlistTracksLoadedMsg{playlistID: playlistID}
 		}
 		// Use current track count as append position.
 		count, _ := a.st.PlaylistTrackCount(playlistID)
 		if err := a.st.AddTrackToPlaylist(playlistID, trackID, count); err != nil {
-			return playlistTracksLoadedMsg{err: err}
+			return playlistTracksLoadedMsg{playlistID: playlistID, err: err}
 		}
 		tracks, err := a.st.GetPlaylistTracks(playlistID)
-		return playlistTracksLoadedMsg{tracks: tracks, err: err}
+		newCount, _ := a.st.PlaylistTrackCount(playlistID)
+		return playlistTracksLoadedMsg{playlistID: playlistID, tracks: tracks, count: newCount, err: err}
 	}
 }
 
@@ -687,13 +689,14 @@ func (a *App) cmdAddTrackToPlaylist(playlistID, trackID string) tea.Cmd {
 func (a *App) cmdRemoveTrackFromPlaylist(playlistID, trackID string) tea.Cmd {
 	return func() tea.Msg {
 		if a.st == nil {
-			return playlistTracksLoadedMsg{}
+			return playlistTracksLoadedMsg{playlistID: playlistID}
 		}
 		if err := a.st.RemoveTrackFromPlaylist(playlistID, trackID); err != nil {
-			return playlistTracksLoadedMsg{err: err}
+			return playlistTracksLoadedMsg{playlistID: playlistID, err: err}
 		}
 		tracks, err := a.st.GetPlaylistTracks(playlistID)
-		return playlistTracksLoadedMsg{tracks: tracks, err: err}
+		count, _ := a.st.PlaylistTrackCount(playlistID)
+		return playlistTracksLoadedMsg{playlistID: playlistID, tracks: tracks, count: count, err: err}
 	}
 }
 

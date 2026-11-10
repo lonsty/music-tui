@@ -186,11 +186,8 @@ var translations = map[Lang]map[string]string{LangEN: {
 	"icon_set_plain":          "Plain",
 
 	// ── Tabs ─────────────────────────────────────────────────────────────
-	"tab_local":          "Local",
-	"tab_online":         "Online",
-	"tab_playlist":       "Playlists",
-	"online_coming_soon": "Coming soon — planned features:",
-	"online_back_hint":   "Press Tab to switch back to Local",
+	"tab_local":    "Local",
+	"tab_playlist": "Playlists",
 
 	// ── Library panel header ──────────────────────────────────────────────
 	"library_title": "Library",
@@ -201,9 +198,20 @@ var translations = map[Lang]map[string]string{LangEN: {
 	"library_count_playing": "%d/%d tracks",
 
 	// ── App messages ─────────────────────────────────────────────────────
-	"track_removed":      "Playing track was removed from library",
-	"no_tracks_hint":     "No tracks — open Settings (,) and reload the library",
-	"search_placeholder": "Search… (s: artist  a: album  t: title  f: format)",
+	"track_removed":        "Playing track was removed from library",
+	"no_tracks_hint":       "No tracks — open Settings (,) and reload the library",
+	"search_placeholder":   "Search… (s: artist  a: album  t: title  f: format)",
+	"sync_error":           "Sync error: %s",
+	"loaded_tracks":        "Loaded %d tracks",
+	"reloading_library":    "Reloading library…",
+	"dir_not_found":        "Directory not found: %s",
+	"chip_convert_failed":  "8-bit convert failed: %s",
+	"playback_error":       "Playback failed: %s",
+	"unknown_artist":       "Unknown Artist",
+	"search_filter_active": "Search: %s  ·  Esc to clear",
+	"search_clear_hint":    "Press Esc to clear the filter",
+	"no_search_results":    "No results for \"%s\"",
+	"track_not_in_list":    "Playing track is not in this list",
 
 	// ── Playlist tab ─────────────────────────────────────────────────────
 	"playlist_header":         "Playlists",
@@ -364,11 +372,8 @@ var translations = map[Lang]map[string]string{LangEN: {
 		"icon_set_plain":          "纯文字",
 
 		// ── Tabs ─────────────────────────────────────────────────────────────
-		"tab_local":          "本地",
-		"tab_online":         "在线",
-		"tab_playlist":       "歌单",
-		"online_coming_soon": "即将推出 — 计划功能：",
-		"online_back_hint":   "按 Tab 切换回本地",
+		"tab_local":    "本地",
+		"tab_playlist": "歌单",
 
 		// ── Library panel header ──────────────────────────────────────────────
 		"library_title":         "音乐库",
@@ -376,9 +381,20 @@ var translations = map[Lang]map[string]string{LangEN: {
 		"library_count_playing": "%d/%d 首",
 
 		// ── App messages ─────────────────────────────────────────────────────
-		"track_removed":      "当前播放曲目已从音乐库中移除",
-		"no_tracks_hint":     "没有曲目 — 打开设置（,）并重新加载音乐库",
-		"search_placeholder": "搜索… (s: 艺术家  a: 专辑  t: 标题  f: 格式)",
+		"track_removed":        "当前播放曲目已从音乐库中移除",
+		"no_tracks_hint":       "没有曲目 — 打开设置（,）并重新加载音乐库",
+		"search_placeholder":   "搜索… (s: 艺术家  a: 专辑  t: 标题  f: 格式)",
+		"sync_error":           "同步出错：%s",
+		"loaded_tracks":        "已加载 %d 首",
+		"reloading_library":    "正在重新加载音乐库…",
+		"dir_not_found":        "目录不存在：%s",
+		"chip_convert_failed":  "8-bit 转换失败：%s",
+		"playback_error":       "播放失败：%s",
+		"unknown_artist":       "未知艺术家",
+		"search_filter_active": "搜索：%s · Esc 清除",
+		"search_clear_hint":    "按 Esc 清除筛选",
+		"no_search_results":    "没有匹配“%s”的结果",
+		"track_not_in_list":    "当前播放曲目不在当前列表中",
 
 		// ── Playlist tab ─────────────────────────────────────────────────────
 		"playlist_header":             "歌单",

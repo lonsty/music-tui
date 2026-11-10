@@ -634,11 +634,19 @@ func rowMidText(t library.Track) string {
 	if a := t.Album; a != "" {
 		parts = append(parts, a)
 	}
-	if ar := t.DisplayArtist(); ar != "Unknown Artist" || t.Artist != "" {
+	if ar := displayArtist(t); t.Artist != "" {
 		parts = append(parts, ar)
 	}
 	parts = append(parts, t.DisplayTitle())
 	return strings.Join(parts, " · ")
+}
+
+// displayArtist returns the localised artist name for display.
+func displayArtist(t library.Track) string {
+	if t.Artist != "" {
+		return t.Artist
+	}
+	return T("unknown_artist")
 }
 
 // formatDuration converts a duration to mm:ss.

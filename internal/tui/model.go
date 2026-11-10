@@ -146,7 +146,6 @@ type tabID int
 const (
 	tabPlaylist tabID = iota // playlist management
 	tabLocal                 // local music library
-	tabOnline                // online music search — placeholder
 	tabCount                 // sentinel — must be the last constant
 )
 
@@ -294,8 +293,10 @@ type playlistsLoadedMsg struct {
 
 // playlistTracksLoadedMsg carries the tracks for one playlist.
 type playlistTracksLoadedMsg struct {
-	tracks []library.Track
-	err    error
+	playlistID string
+	tracks     []library.Track
+	count      int
+	err        error
 }
 
 // favoriteChangedMsg is sent after a Like/Unlike operation completes.

@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"fmt"
 	"strings"
 
 	"github.com/lonsty/music-tui/internal/audio"
@@ -44,7 +45,7 @@ func (a *App) renderStatusBar() string {
 		return styleStatusLine.Render("  " + iconSpinner() + "  " + T("scanning_library"))
 	}
 	if a.scanErr != nil {
-		return styleStatusLine.Render("  " + iconError() + "  " + a.scanErr.Error())
+		return styleStatusLine.Render("  " + iconError() + "  " + fmt.Sprintf(T("sync_error"), a.scanErr.Error()))
 	}
 
 	state := a.player.State()

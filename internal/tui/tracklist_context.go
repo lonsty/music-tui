@@ -13,21 +13,23 @@ import (
 type TrackListContext struct {
 	// ── Data ─────────────────────────────────────────────────────────────────
 
-	// Tracks returns the currently displayed track slice (already filtered /
-	// ordered).  Called on every render; must be cheap.
-	Tracks func() []library.Track
+	// Count returns the number of tracks currently displayed.
+	Count func() int
 
-	// CursorPos is a pointer to the cursor index within the Tracks() slice.
+	// TrackAt returns the track at position pos in the displayed list.
+	// Returns a zero Track when pos is out of range.
+	TrackAt func(pos int) library.Track
+
+	// CursorPos is a pointer to the cursor index within the displayed list.
 	CursorPos *int
 
-	// TotalCount returns the display count shown in the header (e.g. the
-	// filtered length for Local, or the DB count for Playlist).
-	TotalCount func() int
-
 	// PlayingPos returns the position of the track with the given ID inside
-	// Tracks(), or -1 if the track is not present in the current list.
+	// the displayed list, or -1 if the track is not present.
 	// Used to show "N/total" in the header and to highlight the playing row.
 	PlayingPos func(currentTrackID string) int
+
+	// PageSize returns the number of rows moved by PageUp/PageDown.
+	PageSize func() int
 
 	// ── Rendering ─────────────────────────────────────────────────────────────
 
@@ -51,7 +53,7 @@ type TrackListContext struct {
 	// ── Key callbacks ─────────────────────────────────────────────────────────
 
 	// OnEnter is called when the user presses Enter on a row.
-	// pos is the position within Tracks().
+	// pos is the position within the displayed list.
 	OnEnter func(a *App, pos int) tea.Cmd
 
 	// OnExtraKeys is called for any key that the shared engine does not handle.
@@ -80,7 +82,7 @@ type TrackListContext struct {
 	// ones.  Return nil when no extra hints are needed.
 	ExtraHints func(a *App) []statusHint
 
-	// EmptyMsg is the i18n key shown when Tracks() returns an empty slice.
+	// EmptyMsg is the i18n key shown when Count() returns zero.
 	// Defaults to "no_tracks_hint" when empty.
 	EmptyMsg string
 }
