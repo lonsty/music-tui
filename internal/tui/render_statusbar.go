@@ -139,6 +139,17 @@ func (a *App) renderStatusBar() string {
 			{"Tab", T("hint_switch_tab")},
 			{"q", T("hint_quit")},
 		}
+	} else if a.view != libraryViewTracks {
+		hints = []statusHint{
+			{"?", T("hint_help")},
+			{"Enter", T("hint_open_group")},
+			{"v", T("hint_view")},
+			{"c", T("hint_jump_playing")},
+			{"/", T("hint_search")},
+			{",", T("hint_settings")},
+			{"Tab", T("hint_switch_tab")},
+			{"q", T("hint_quit")},
+		}
 	} else {
 		// Local tab (and Online placeholder): delegate to the shared hint builder.
 		hints = buildTrackListHints(a, a.localTrackListCtx(), displayState)

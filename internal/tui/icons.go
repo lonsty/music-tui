@@ -107,6 +107,12 @@ func iconPlayMode(m playMode) string {
 // iconLibrary returns the local music library glyph.
 func iconLibrary() string { return icon("󰋌", "♫", "") }
 
+// iconAlbum returns the album group glyph.
+func iconAlbum() string { return icon("󰀥", "💿", "") }
+
+// iconArtist returns the artist group glyph.
+func iconArtist() string { return icon("󰠃", "🎤", "") }
+
 // iconSearch returns the search prompt glyph.
 func iconSearch() string { return icon("󰍉", "⌕", "/") }
 

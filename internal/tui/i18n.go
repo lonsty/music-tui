@@ -92,6 +92,10 @@ var translations = map[Lang]map[string]string{LangEN: {
 	"hint_enter_playlist": "Open",
 	"hint_retro":          "Retro",
 	"hint_like_toggle":    "Like",
+	"hint_view":           "View",
+	"hint_open_group":     "Open",
+	"hint_jump_playing":   "Now playing",
+	"hint_page":           "Page",
 	"chip_converting":     " 8-bit Converting… ",
 	"chip_switching":      " 8-bit Switching… ",
 	"chip_busy":           " 8-bit… ",
@@ -106,6 +110,9 @@ var translations = map[Lang]map[string]string{LangEN: {
 	"action_move_down":       "Move down",
 	"action_move_up":         "Move up",
 	"action_top_bottom":      "Top / Bottom",
+	"action_jump_playing":    "Jump to playing track",
+	"action_page":            "Page up / down",
+	"action_view":            "Cycle view  Tracks / Albums / Artists",
 	"action_play":            "Play  (2nd Enter → Fullscreen)",
 	"action_pause_resume":    "Pause / Resume",
 	"action_next_prev":       "Next / Previous",
@@ -190,7 +197,11 @@ var translations = map[Lang]map[string]string{LangEN: {
 	"tab_playlist": "Playlists",
 
 	// ── Library panel header ──────────────────────────────────────────────
-	"library_title": "Library",
+	"library_title":        "Library",
+	"library_view_albums":  "Albums",
+	"library_view_artists": "Artists",
+	"unknown_album":        "Unknown Album",
+	"clear_search_first":   "Clear the search first",
 	// library_count: single format arg = total filtered track count
 	"library_count": "%d tracks",
 	// library_count_playing: two format args = current position, total
@@ -278,6 +289,10 @@ var translations = map[Lang]map[string]string{LangEN: {
 		"hint_enter_playlist": "进入歌单",
 		"hint_retro":          "复古效果",
 		"hint_like_toggle":    "收藏",
+		"hint_view":           "视图",
+		"hint_open_group":     "打开",
+		"hint_jump_playing":   "正在播放",
+		"hint_page":           "翻页",
 		"chip_converting":     " 8-bit 转换中… ",
 		"chip_switching":      " 8-bit 切换中… ",
 		"chip_busy":           " 8-bit… ",
@@ -292,6 +307,9 @@ var translations = map[Lang]map[string]string{LangEN: {
 		"action_move_down":       "向下移动",
 		"action_move_up":         "向上移动",
 		"action_top_bottom":      "跳转顶部 / 底部",
+		"action_jump_playing":    "跳到正在播放",
+		"action_page":            "向上 / 向下翻页",
+		"action_view":            "切换视图  曲目 / 专辑 / 艺术家",
 		"action_play":            "播放（再次 Enter → 全屏）",
 		"action_pause_resume":    "暂停 / 继续",
 		"action_next_prev":       "下一首 / 上一首",
@@ -377,6 +395,10 @@ var translations = map[Lang]map[string]string{LangEN: {
 
 		// ── Library panel header ──────────────────────────────────────────────
 		"library_title":         "音乐库",
+		"library_view_albums":   "专辑",
+		"library_view_artists":  "艺术家",
+		"unknown_album":         "未知专辑",
+		"clear_search_first":    "请先清除搜索",
 		"library_count":         "%d 首",
 		"library_count_playing": "%d/%d 首",
 

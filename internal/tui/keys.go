@@ -162,6 +162,9 @@ func (a *App) handleKey(msg tea.KeyMsg) tea.Cmd {
 // ── Normal mode ───────────────────────────────────────────────────────────────
 
 func (a *App) handleNormalKey(msg tea.KeyMsg) tea.Cmd {
+	if a.view != libraryViewTracks {
+		return a.handleGroupKey(msg)
+	}
 	return a.handleSharedTrackListKey(a.localTrackListCtx(), msg)
 }
 
@@ -290,6 +293,7 @@ func (a *App) handleSearchKey(msg tea.KeyMsg) tea.Cmd {
 		a.searchInput.Blur()
 		a.searchInput.SetValue("")
 		a.applyFilter()
+		a.syncSearchLibraryView(false)
 		// After restoring the full list, position the cursor on the currently
 		// playing track so the user can see where they were.  visibleWindow
 		// will centre the playing row in the visible area automatically.
@@ -322,6 +326,7 @@ func (a *App) handleSearchKey(msg tea.KeyMsg) tea.Cmd {
 	var cmd tea.Cmd
 	a.searchInput, cmd = a.searchInput.Update(msg)
 	a.applyFilter()
+	a.syncSearchLibraryView(strings.TrimSpace(a.searchInput.Value()) != "")
 	a.syncRowMarquee()
 	return cmd
 }

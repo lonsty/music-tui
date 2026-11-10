@@ -70,6 +70,15 @@ type LibraryState struct {
 	cursorPos    int              // position in filteredIdxs of the cursor-selected track
 	formatPref   formatPreference // active format-display preference
 	lastQuery    string           // last applied search query; used to detect query changes
+
+	// Grouped browsing.  The group caches are rebuilt whenever the filter or
+	// format preference changes; render and key handling only read them.
+	view         libraryView
+	prevView     libraryView // view to restore when a search filter is cleared
+	groupCursor  int
+	albumGroups  []trackGroup
+	artistGroups []trackGroup
+	drilldown    *groupRef // non-nil while showing one album/artist's tracks
 }
 
 // ChipState holds the 8-bit chip conversion state.

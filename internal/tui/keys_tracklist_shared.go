@@ -136,6 +136,9 @@ func (a *App) handleSharedTrackListKey(ctx TrackListContext, msg tea.KeyMsg) tea
 		return a.cmdSeek(+seekStep)
 
 	// ── Views / panel control ─────────────────────────────────────────────────
+	case "v":
+		return a.cycleLibraryView()
+
 	case "f":
 		a.currentView = viewFullscreen
 
@@ -211,6 +214,11 @@ func (a *App) handleSharedTrackListKey(ctx TrackListContext, msg tea.KeyMsg) tea
 
 	// ── Esc ───────────────────────────────────────────────────────────────────
 	case "esc":
+		// Drilled-in album/artist returns to its group list first.
+		if a.drilldown != nil {
+			a.exitDrilldown()
+			return nil
+		}
 		// A visible search filter is cleared before any context-level Esc
 		// action, so the list never stays silently filtered.
 		if ctx.ShowSearchBar && strings.TrimSpace(a.searchInput.Value()) != "" {
@@ -218,6 +226,7 @@ func (a *App) handleSharedTrackListKey(ctx TrackListContext, msg tea.KeyMsg) tea
 			a.searchInput.Blur()
 			a.lastQuery = ""
 			a.applyFilter()
+			a.syncSearchLibraryView(false)
 			if a.currentTrack != nil {
 				if pos := a.filteredPos(a.currentTrack.ID); pos >= 0 {
 					*ctx.CursorPos = pos

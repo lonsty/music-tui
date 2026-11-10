@@ -290,66 +290,33 @@ func (a *App) cmdRetroDown() tea.Cmd {
 func (a *App) applyFilter() {
 	raw := strings.TrimSpace(a.searchInput.Value())
 
-	var field, q string
-	switch {
-	case strings.HasPrefix(raw, "s:"):
-		field = "artist"
-		q = strings.ToLower(strings.TrimPrefix(raw, "s:"))
-	case strings.HasPrefix(raw, "a:"):
-		field = "album"
-		q = strings.ToLower(strings.TrimPrefix(raw, "a:"))
-	case strings.HasPrefix(raw, "t:"):
-		field = "title"
-		q = strings.ToLower(strings.TrimPrefix(raw, "t:"))
-	case strings.HasPrefix(raw, "f:"):
-		field = "format"
-		q = strings.ToLower(strings.TrimPrefix(raw, "f:"))
-	default:
-		q = strings.ToLower(raw)
-	}
-
-	var candidate []library.Track
-	if q == "" {
-		candidate = a.tracks
-	} else {
+	source := a.tracks
+	if a.drilldown != nil {
+		source = make([]library.Track, 0, len(a.tracks))
 		for _, t := range a.tracks {
-			var match bool
-			switch field {
-			case "artist":
-				match = strings.Contains(strings.ToLower(t.DisplayArtist()), q)
-			case "album":
-				match = strings.Contains(strings.ToLower(t.Album), q)
-			case "title":
-				match = strings.Contains(strings.ToLower(t.DisplayTitle()), q)
-			case "format":
-				match = strings.Contains(strings.ToLower(t.Format()), q)
-			default:
-				match = strings.Contains(strings.ToLower(t.DisplayTitle()), q) ||
-					strings.Contains(strings.ToLower(t.DisplayArtist()), q) ||
-					strings.Contains(strings.ToLower(t.Album), q)
-			}
-			if match {
-				candidate = append(candidate, t)
+			if a.drilldown.ids[t.ID] {
+				source = append(source, t)
 			}
 		}
 	}
 
-	// Build the filtered index table from the candidate slice.
-	// candidate is already a subset of a.tracks (same Track values), so we
-	// look up each candidate's position in a.tracks by ID.
-	idToTrackPos := make(map[string]int, len(a.tracks))
-	for i := range a.tracks {
-		idToTrackPos[a.tracks[i].ID] = i
-	}
-
-	preferred := applyFormatPreference(candidate, a.formatPref)
-	newIdxs := make([]int, 0, len(preferred))
-	for _, t := range preferred {
-		if pos, ok := idToTrackPos[t.ID]; ok {
-			newIdxs = append(newIdxs, pos)
+	idxs := selectTrackIndices(source, raw, a.formatPref)
+	if a.drilldown != nil {
+		// selectTrackIndices returns positions into source; remap to a.tracks.
+		idToPos := make(map[string]int, len(a.tracks))
+		for i := range a.tracks {
+			idToPos[a.tracks[i].ID] = i
 		}
+		remapped := make([]int, 0, len(idxs))
+		for _, i := range idxs {
+			if pos, ok := idToPos[source[i].ID]; ok {
+				remapped = append(remapped, pos)
+			}
+		}
+		idxs = remapped
 	}
-	a.filteredIdxs = newIdxs
+	a.filteredIdxs = idxs
+	a.rebuildGroups()
 
 	// Invalidate shuffle so it is rebuilt from the new filtered list on next use.
 	a.shuffleIDs = nil
@@ -360,7 +327,7 @@ func (a *App) applyFilter() {
 	queryChanged := raw != a.lastQuery
 	a.lastQuery = raw
 
-	if queryChanged && q != "" {
+	if queryChanged && strings.TrimSpace(raw) != "" {
 		// New non-empty search: jump to first result.
 		a.cursorPos = 0
 	} else if len(a.filteredIdxs) == 0 {

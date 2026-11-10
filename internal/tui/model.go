@@ -24,6 +24,33 @@ const (
 	viewFullscreen             // Full-screen player + lyrics
 )
 
+// ── Library browsing ─────────────────────────────────────────────────────────
+
+// libraryView selects the grouping of the Local tab.
+type libraryView int
+
+const (
+	libraryViewTracks  libraryView = iota // flat track list
+	libraryViewAlbums                     // album groups
+	libraryViewArtists                    // artist groups
+	libraryViewCount                      // sentinel — must be last
+)
+
+// trackGroup is one album or artist row in a grouped library view.
+type trackGroup struct {
+	Key      string
+	Title    string
+	Subtitle string
+	IDs      []string
+}
+
+// groupRef identifies the group currently drilled into.
+type groupRef struct {
+	kind libraryView
+	key  string
+	ids  map[string]bool
+}
+
 // ── Settings overlay fields ───────────────────────────────────────────────────
 
 // settingsField identifies the active input field in the settings overlay.

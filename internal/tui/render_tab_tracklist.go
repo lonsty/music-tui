@@ -60,6 +60,9 @@ func (a *App) renderNormalBody() string {
 	default:
 	}
 	left := a.renderSharedTrackList(a.localTrackListCtx(), a.trackListInnerW(), a.panelInnerH())
+	if a.view != libraryViewTracks {
+		left = a.renderGroupList(a.trackListInnerW(), a.panelInnerH())
+	}
 	if !a.showMiniPlayer() {
 		return left
 	}
