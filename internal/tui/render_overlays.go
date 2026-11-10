@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"fmt"
 	"strings"
 
 	"github.com/charmbracelet/lipgloss"
@@ -64,6 +65,8 @@ func (a *App) renderHelpOverlay() string {
 			{"< / >", T("action_seek")},
 			{"+ / -", T("action_volume")},
 			{"m", T("action_cycle_mode")},
+			{"e / z", T("action_queue_add")},
+			{"Q", T("action_queue_open")},
 			{"r / R", T("action_lofi")},
 			{"b", T("action_chip")},
 			{"f", T("action_fullscreen")},
@@ -503,6 +506,50 @@ func (a *App) renderScrollableOverlay(titleRows, bodyRows, hintRows []string, in
 	// the terminal is too short.
 	return strings.Repeat("\n", topPad) +
 		lipgloss.Place(a.W, a.H-topPad, lipgloss.Center, lipgloss.Center, box)
+}
+
+// ── Queue overlay ─────────────────────────────────────────────────────────────
+
+func (a *App) renderQueueOverlay() string {
+	innerW := a.overlayInnerW(idealOverlayW, minOverlayW)
+	div := styleOverlayMuted.Render(strings.Repeat("─", innerW))
+
+	titleRows := []string{
+		styleOverlayTitle.Render(iconWithSpace(iconQueue()) + T("queue_title")),
+		div,
+	}
+
+	var bodyRows []string
+	if len(a.ids) == 0 {
+		bodyRows = append(bodyRows, "  "+styleOverlayMuted.Render(T("queue_empty")))
+	} else {
+		for i, id := range a.ids {
+			t := a.findTrackByID(id)
+			text := T("queue_missing_track")
+			if t != nil {
+				text = t.DisplayTitle() + " · " + displayArtist(*t)
+			}
+			isSelected := i == a.cursor
+			row := fmt.Sprintf("%2d  %s", i+1, text)
+			if isSelected {
+				bodyRows = append(bodyRows, styleTrackRowSelected.Render(padRight(row, innerW)))
+			} else {
+				bodyRows = append(bodyRows, styleTrackRowDefault.Render(padRight(row, innerW)))
+			}
+		}
+	}
+
+	xKey := styleOverlayKey.Render("❮x❯")
+	cKey := styleOverlayKey.Render("❮C❯")
+	escKey := styleOverlayKey.Render("❮Esc❯")
+	hintRows := []string{
+		div,
+		"  " + xKey + styleOverlayMuted.Render(" "+T("queue_remove")) + "  " +
+			cKey + styleOverlayMuted.Render(" "+T("queue_clear")) + "  " +
+			escKey + styleOverlayMuted.Render(" "+T("queue_close")),
+	}
+
+	return a.renderScrollableOverlay(titleRows, bodyRows, hintRows, innerW)
 }
 
 // ── Delete-playlist confirm overlay ──────────────────────────────────────────

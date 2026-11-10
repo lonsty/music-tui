@@ -133,6 +133,13 @@ type PlaylistState struct {
 	restorePlaylistID string
 }
 
+// QueueState holds the temporary play queue.  It is never persisted: quitting
+// discards it.
+type QueueState struct {
+	ids    []string // Track.ID values in play order
+	cursor int      // cursor inside the queue overlay
+}
+
 // LyricsState holds the lyrics for the currently playing track.
 // It is embedded in App and accessed via a.lines, a.activeIdx, etc.
 type LyricsState struct {
@@ -184,6 +191,7 @@ type App struct {
 	ChipState
 	LyricsState
 	PlaylistState
+	QueueState
 
 	// ── Search ───────────────────────────────────────────────────────────────
 	searchInput textinput.Model
@@ -941,7 +949,7 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return a, tick()
 
 	case trackDoneMsg:
-		return a, a.cmdPlayNext()
+		return a, a.cmdAdvance()
 
 	case tea.KeyMsg:
 		return a, a.handleKey(msg)

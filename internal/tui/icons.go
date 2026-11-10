@@ -113,6 +113,9 @@ func iconAlbum() string { return icon("󰀥", "💿", "") }
 // iconArtist returns the artist group glyph.
 func iconArtist() string { return icon("󰠃", "🎤", "") }
 
+// iconQueue returns the play-queue glyph.
+func iconQueue() string { return icon("󰐕", "🎶", "") }
+
 // iconSearch returns the search prompt glyph.
 func iconSearch() string { return icon("󰍉", "⌕", "/") }
 

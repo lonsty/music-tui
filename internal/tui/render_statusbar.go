@@ -79,6 +79,11 @@ func (a *App) renderStatusBar() string {
 		chipChip = "  " + styleStatusState.Render(T("chip_active"))
 	}
 
+	var queueChip string
+	if len(a.ids) > 0 {
+		queueChip = "  " + styleStatusState.Render(" "+fmt.Sprintf(T("queue_count"), len(a.ids))+" ")
+	}
+
 	// Fixed prefix: always rendered.
 	// Play mode icon is intentionally omitted here — it is shown in the
 	// mini/fullscreen player controls and in the collapsed-header status line.
@@ -91,7 +96,7 @@ func (a *App) renderStatusBar() string {
 		msgText := a.statusMsg
 		// Reserve space for 2 hint chips (~12 cols each) plus the fixed prefix.
 		const minHintW = 24
-		basePrefix := " " + stateChipStr + retroChip + chipChip + " "
+		basePrefix := " " + stateChipStr + retroChip + chipChip + queueChip + " "
 		maxMsgW := a.W - strWidth(basePrefix) - minHintW - 2 // -2 = trailing "  "
 		if maxMsgW < 8 {
 			maxMsgW = 8
@@ -101,7 +106,7 @@ func (a *App) renderStatusBar() string {
 		}
 		msgChip = " " + styleStatusState.Render(" "+msgText+" ")
 	}
-	prefix := " " + stateChipStr + retroChip + chipChip + msgChip + "  "
+	prefix := " " + stateChipStr + retroChip + chipChip + queueChip + msgChip + "  "
 	prefixW := strWidth(prefix)
 
 	// Build the prioritised hint list for the current state.

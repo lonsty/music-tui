@@ -226,6 +226,8 @@ func (a *App) render() string {
 		return a.renderAddToPlaylistOverlay()
 	case overlayDeletePlaylist:
 		return a.renderDeletePlaylistOverlay()
+	case overlayQueue:
+		return a.renderQueueOverlay()
 	}
 
 	tab := a.renderTabBar()

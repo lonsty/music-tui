@@ -109,7 +109,7 @@ func (a *App) handleKey(msg tea.KeyMsg) tea.Cmd {
 		a.currentTrack = nil
 		return nil
 	case "f9":
-		return a.cmdPlayNext()
+		return a.cmdAdvance()
 	case "f6":
 		return a.cmdPlayPrev()
 	case "f11":
@@ -149,6 +149,8 @@ func (a *App) handleKey(msg tea.KeyMsg) tea.Cmd {
 		return a.handleAddToPlaylistKey(msg)
 	case overlayDeletePlaylist:
 		return a.handleDeletePlaylistKey(msg)
+	case overlayQueue:
+		return a.handleQueueKey(msg)
 	}
 
 	// Playlist tab has its own key handler.
@@ -179,7 +181,7 @@ func (a *App) handleFullscreenKey(msg tea.KeyMsg) tea.Cmd {
 		return a.cmdTogglePause()
 
 	case "n":
-		return a.cmdPlayNext()
+		return a.cmdAdvance()
 
 	case "p":
 		return a.cmdPlayPrev()

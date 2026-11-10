@@ -104,7 +104,7 @@ func (a *App) handleSharedTrackListKey(ctx TrackListContext, msg tea.KeyMsg) tea
 		return a.cmdTogglePause()
 
 	case "n":
-		return a.cmdPlayNext()
+		return a.cmdAdvance()
 
 	case "p":
 		return a.cmdPlayPrev()
@@ -173,6 +173,17 @@ func (a *App) handleSharedTrackListKey(ctx TrackListContext, msg tea.KeyMsg) tea
 			a.searchInput.Focus()
 			a.searchInput.CursorEnd()
 		}
+
+	// ── Queue ─────────────────────────────────────────────────────────────────
+	case "e":
+		return a.enqueueCursor(ctx, true)
+	case "z":
+		return a.enqueueCursor(ctx, false)
+	case "Q":
+		a.activeOvl = overlayQueue
+		a.cursor = 0
+		a.ovlScrollRow = 0
+		return nil
 
 	// ── Like / Unlike ─────────────────────────────────────────────────────────
 	case "L":
@@ -425,6 +436,10 @@ func buildTrackListHints(a *App, ctx TrackListContext, displayState audio.State)
 				{"q", T("hint_quit")},
 			}
 		}
+	}
+
+	if len(a.ids) > 0 {
+		hints = append(hints, statusHint{"Q", T("hint_queue")})
 	}
 
 	return hints

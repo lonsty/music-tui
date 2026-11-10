@@ -88,7 +88,12 @@ func (a *App) cmdPlayTrack(pos int) tea.Cmd {
 	if pos < 0 || pos >= a.filteredLen() {
 		return nil
 	}
-	track := a.filteredTrack(pos) // value copy — safe across goroutine boundary
+	return a.cmdPlayTrackValue(a.filteredTrack(pos))
+}
+
+// cmdPlayTrackValue plays an explicit track value.  It is shared by list
+// selection and queue playback; neither touches filteredIdxs.
+func (a *App) cmdPlayTrackValue(track library.Track) tea.Cmd {
 	return func() tea.Msg {
 		src, err := a.resolveSource(context.Background(), track)
 		if err != nil {
@@ -100,6 +105,23 @@ func (a *App) cmdPlayTrack(pos int) tea.Cmd {
 		t := track
 		return playResultMsg{track: &t}
 	}
+}
+
+// cmdPlayTrackByID plays a track by ID without changing the visible list.
+func (a *App) cmdPlayTrackByID(id string) tea.Cmd {
+	t := a.findTrackByID(id)
+	if t == nil {
+		return nil
+	}
+	return a.cmdPlayTrackValue(*t)
+}
+
+// cmdAdvance chooses the next track: queue first, then the current play mode.
+func (a *App) cmdAdvance() tea.Cmd {
+	if id := a.popPlayableQueueID(); id != "" {
+		return a.cmdPlayTrackByID(id)
+	}
+	return a.cmdPlayNext()
 }
 
 // cmdPlayNext picks the next track according to the current playMode.

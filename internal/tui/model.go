@@ -163,6 +163,7 @@ const (
 	overlaySettings               // , key — settings
 	overlayAddToPlaylist          // a key in Library tab — add cursor track to a playlist
 	overlayDeletePlaylist         // d key in Playlist list — confirm delete
+	overlayQueue                  // Q key — temporary play queue
 )
 
 // ── Tab ───────────────────────────────────────────────────────────────────────
