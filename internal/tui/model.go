@@ -324,6 +324,7 @@ type playlistTracksLoadedMsg struct {
 	playlistID string
 	tracks     []library.Track
 	count      int
+	duplicate  bool
 	err        error
 }
 

@@ -3,6 +3,8 @@ package store
 import (
 	"path/filepath"
 	"testing"
+
+	"github.com/lonsty/music-tui/internal/library"
 )
 
 func openTestStore(t *testing.T) *Store {
@@ -13,6 +15,77 @@ func openTestStore(t *testing.T) *Store {
 	}
 	t.Cleanup(func() { _ = st.Close() })
 	return st
+}
+
+func TestMoveAndInsertTrack(t *testing.T) {
+	st := openTestStore(t)
+	for _, id := range []string{"a", "b", "c"} {
+		if err := st.UpsertTrack(library.Track{ID: id, Path: "/music/" + id + ".mp3", Title: id}, 1); err != nil {
+			t.Fatal(err)
+		}
+	}
+	pl, err := st.CreatePlaylist("Ordered")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i, id := range []string{"a", "b", "c"} {
+		if err := st.AddTrackToPlaylist(pl.ID, id, i); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	order := func() string {
+		tracks, err := st.GetPlaylistTracks(pl.ID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		out := ""
+		for _, tr := range tracks {
+			out += tr.ID
+		}
+		return out
+	}
+
+	if err := st.MoveTrack(pl.ID, "a", 1); err != nil {
+		t.Fatal(err)
+	}
+	if got := order(); got != "bac" {
+		t.Fatalf("after move down = %s, want bac", got)
+	}
+	if err := st.MoveTrack(pl.ID, "c", -1); err != nil {
+		t.Fatal(err)
+	}
+	if got := order(); got != "bca" {
+		t.Fatalf("after move up = %s, want bca", got)
+	}
+	if err := st.MoveTrack(pl.ID, "b", -1); err != nil {
+		t.Fatal(err)
+	}
+	if got := order(); got != "bca" {
+		t.Fatalf("boundary move changed order: %s", got)
+	}
+	if err := st.MoveTrack(pl.ID, "a", 1); err != nil {
+		t.Fatal(err)
+	}
+	if got := order(); got != "bca" {
+		t.Fatalf("boundary move down changed order: %s", got)
+	}
+
+	if err := st.RemoveTrackFromPlaylist(pl.ID, "b"); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.InsertTrackAt(pl.ID, "b", 0); err != nil {
+		t.Fatal(err)
+	}
+	if got := order(); got != "bca" {
+		t.Fatalf("after undo insert = %s, want bca", got)
+	}
+	if err := st.InsertTrackAt(pl.ID, "b", 0); err != nil {
+		t.Fatal(err)
+	}
+	if got := order(); got != "bca" {
+		t.Fatalf("duplicate insert changed order: %s", got)
+	}
 }
 
 func TestGetPlaylistsIncludesTrackCounts(t *testing.T) {

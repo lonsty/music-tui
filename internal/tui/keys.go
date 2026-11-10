@@ -737,9 +737,46 @@ func (a *App) handleAddTracksKey(msg tea.KeyMsg) tea.Cmd {
 
 // handleAddToPlaylistKey handles keys in the overlayAddToPlaylist overlay.
 func (a *App) handleAddToPlaylistKey(msg tea.KeyMsg) tea.Cmd {
+	if a.overlayCreating {
+		switch msg.String() {
+		case "esc":
+			a.overlayCreating = false
+			a.nameInput.Blur()
+			a.nameInput.SetValue("")
+			return nil
+		case "enter":
+			name := strings.TrimSpace(a.nameInput.Value())
+			if name == "" {
+				return nil
+			}
+			trackID := a.ovlNewTrackID
+			a.overlayCreating = false
+			a.ovlNewTrackID = ""
+			a.nameInput.Blur()
+			a.nameInput.SetValue("")
+			a.closeOverlay()
+			return a.cmdCreatePlaylistAndAdd(name, trackID)
+		default:
+			var cmd tea.Cmd
+			a.nameInput, cmd = a.nameInput.Update(msg)
+			return cmd
+		}
+	}
+
 	switch msg.String() {
 	case "esc":
 		a.closeOverlay()
+	case "n":
+		ct := a.cursorTrack()
+		if ct == nil {
+			return nil
+		}
+		a.overlayCreating = true
+		a.ovlNewTrackID = ct.ID
+		a.nameInput.Placeholder = T("playlist_new_prompt")
+		a.nameInput.SetValue("")
+		a.nameInput.Focus()
+		return textinput.Blink
 	case "j", "down":
 		if a.ovlPlCursor < len(a.ovlPlaylists)-1 {
 			a.ovlPlCursor++

@@ -93,6 +93,16 @@ type ChipState struct {
 	chip8Options   string // extra CLI options forwarded to p2chip
 }
 
+// undoRemove records a removed playlist track so it can be restored within
+// the undo window.
+type undoRemove struct {
+	playlistID string
+	trackID    string
+	position   int
+	title      string
+	expiresAt  time.Time
+}
+
 // PlaylistState holds playlist management state.
 // It is embedded in App and accessed via a.playlists, a.listCursor, etc.
 type PlaylistState struct {
@@ -110,6 +120,16 @@ type PlaylistState struct {
 	addResults   []int           // indices into a.tracks that match addInput
 	addCursor    int             // cursor in addResults
 	addDelta     map[string]int  // net change per track: +1 added, -1 removed, 0 cancelled
+
+	// overlayCreating is true while the add-to-playlist overlay shows its
+	// inline "create playlist" input.  ovlNewTrackID remembers which track
+	// should be added to the newly created playlist.
+	overlayCreating bool
+	ovlNewTrackID   string
+
+	// undoRemove is the most recent track removal, kept for the 5-second
+	// undo window.
+	undoRemove *undoRemove
 
 	// plListMaxColW caches the max display width of the right-column
 	// track count across all playlists.  Recomputed in playlistsLoadedMsg
@@ -750,6 +770,10 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			a.statusMsg = T("playlist_load_error") + ": " + msg.err.Error()
 			a.statusMsgExpiry = time.Now().Add(statusMsgDuration)
 			return a, nil
+		}
+		if msg.duplicate {
+			a.statusMsg = T("playlist_duplicate")
+			a.statusMsgExpiry = time.Now().Add(statusMsgDuration)
 		}
 		// Keep the cached list counts fresh for every playlist mutation.
 		for i := range a.playlists {

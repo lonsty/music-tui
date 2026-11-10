@@ -144,6 +144,8 @@ var translations = map[Lang]map[string]string{LangEN: {
 	"action_rename_playlist": "Rename playlist",
 	"action_delete_playlist": "Delete playlist",
 	"action_remove_track":    "Remove track",
+	"action_move_track":      "Move track down / up",
+	"action_undo":            "Undo remove  (5 seconds)",
 
 	"help_section_global":   "── Global ────────────────────────────────",
 	"help_section_local":    "── Local Tab ─────────────────────────────",
@@ -249,6 +251,11 @@ var translations = map[Lang]map[string]string{LangEN: {
 	"playlist_add_remove_summary": "Added %d, removed %d tracks",
 	"playlist_back_hint":          "",
 	"playlist_add_title":          "Add to Playlist",
+	"playlist_create_add_title":   "New Playlist",
+	"playlist_created_added":      "Created %s and added the track",
+	"playlist_duplicate":          "Already in the playlist",
+	"undo_restored":               "Restored %s",
+	"undo_expired":                "Undo expired",
 	// ── Queue ────────────────────────────────────────────────────────────
 	"queue_title":                "Play Queue",
 	"queue_empty":                "Queue is empty — press e or z on a track",
@@ -355,6 +362,8 @@ var translations = map[Lang]map[string]string{LangEN: {
 		"action_rename_playlist": "重命名歌单",
 		"action_delete_playlist": "删除歌单",
 		"action_remove_track":    "移除曲目",
+		"action_move_track":      "曲目下移 / 上移",
+		"action_undo":            "撤销移除（5 秒内）",
 
 		"help_section_global":   "── 全局 ──────────────────────────────────",
 		"help_section_local":    "── 本地标签 ──────────────────────────────",
@@ -454,6 +463,11 @@ var translations = map[Lang]map[string]string{LangEN: {
 		"playlist_add_remove_summary": "已添加 %d 首，已移除 %d 首",
 		"playlist_back_hint":          "",
 		"playlist_add_title":          "加入歌单",
+		"playlist_create_add_title":   "新建歌单",
+		"playlist_created_added":      "已创建 %s 并添加曲目",
+		"playlist_duplicate":          "已在歌单中",
+		"undo_restored":               "已恢复 %s",
+		"undo_expired":                "撤销已过期",
 		// ── Queue ────────────────────────────────────────────────────────────
 		"queue_title":                "播放队列",
 		"queue_empty":                "队列为空 — 在曲目上按 e 或 z",

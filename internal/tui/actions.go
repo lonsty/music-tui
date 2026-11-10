@@ -588,6 +588,9 @@ func chip8CacheKey(path string) string {
 }
 
 // shellSplit splits a string into tokens the way a POSIX shell would,
+// playlistUndoWindow is how long a removed playlist track can be restored.
+const playlistUndoWindow = 5 * time.Second
+
 // ── Playlist commands ─────────────────────────────────────────────────────────
 
 // cmdLoadPlaylists fetches all playlists from the DB and returns them via
@@ -663,6 +666,16 @@ func (a *App) cmdAddTrackToPlaylist(playlistID, trackID string) tea.Cmd {
 		if a.st == nil {
 			return playlistTracksLoadedMsg{playlistID: playlistID}
 		}
+		if in, _ := a.st.IsTrackInPlaylist(playlistID, trackID); in {
+			tracks, _ := a.st.GetPlaylistTracks(playlistID)
+			count, _ := a.st.PlaylistTrackCount(playlistID)
+			return playlistTracksLoadedMsg{
+				playlistID: playlistID,
+				tracks:     tracks,
+				count:      count,
+				duplicate:  true,
+			}
+		}
 		// Use current track count as append position.
 		count, _ := a.st.PlaylistTrackCount(playlistID)
 		if err := a.st.AddTrackToPlaylist(playlistID, trackID, count); err != nil {
@@ -671,6 +684,60 @@ func (a *App) cmdAddTrackToPlaylist(playlistID, trackID string) tea.Cmd {
 		tracks, err := a.st.GetPlaylistTracks(playlistID)
 		newCount, _ := a.st.PlaylistTrackCount(playlistID)
 		return playlistTracksLoadedMsg{playlistID: playlistID, tracks: tracks, count: newCount, err: err}
+	}
+}
+
+// cmdMoveTrack moves a track within its playlist and returns the reloaded list.
+func (a *App) cmdMoveTrack(playlistID, trackID string, delta int) tea.Cmd {
+	return func() tea.Msg {
+		if a.st == nil {
+			return playlistTracksLoadedMsg{playlistID: playlistID}
+		}
+		if err := a.st.MoveTrack(playlistID, trackID, delta); err != nil {
+			return playlistTracksLoadedMsg{playlistID: playlistID, err: err}
+		}
+		tracks, err := a.st.GetPlaylistTracks(playlistID)
+		count, _ := a.st.PlaylistTrackCount(playlistID)
+		return playlistTracksLoadedMsg{playlistID: playlistID, tracks: tracks, count: count, err: err}
+	}
+}
+
+// cmdInsertTrackAt restores a removed track at its original position.
+func (a *App) cmdInsertTrackAt(playlistID, trackID string, position int) tea.Cmd {
+	return func() tea.Msg {
+		if a.st == nil {
+			return playlistTracksLoadedMsg{playlistID: playlistID}
+		}
+		if err := a.st.InsertTrackAt(playlistID, trackID, position); err != nil {
+			return playlistTracksLoadedMsg{playlistID: playlistID, err: err}
+		}
+		tracks, err := a.st.GetPlaylistTracks(playlistID)
+		count, _ := a.st.PlaylistTrackCount(playlistID)
+		return playlistTracksLoadedMsg{playlistID: playlistID, tracks: tracks, count: count, err: err}
+	}
+}
+
+// cmdCreatePlaylistAndAdd creates a playlist and adds trackID to it.
+func (a *App) cmdCreatePlaylistAndAdd(name, trackID string) tea.Cmd {
+	return func() tea.Msg {
+		if a.st == nil {
+			return playlistsLoadedMsg{}
+		}
+		pl, err := a.st.CreatePlaylist(name)
+		if err != nil {
+			return playlistsLoadedMsg{err: err}
+		}
+		if trackID != "" {
+			if err := a.st.AddTrackToPlaylist(pl.ID, trackID, 0); err != nil {
+				return playlistsLoadedMsg{err: err}
+			}
+		}
+		pls, err := a.st.GetPlaylists()
+		return playlistsLoadedMsg{
+			playlists:  pls,
+			err:        err,
+			successMsg: fmt.Sprintf(T("playlist_created_added"), name),
+		}
 	}
 }
 

@@ -197,6 +197,105 @@ func (s *Store) GetPlaylistTracks(playlistID string) ([]library.Track, error) {
 	return tracks, rows.Err()
 }
 
+// MoveTrack moves trackID one position up (delta < 0) or down (delta > 0)
+// inside the playlist and rewrites the positions of all affected rows in one
+// transaction.  Moving the first track up or the last track down is a no-op.
+func (s *Store) MoveTrack(playlistID, trackID string, delta int) error {
+	tx, err := s.db.Begin()
+	if err != nil {
+		return fmt.Errorf("move track begin: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	ids, err := orderedTrackIDs(tx, playlistID)
+	if err != nil {
+		return err
+	}
+	from := -1
+	for i, id := range ids {
+		if id == trackID {
+			from = i
+			break
+		}
+	}
+	to := from + delta
+	if from < 0 || to < 0 || to >= len(ids) {
+		return nil
+	}
+	ids[from], ids[to] = ids[to], ids[from]
+
+	for i, id := range ids {
+		if _, err := tx.Exec(
+			`UPDATE playlist_tracks SET position = ? WHERE playlist_id = ? AND track_id = ?`,
+			i, playlistID, id,
+		); err != nil {
+			return fmt.Errorf("move track update: %w", err)
+		}
+	}
+	return tx.Commit()
+}
+
+// InsertTrackAt inserts trackID at position, shifting later tracks down.
+// Inserting a track that is already in the playlist is a no-op.
+func (s *Store) InsertTrackAt(playlistID, trackID string, position int) error {
+	tx, err := s.db.Begin()
+	if err != nil {
+		return fmt.Errorf("insert track begin: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	if position < 0 {
+		position = 0
+	}
+	var existing int
+	if err := tx.QueryRow(
+		`SELECT COUNT(*) FROM playlist_tracks WHERE playlist_id = ? AND track_id = ?`,
+		playlistID, trackID,
+	).Scan(&existing); err != nil {
+		return fmt.Errorf("insert track check: %w", err)
+	}
+	if existing > 0 {
+		return nil
+	}
+	if _, err := tx.Exec(
+		`UPDATE playlist_tracks SET position = position + 1
+		 WHERE playlist_id = ? AND position >= ?`,
+		playlistID, position,
+	); err != nil {
+		return fmt.Errorf("insert track shift: %w", err)
+	}
+	if _, err := tx.Exec(
+		`INSERT OR IGNORE INTO playlist_tracks(playlist_id, track_id, position)
+		 VALUES (?, ?, ?)`,
+		playlistID, trackID, position,
+	); err != nil {
+		return fmt.Errorf("insert track: %w", err)
+	}
+	return tx.Commit()
+}
+
+// orderedTrackIDs returns the playlist's track IDs in position order.
+func orderedTrackIDs(tx *sql.Tx, playlistID string) ([]string, error) {
+	rows, err := tx.Query(
+		`SELECT track_id FROM playlist_tracks WHERE playlist_id = ? ORDER BY position ASC`,
+		playlistID,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("ordered track ids: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+
+	var ids []string
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			return nil, fmt.Errorf("scan ordered track id: %w", err)
+		}
+		ids = append(ids, id)
+	}
+	return ids, rows.Err()
+}
+
 // PlaylistTrackCount returns the number of tracks in a playlist.
 // Returns 0 for an unknown playlist ID.
 func (s *Store) PlaylistTrackCount(playlistID string) (int, error) {

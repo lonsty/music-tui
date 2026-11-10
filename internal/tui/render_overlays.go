@@ -89,6 +89,8 @@ func (a *App) renderHelpOverlay() string {
 			{"r", T("action_rename_playlist")},
 			{"d", T("action_delete_playlist")},
 			{"x", T("action_remove_track")},
+			{"u", T("action_undo")},
+			{"J / K", T("action_move_track")},
 			{"L", T("action_like")},
 		}},
 		{T("help_section_media"), []binding{
@@ -598,6 +600,26 @@ func (a *App) renderAddToPlaylistOverlay() string {
 	innerW := a.overlayInnerW(idealOverlayW, minOverlayW)
 	div := styleOverlayMuted.Render(strings.Repeat("─", innerW))
 
+	if a.overlayCreating {
+		titleRows := []string{
+			styleOverlayTitle.Render(iconWithSpace(iconPlaylist()) + T("playlist_create_add_title")),
+			div,
+		}
+		bodyRows := []string{
+			"",
+			"  " + styleSearchPrompt.Render(T("playlist_new_prompt")+": ") + a.nameInput.View(),
+			"",
+		}
+		enterKey := styleOverlayKey.Render("❮Enter❯")
+		escKey := styleOverlayKey.Render("❮Esc❯")
+		hintRows := []string{
+			div,
+			"  " + enterKey + styleOverlayMuted.Render(" "+T("settings_save")) + "  " +
+				escKey + styleOverlayMuted.Render(" "+T("settings_cancel")),
+		}
+		return a.renderScrollableOverlay(titleRows, bodyRows, hintRows, innerW)
+	}
+
 	titleRows := []string{
 		styleOverlayTitle.Render(iconWithSpace(iconPlaylist()) + T("playlist_add_title")),
 		div,
@@ -622,9 +644,11 @@ func (a *App) renderAddToPlaylistOverlay() string {
 
 	enterKey := styleOverlayKey.Render("❮Enter❯")
 	escKey := styleOverlayKey.Render("❮Esc❯")
+	newKey := styleOverlayKey.Render("❮n❯")
 	hintRows := []string{
 		div,
 		"  " + enterKey + styleOverlayMuted.Render(" add  ") +
+			newKey + styleOverlayMuted.Render(" "+T("hint_playlist_new")+"  ") +
 			escKey + styleOverlayMuted.Render(" cancel"),
 	}
 
