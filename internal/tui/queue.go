@@ -10,13 +10,12 @@ import (
 
 // findTrackByID returns a copy of the track with the given ID, or nil.
 func (a *App) findTrackByID(id string) *library.Track {
-	for i := range a.tracks {
-		if a.tracks[i].ID == id {
-			t := a.tracks[i]
-			return &t
-		}
+	pos := a.trackPos(id)
+	if pos < 0 {
+		return nil
 	}
-	return nil
+	t := a.tracks[pos]
+	return &t
 }
 
 func (a *App) queueHas(id string) bool {
@@ -126,14 +125,5 @@ func (a *App) handleQueueKey(msg tea.KeyMsg) tea.Cmd {
 // keepQueueCursorVisible scrolls the overlay body so the queue cursor stays
 // inside the visible rows.
 func (a *App) keepQueueCursorVisible() {
-	const chromeRows = 10
-	bodyAvail := a.H - chromeRows
-	if bodyAvail < 1 {
-		bodyAvail = 1
-	}
-	if a.cursor < a.ovlScrollRow {
-		a.ovlScrollRow = a.cursor
-	} else if a.cursor >= a.ovlScrollRow+bodyAvail {
-		a.ovlScrollRow = a.cursor - bodyAvail + 1
-	}
+	a.scrollOverlayToCursor(a.cursor)
 }

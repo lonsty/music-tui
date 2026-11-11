@@ -304,8 +304,8 @@ func syncMarquee(a *App, ctx TrackListContext) {
 }
 
 // buildTrackListHints constructs the status-bar hint slice for a track-list
-// context.  It combines the shared hints (playback, panel) with any
-// context-specific extra hints returned by ctx.ExtraHints.
+// context.  It combines the shared hints (playback, panel) with the
+// context-specific actions that are always available.
 func buildTrackListHints(a *App, ctx TrackListContext, displayState audio.State) []statusHint {
 	lyricsHintLabel := T("hint_lyrics")
 	if a.rightMode == rightPanelLyrics {

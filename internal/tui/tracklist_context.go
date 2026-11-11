@@ -76,12 +76,6 @@ type TrackListContext struct {
 	// Return nil to disable the Like action in this context.
 	LikeTarget func(a *App) *library.Track
 
-	// ── Status-bar hints ──────────────────────────────────────────────────────
-
-	// ExtraHints returns context-specific hints appended after the shared
-	// ones.  Return nil when no extra hints are needed.
-	ExtraHints func(a *App) []statusHint
-
 	// EmptyMsg is the i18n key shown when Count() returns zero.
 	// Defaults to "no_tracks_hint" when empty.
 	EmptyMsg string

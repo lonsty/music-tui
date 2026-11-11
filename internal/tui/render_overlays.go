@@ -7,6 +7,19 @@ import (
 	"github.com/charmbracelet/lipgloss"
 )
 
+// Pre-declared settings-row styles.  The selected variants paint the row with
+// surface0; the unselected ones reuse the shared overlay styles.
+var (
+	styleSettingsSpace         = lipgloss.NewStyle()
+	styleSettingsSpaceSelected = lipgloss.NewStyle().Background(lipgloss.Color(surface0))
+	styleSettingsLabel         = styleOverlayKey
+	styleSettingsLabelSelected = styleOverlayKey.
+					Background(lipgloss.Color(surface0)).
+					Foreground(lipgloss.Color(mauve))
+	styleSettingsValue         = styleOverlayValue
+	styleSettingsValueSelected = styleOverlayValue.Background(lipgloss.Color(surface0))
+)
+
 // overlayInnerW returns the usable content width (columns) for an overlay box
 // given the current terminal width.  It subtracts the box border (2 cols each
 // side = 2 total for RoundedBorder) and the horizontal padding defined by
@@ -97,6 +110,7 @@ func (a *App) renderHelpOverlay() string {
 		{T("help_section_media"), []binding{
 			{"F6 / F9", T("action_media_prev_next")},
 			{"F7", T("action_media_play")},
+			{"F8", T("action_media_stop")},
 			{"F11 / F12", T("action_media_vol")},
 		}},
 	}
@@ -238,27 +252,26 @@ func (a *App) renderSettingsOverlay() string {
 		return styleOverlayMuted.Render("── " + label + " " + strings.Repeat("─", fill))
 	}
 
-	// selBg returns the surface0 colour when active, empty (transparent) otherwise.
-	selBg := func(active bool) lipgloss.Color {
-		if active {
-			return lipgloss.Color(surface0)
-		}
-		return lipgloss.Color("")
-	}
-
+	// Styles are pre-declared: lipgloss.Style is a value, so selecting one does
+	// not allocate per field per frame.
 	spaceStyle := func(active bool) lipgloss.Style {
-		return lipgloss.NewStyle().Background(selBg(active))
+		if active {
+			return styleSettingsSpaceSelected
+		}
+		return styleSettingsSpace
 	}
 
 	labelStyle := func(active bool) lipgloss.Style {
-		s := styleOverlayKey.Background(selBg(active))
 		if active {
-			return s.Foreground(lipgloss.Color(mauve))
+			return styleSettingsLabelSelected
 		}
-		return s
+		return styleSettingsLabel
 	}
 	valueStyle := func(active bool) lipgloss.Style {
-		return styleOverlayValue.Background(selBg(active))
+		if active {
+			return styleSettingsValueSelected
+		}
+		return styleSettingsValue
 	}
 
 	buildFieldLine := func(label, value string, active bool) string {
@@ -322,7 +335,7 @@ func (a *App) renderSettingsOverlay() string {
 	}
 	langLabel := labelStyle(langActive).Render(T("settings_lang_label") + strings.Repeat(" ", langPad))
 	var langView string
-	if activeLang == LangZH {
+	if ActiveLang() == LangZH {
 		langView = valueStyle(langActive).Render(T("settings_lang_zh"))
 	} else {
 		langView = valueStyle(langActive).Render(T("settings_lang_en"))
@@ -429,6 +442,24 @@ func (a *App) renderSettingsOverlay() string {
 // innerW is the content width (columns) computed by overlayInnerW.  Every row
 // is clipped to innerW before being passed to lipgloss so the box never grows
 // wider than intended regardless of what the callers put in the rows slices.
+// scrollOverlayToCursor adjusts ovlScrollRow so that cursor stays inside the
+// visible body of a scrollable overlay.
+func (a *App) scrollOverlayToCursor(cursor int) {
+	// Approximate body-available rows: terminal height minus overlay chrome.
+	// renderScrollableOverlay: boxBorderH=2 + boxPadV=2 + outerMargin=2 +
+	// titleRows=2 + hintRows=2 = 10 total fixed rows.
+	const chromeRows = 10
+	bodyAvail := a.H - chromeRows
+	if bodyAvail < 1 {
+		bodyAvail = 1
+	}
+	if cursor < a.ovlScrollRow {
+		a.ovlScrollRow = cursor
+	} else if cursor >= a.ovlScrollRow+bodyAvail {
+		a.ovlScrollRow = cursor - bodyAvail + 1
+	}
+}
+
 func (a *App) renderScrollableOverlay(titleRows, bodyRows, hintRows []string, innerW int) string {
 	const boxBorderH = 2  // top + bottom rounded-border lines
 	const boxPadV = 2     // styleOverlayBox.Padding(1, 2) → 1 top + 1 bottom

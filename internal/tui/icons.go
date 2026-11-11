@@ -1,5 +1,7 @@
 package tui
 
+import "sync/atomic"
+
 // Package-level icon system.
 //
 // All Nerd Font glyphs, emoji, and plain-text fallbacks are defined here.
@@ -39,21 +41,24 @@ const (
 	iconSetCount // sentinel — must be last
 )
 
-// activeIconSet is the process-wide icon style.  Change it with setIconSet.
-var activeIconSet = iconSetNerdFont
+// activeIconSet is the process-wide icon style.  It is read by View and
+// written by Update, so it is stored atomically.
+var activeIconSet atomic.Int32
+
+func init() { activeIconSet.Store(int32(iconSetNerdFont)) }
 
 // setIconSet changes the active icon set.  Safe to call at any time; the
 // change takes effect on the next render tick.
-func setIconSet(s iconSet) { activeIconSet = s }
+func setIconSet(s iconSet) { activeIconSet.Store(int32(s)) }
 
 // ActiveIconSet returns the currently active icon set.
-func ActiveIconSet() iconSet { return activeIconSet }
+func ActiveIconSet() iconSet { return iconSet(activeIconSet.Load()) }
 
 // icon selects between three alternatives based on the active icon set.
 // nf is the Nerd Font glyph, emoji is the single-column Unicode symbol, and
 // plain is the ASCII fallback (may be empty).
 func icon(nf, emoji, plain string) string {
-	switch activeIconSet {
+	switch ActiveIconSet() {
 	case iconSetEmoji:
 		return emoji
 	case iconSetPlain:

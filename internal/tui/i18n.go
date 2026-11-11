@@ -1,5 +1,7 @@
 package tui
 
+import "sync/atomic"
+
 // Lang represents a UI display language.
 type Lang int
 
@@ -10,41 +12,40 @@ const (
 	LangZH
 )
 
-// activeLang is the current UI language.  Change it via SetLang.
-var activeLang = LangEN
+// langSnapshot is an immutable (language, translation table) pair.  View and
+// Update may run on different goroutines, so the active language is published
+// as a single atomic pointer instead of two plain globals.
+type langSnapshot struct {
+	lang  Lang
+	table map[string]string
+}
 
-// activeLangMap caches the translation map for the current language so that
-// T() can perform a single map lookup on the hot render path instead of two
-// (once for the active language, once for the English fallback).
-// Updated atomically by SetLang.
-var activeLangMap map[string]string
+var activeLang atomic.Pointer[langSnapshot]
 
 // SetLang changes the active UI language for the current process.
-// It is safe to call before or after NewApp; the change takes effect on the
-// next render tick.
+// It is safe to call at any time; the change takes effect on the next render.
 func SetLang(l Lang) {
-	activeLang = l
-	activeLangMap = translations[l]
+	activeLang.Store(&langSnapshot{lang: l, table: translations[l]})
 }
 
 // ActiveLang returns the currently active UI language.
-func ActiveLang() Lang { return activeLang }
+func ActiveLang() Lang { return activeLang.Load().lang }
 
 // T returns the localised string for key in the active language.
 // Falls back to English when the key is absent in the active language.
 // Returns key itself when not found in any language, so missing translations
 // degrade gracefully rather than panicking.
 //
-// Performance: activeLangMap is a direct reference to the inner translation
-// map, making the common case a single map lookup with no intermediate
-// allocation.
+// Performance: the snapshot holds the inner translation map directly, so the
+// common case is one pointer load plus one map lookup.
 func T(key string) string {
-	if s, ok := activeLangMap[key]; ok {
+	snap := activeLang.Load()
+	if s, ok := snap.table[key]; ok {
 		return s
 	}
 	// Fallback path: look up in English (only reached when the active language
 	// is missing a key, which should not happen in production).
-	if activeLang != LangEN {
+	if snap.lang != LangEN {
 		if s, ok := translations[LangEN][key]; ok {
 			return s
 		}
@@ -138,6 +139,7 @@ var translations = map[Lang]map[string]string{LangEN: {
 	"action_quit":            "Quit  (press q twice)",
 	"action_media_prev_next": "Prev / Next  (media key mapping)",
 	"action_media_play":      "Play / Pause  (media key mapping)",
+	"action_media_stop":      "Stop  (media key mapping)",
 	"action_media_vol":       "Vol down / up  (media key mapping)",
 
 	"action_like":            "Toggle like / Favorites",
@@ -180,6 +182,7 @@ var translations = map[Lang]map[string]string{LangEN: {
 	"settings_opts_hint":    "Extra options appended to the p2chip command.",
 	"settings_opts_example": "e.g.  --sf2 nes --onset 0.6",
 	"settings_save":         "save",
+	"settings_save_error":   "Could not save settings: %v",
 	"settings_cancel":       "cancel",
 	"settings_switch":       "switch field",
 	"settings_edit":         "edit / toggle",
@@ -365,6 +368,7 @@ var translations = map[Lang]map[string]string{LangEN: {
 		"action_quit":            "退出（连按两次 q）",
 		"action_media_prev_next": "上一首 / 下一首（媒体键映射）",
 		"action_media_play":      "播放 / 暂停（媒体键映射）",
+		"action_media_stop":      "停止（媒体键映射）",
 		"action_media_vol":       "音量减小 / 增大（媒体键映射）",
 
 		"action_like":            "收藏 / 取消收藏",
@@ -407,6 +411,7 @@ var translations = map[Lang]map[string]string{LangEN: {
 		"settings_opts_hint":    "附加到 p2chip 命令的额外选项。",
 		"settings_opts_example": "例：--sf2 nes --onset 0.6",
 		"settings_save":         "保存",
+		"settings_save_error":   "保存设置失败：%v",
 		"settings_cancel":       "取消",
 		"settings_switch":       "切换字段",
 		"settings_edit":         "编辑 / 切换",
@@ -506,7 +511,7 @@ var translations = map[Lang]map[string]string{LangEN: {
 }
 
 func init() {
-	// Initialise activeLangMap after the translations var is ready.
+	// Initialise the active snapshot after the translations var is ready.
 	// This guarantees T() works correctly even before SetLang is called.
-	activeLangMap = translations[LangEN]
+	SetLang(LangEN)
 }

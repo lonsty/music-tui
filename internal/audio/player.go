@@ -174,12 +174,6 @@ func (p *Player) Play(track library.Track) error {
 	return p.playAt(LocalSource{Path: track.Path}, 0)
 }
 
-// PlayAt starts the track at offsetDur into the file.
-// It is a convenience wrapper around PlaySourceAt for local tracks.
-func (p *Player) PlayAt(track library.Track, offsetDur time.Duration) error {
-	return p.playAt(LocalSource{Path: track.Path}, offsetDur)
-}
-
 // PlaySource stops any current playback and starts the given StreamSource.
 // Use this method when the audio origin is not a local file path (e.g. HTTP
 // streams or platform API sources).
@@ -398,7 +392,7 @@ func (p *Player) Seek(d time.Duration) error {
 
 // SetVolume sets playback volume. v ∈ [0.0, 2.0]; 1.0 = unity gain.
 // The value is persisted in the player so it is applied automatically when
-// the next track is loaded via Play or PlayAt.
+// the next track is loaded via Play or PlaySource.
 //
 // Note: if a new track starts between the p.mu.Unlock and the speaker.Lock
 // below, vol may refer to the old stream's Volume object.  This is benign —

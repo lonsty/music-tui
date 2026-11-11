@@ -58,10 +58,12 @@ func (s *Store) Close() error {
 	return s.db.Close()
 }
 
-// migrate applies all schema changes in a single transaction.
-// There is only one version (1) which creates the complete schema from scratch.
-// New columns or tables should be added directly to this single CREATE TABLE
-// block — no separate ALTER TABLE migrations are needed for a fresh install.
+// migrate applies all pending schema changes in a single transaction.
+//
+// Migrations are append-only: published versions must never be edited, because
+// existing databases have already applied them.  New columns, tables, or
+// indexes are added as a new version with the matching ALTER/CREATE statement;
+// a fresh install simply replays every version in order.
 func migrate(db *sql.DB) error {
 	// Bootstrap the migrations tracker table first (idempotent).
 	if _, err := db.Exec(`
@@ -115,6 +117,22 @@ func migrate(db *sql.DB) error {
 				position    INTEGER NOT NULL DEFAULT 0,
 				PRIMARY KEY (playlist_id, track_id)
 			);
+		`},
+		{2, `
+			-- Playlist tracks are always read in position order.
+			CREATE INDEX IF NOT EXISTS idx_playlist_tracks_pos
+				ON playlist_tracks(playlist_id, position);
+
+			-- Expression index matching AllTracks' ORDER BY exactly, so the
+			-- startup/reload query avoids a temporary B-tree sort.
+			CREATE INDEX IF NOT EXISTS idx_tracks_order
+				ON tracks(
+					LOWER(COALESCE(NULLIF(album_artist,''), artist, '')),
+					year,
+					LOWER(album),
+					CAST(SUBSTR(track_number, 1, INSTR(track_number||'/', '/')-1) AS INTEGER),
+					LOWER(title)
+				);
 		`},
 	}
 
@@ -201,10 +219,9 @@ func (s *Store) SetSettings(pairs map[string]string) error {
 
 // ── Tracks ────────────────────────────────────────────────────────────────────
 
-// AllTracks returns all tracks from the database in the standard sort order:
-// album artist → year → album → track number → title.
-func (s *Store) AllTracks() ([]library.Track, error) {
-	rows, err := s.db.Query(`
+// allTracksQuery is shared by AllTracks and the query-plan test that verifies
+// idx_tracks_order removes the temporary sort.
+const allTracksQuery = `
 		SELECT id, path, title, artist, album_artist, album,
 		       year, track_number, genre, comment,
 		       duration_ms, cover_path, format
@@ -215,7 +232,12 @@ func (s *Store) AllTracks() ([]library.Track, error) {
 			LOWER(album),
 			CAST(SUBSTR(track_number, 1, INSTR(track_number||'/', '/')-1) AS INTEGER),
 			LOWER(title)
-	`)
+	`
+
+// AllTracks returns all tracks from the database in the standard sort order:
+// album artist → year → album → track number → title.
+func (s *Store) AllTracks() ([]library.Track, error) {
+	rows, err := s.db.Query(allTracksQuery)
 	if err != nil {
 		return nil, err
 	}
@@ -273,8 +295,8 @@ func (s *Store) AllTrackMtimes() (map[string]int64, error) {
 }
 
 // UpsertTrack inserts or replaces a track record.
-func (s *Store) UpsertTrack(t library.Track, mtime int64) error {
-	_, err := s.db.Exec(`
+// upsertTrackSQL is shared by the single-row API and the batched sync writer.
+const upsertTrackSQL = `
 		INSERT INTO tracks
 			(id, path, title, artist, album_artist, album,
 			 year, track_number, genre, comment,
@@ -294,18 +316,19 @@ func (s *Store) UpsertTrack(t library.Track, mtime int64) error {
 			cover_path   = excluded.cover_path,
 			format       = excluded.format,
 			mtime        = excluded.mtime
-	`,
+	`
+
+func upsertTrackArgs(t library.Track, mtime int64) []any {
+	return []any{
 		t.ID, t.Path, t.Title, t.Artist, t.AlbumArtist, t.Album,
 		t.Year, t.TrackNumber, t.Genre, t.Comment,
 		t.Duration.Milliseconds(), t.CoverPath,
 		t.FileFormat, mtime, time.Now().Unix(),
-	)
-	return err
+	}
 }
 
-// DeleteTrack removes a track by its file path.
-func (s *Store) DeleteTrack(path string) error {
-	_, err := s.db.Exec(`DELETE FROM tracks WHERE path = ?`, path)
+func (s *Store) UpsertTrack(t library.Track, mtime int64) error {
+	_, err := s.db.Exec(upsertTrackSQL, upsertTrackArgs(t, mtime)...)
 	return err
 }
 

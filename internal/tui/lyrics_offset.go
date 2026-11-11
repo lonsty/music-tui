@@ -39,7 +39,7 @@ func (a *App) saveLyricsOffset() {
 	if a.st == nil || a.currentTrack == nil {
 		return
 	}
-	_ = a.st.SetSetting(
+	a.saveSetting(
 		lyricsOffsetKey(a.currentTrack.ID),
 		strconv.FormatInt(a.offset.Milliseconds(), 10),
 	)

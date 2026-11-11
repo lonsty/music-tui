@@ -4,7 +4,6 @@ import (
 	"crypto/sha256"
 	"fmt"
 	"io"
-	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
@@ -17,37 +16,6 @@ import (
 	"github.com/gopxl/beep/v2/vorbis"
 	"github.com/gopxl/beep/v2/wav"
 )
-
-// ScanDir walks the given directory and returns all supported audio tracks.
-// Subdirectories are traversed recursively.
-// CoverArt is populated in-memory; use ParseTrackWithCover to persist covers.
-func ScanDir(dir string) ([]Track, error) {
-	var tracks []Track
-
-	err := filepath.WalkDir(dir, func(path string, d fs.DirEntry, err error) error {
-		if err != nil {
-			return err
-		}
-		if d.IsDir() {
-			return nil
-		}
-		if !IsSupportedAudio(path) {
-			return nil
-		}
-
-		track, parseErr := parseTrack(path)
-		if parseErr != nil {
-			return nil
-		}
-		tracks = append(tracks, track)
-		return nil
-	})
-	if err != nil {
-		return nil, fmt.Errorf("scan dir %q: %w", dir, err)
-	}
-
-	return tracks, nil
-}
 
 // ParseTrackWithCover reads metadata for a single audio file.
 // If cover art is found and coverCacheDir is non-empty, the cover is written

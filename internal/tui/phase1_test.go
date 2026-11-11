@@ -88,7 +88,7 @@ func TestGlobalCtrlRRespectsTextInputs(t *testing.T) {
 		t.Fatal("Ctrl+R in playlist naming mode started a scan")
 	}
 
-	adding := &App{st: st, musicDir: t.TempDir(), PlaylistState: PlaylistState{addingTracks: true}}
+	adding := &App{st: st, musicDir: t.TempDir(), OverlayState: OverlayState{addingTracks: true}}
 	adding.handleKey(ctrlR)
 	if adding.loading {
 		t.Fatal("Ctrl+R in add-tracks mode started a scan")

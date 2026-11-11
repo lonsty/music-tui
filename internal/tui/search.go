@@ -62,27 +62,18 @@ func trackMatchesQuery(t library.Track, field searchField, q string) bool {
 // selectTrackIndices filters tracks by the raw query and the active format
 // preference, returning positions into tracks.  It is shared by the Local tab
 // search and the add-to-playlist panel so both use identical semantics.
+//
+// The scan works on positions only: tracks are never copied, and the format
+// preference is applied to the position list rather than to a materialised
+// slice of Track values.
 func selectTrackIndices(tracks []library.Track, raw string, pref formatPreference) []int {
 	field, q := parseSearchQuery(raw)
 
-	candidate := make([]library.Track, 0, len(tracks))
-	for _, t := range tracks {
-		if trackMatchesQuery(t, field, q) {
-			candidate = append(candidate, t)
-		}
-	}
-
-	preferred := applyFormatPreference(candidate, pref)
-
-	idToPos := make(map[string]int, len(tracks))
+	positions := make([]int, 0, len(tracks))
 	for i := range tracks {
-		idToPos[tracks[i].ID] = i
-	}
-	out := make([]int, 0, len(preferred))
-	for _, t := range preferred {
-		if pos, ok := idToPos[t.ID]; ok {
-			out = append(out, pos)
+		if trackMatchesQuery(tracks[i], field, q) {
+			positions = append(positions, i)
 		}
 	}
-	return out
+	return applyFormatPreferenceIndices(tracks, positions, pref)
 }

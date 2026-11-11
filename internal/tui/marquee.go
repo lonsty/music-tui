@@ -30,6 +30,7 @@ type Marquee struct {
 	loop      string
 	loopBuf   string // loop + loop — pre-computed in SetText
 	loopW     int    // display width of loop
+	textW     int    // display width of text, cached by SetText
 	offset    int    // current scroll column (0 = leftmost)
 	pauseLeft int    // ticks to pause before starting / after reset
 }
@@ -65,6 +66,7 @@ func (m *Marquee) SetText(text string) {
 	}
 	m.text = text
 	m.loop = text + m.sep
+	m.textW = strWidth(text)
 	m.loopW = strWidth(m.loop)
 	m.loopBuf = m.loop + m.loop // pre-compute double buffer
 	m.offset = 0
@@ -76,7 +78,7 @@ func (m *Marquee) SetText(text string) {
 // Latin (1 col/cluster) and CJK (2 cols/cluster) text scrolling at the same
 // perceived speed.  Call this on every tickMsg.
 func (m *Marquee) Tick(width int) {
-	if m.loopW == 0 || strWidth(m.text) <= width {
+	if m.loopW == 0 || m.textW <= width {
 		return // no scrolling needed
 	}
 	if m.pauseLeft > 0 {
@@ -130,7 +132,7 @@ func (m *Marquee) Render(width int) string {
 	if width <= 0 {
 		return ""
 	}
-	tw := strWidth(m.text)
+	tw := m.textW
 	if tw <= width {
 		// Text fits — no scrolling, just pad.
 		return padRight(m.text, width)
@@ -150,7 +152,7 @@ func (m *Marquee) RenderCentered(width int) string {
 	if width <= 0 {
 		return ""
 	}
-	tw := strWidth(m.text)
+	tw := m.textW
 	if tw <= width {
 		pad := width - tw
 		left := pad / 2

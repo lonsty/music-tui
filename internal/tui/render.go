@@ -208,7 +208,30 @@ var (
 
 // ── Top-level render ──────────────────────────────────────────────────────────
 
+// playbackFrame is a read-only snapshot of player timing and state, taken once
+// per rendered frame.  Helpers read it instead of locking the player again.
+type playbackFrame struct {
+	position time.Duration
+	duration time.Duration
+	state    audio.State
+}
+
+// snapshotPlayback captures the current player values.  A nil player (tests)
+// yields the zero frame, which renders as a stopped player at 00:00.
+func (a *App) snapshotPlayback() playbackFrame {
+	if a.player == nil {
+		return playbackFrame{}
+	}
+	return playbackFrame{
+		position: a.player.Position(),
+		duration: a.player.Duration(),
+		state:    a.player.State(),
+	}
+}
+
 func (a *App) render() string {
+	a.framePlayback = a.snapshotPlayback()
+
 	// Fullscreen player replaces everything except status bar.
 	if a.currentView == viewFullscreen {
 		return a.renderFullscreen()
@@ -392,7 +415,13 @@ func gradientTextBg(s string, bold bool, bgHex string, colors ...string) string 
 
 	col := 0
 	for _, r := range s {
-		rw := strWidth(string(r))
+		// Printable ASCII is always one column; skip the string(r) allocation
+		// on the hot path.  Non-ASCII keeps the existing width calculation so
+		// the rendered bytes stay identical.
+		rw := 1
+		if r < 0x20 || r >= 0x7f {
+			rw = strWidth(string(r))
+		}
 		var t float64
 		if totalW > 1 {
 			t = float64(col) / float64(totalW-1)
