@@ -27,7 +27,7 @@ import (
 func (a *App) handleSharedTrackListKey(ctx TrackListContext, msg tea.KeyMsg) tea.Cmd {
 	switch msg.String() {
 	case "q":
-		return a.cmdQuit()
+		return a.quitOrConfirm()
 
 	// ── Navigation ───────────────────────────────────────────────────────────
 	case "j", "down":

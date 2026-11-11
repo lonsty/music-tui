@@ -596,8 +596,8 @@ func (a *App) renderDeletePlaylistOverlay() string {
 	nKey := styleOverlayKey.Render("❮Esc❯")
 	hintRows := []string{
 		div,
-		"  " + yKey + styleOverlayMuted.Render(" confirm  ") +
-			nKey + styleOverlayMuted.Render(" cancel"),
+		"  " + yKey + styleOverlayMuted.Render(" "+T("overlay_confirm")+"  ") +
+			nKey + styleOverlayMuted.Render(" "+T("overlay_cancel")),
 	}
 
 	return a.renderScrollableOverlay(titleRows, bodyRows, hintRows, innerW)
@@ -658,9 +658,9 @@ func (a *App) renderAddToPlaylistOverlay() string {
 	newKey := styleOverlayKey.Render("❮n❯")
 	hintRows := []string{
 		div,
-		"  " + enterKey + styleOverlayMuted.Render(" add  ") +
+		"  " + enterKey + styleOverlayMuted.Render(" "+T("overlay_add")+"  ") +
 			newKey + styleOverlayMuted.Render(" "+T("hint_playlist_new")+"  ") +
-			escKey + styleOverlayMuted.Render(" cancel"),
+			escKey + styleOverlayMuted.Render(" "+T("overlay_cancel")),
 	}
 
 	return a.renderScrollableOverlay(titleRows, bodyRows, hintRows, innerW)

@@ -142,7 +142,7 @@ git tag v1.0.0 && git push origin v1.0.0
 | `,` | 打开设置面板 |
 | `?` | 帮助面板（完整快捷键列表） |
 | `Tab` | 切换标签页（Library / Playlists） |
-| `q` / `Ctrl+C` | 退出并保存会话状态 |
+| `q` | 退出（连按两次；`Ctrl+C` 立即退出） |
 
 ### 歌单 / Playlists
 

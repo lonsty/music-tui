@@ -179,7 +179,7 @@ func (a *App) renderPlaylistAddPanel(innerW, innerH int) string {
 func (a *App) renderAddTrackResults(sb *strings.Builder, innerW, maxRows int) {
 	results := a.addResults
 	if len(results) == 0 {
-		sb.WriteString(styleOverlayMuted.Render("  "+T("playlist_tracks_empty")) + "\n")
+		sb.WriteString(styleOverlayMuted.Render("  "+T("playlist_add_no_results")) + "\n")
 		return
 	}
 

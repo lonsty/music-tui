@@ -243,6 +243,7 @@ type App struct {
 	statusMsg         string
 	statusMsgExpiry   time.Time // when non-zero, statusMsg is cleared after this time
 	libScanFromReload bool      // true when the current scan was triggered by Ctrl+R (not startup)
+	quitArmedAt       time.Time // first q press; a second q within the window quits
 
 	// ── Loading ──────────────────────────────────────────────────────────────
 	loading bool

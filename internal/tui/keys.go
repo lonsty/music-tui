@@ -21,6 +21,20 @@ func (a *App) cmdQuit() tea.Cmd {
 	)
 }
 
+// quitOrConfirm makes q require a second press within the status-message
+// window, preventing an accidental single-key quit.
+func (a *App) quitOrConfirm() tea.Cmd {
+	now := time.Now()
+	if !a.quitArmedAt.IsZero() && now.Sub(a.quitArmedAt) <= statusMsgDuration {
+		a.quitArmedAt = time.Time{}
+		return a.cmdQuit()
+	}
+	a.quitArmedAt = now
+	a.statusMsg = T("quit_confirm")
+	a.statusMsgExpiry = now.Add(statusMsgDuration)
+	return nil
+}
+
 // openSettings initialises and opens the settings overlay.
 func (a *App) openSettings() {
 	a.activeOvl = overlaySettings
@@ -88,6 +102,10 @@ func (a *App) handleKey(msg tea.KeyMsg) tea.Cmd {
 	// Global quit — works in every state.
 	if msg.String() == "ctrl+c" {
 		return a.cmdQuit()
+	}
+	// Any non-q key disarms a pending quit confirmation.
+	if msg.String() != "q" {
+		a.quitArmedAt = time.Time{}
 	}
 
 	// Media keys: handle globally regardless of view/overlay.
@@ -274,7 +292,7 @@ func (a *App) handleFullscreenKey(msg tea.KeyMsg) tea.Cmd {
 		}
 
 	case "q":
-		return a.cmdQuit()
+		return a.quitOrConfirm()
 
 		// normalOpenSettings placeholder
 	}
@@ -527,7 +545,7 @@ func (a *App) settingsCommitField() tea.Cmd {
 func (a *App) handlePlaylistKey(msg tea.KeyMsg) tea.Cmd {
 	// Global quit still works.
 	if msg.String() == "q" {
-		return a.cmdQuit()
+		return a.quitOrConfirm()
 	}
 
 	// When name input is active, only Esc/Enter are control keys.
