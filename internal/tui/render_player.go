@@ -107,8 +107,8 @@ func (a *App) buildMiniPlayerContent(w, h int) string {
 	lyric := styleLyricNormal.Align(lipgloss.Center).Width(w).Render(lyricText)
 
 	// Progress
-	pos := a.player.Position()
-	dur := a.player.Duration()
+	pos := a.framePlayback.position
+	dur := a.framePlayback.duration
 	pct := progressPct(pos, dur)
 	// -4 = charmbracelet/progress adds 1-col padding each side (-2)
 	//      + lipgloss.Center wrapper adds 1 col each side (-2).
@@ -138,7 +138,7 @@ func (a *App) buildMiniPlayerContent(w, h int) string {
 }
 
 func (a *App) buildControls(w int) string {
-	state := a.player.State()
+	state := a.framePlayback.state
 	playIcon := iconPlay()
 	if state == audio.StatePlaying {
 		playIcon = iconPause()
@@ -241,8 +241,8 @@ func (a *App) buildFullPlayerContent(w, h int) string {
 		Render(a.mqAlbum.RenderCentered(avail))
 
 	// Progress bar + time (single line each)
-	pos := a.player.Position()
-	dur := a.player.Duration()
+	pos := a.framePlayback.position
+	dur := a.framePlayback.duration
 	pct := progressPct(pos, dur)
 	// -6 = same as mini player (-4) plus the fullscreen player panel has 1 extra col
 	//      of interior padding on each side compared to the mini panel (-2 more).
@@ -426,8 +426,8 @@ func (a *App) renderLyricsPlain(w, h int) string {
 
 	offset := 0
 	if total > h {
-		pos := a.player.Position()
-		dur := a.player.Duration()
+		pos := a.framePlayback.position
+		dur := a.framePlayback.duration
 		if dur > 0 {
 			progress := float64(pos) / float64(dur)
 			if progress > 1 {
@@ -724,8 +724,8 @@ func (a *App) buildMiniLyricsContent(w, h int) string {
 	meta := stylePlayerArtist.Render(metaText)
 
 	// Progress
-	pos := a.player.Position()
-	dur := a.player.Duration()
+	pos := a.framePlayback.position
+	dur := a.framePlayback.duration
 	pct := progressPct(pos, dur)
 	a.progressBar.Width = w - 4
 	bar := lipgloss.NewStyle().Width(w).Align(lipgloss.Center).

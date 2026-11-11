@@ -226,6 +226,11 @@ type App struct {
 	// ── Progress bar ─────────────────────────────────────────────────────────
 	progressBar progress.Model
 
+	// framePlayback is refreshed once at the start of every render and read by
+	// render helpers, so a single frame takes one player lock snapshot instead
+	// of one per call site.
+	framePlayback playbackFrame
+
 	// ── Lyrics viewport (fullscreen) ─────────────────────────────────────────
 	lyricsVP viewport.Model
 

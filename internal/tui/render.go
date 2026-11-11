@@ -208,7 +208,30 @@ var (
 
 // ── Top-level render ──────────────────────────────────────────────────────────
 
+// playbackFrame is a read-only snapshot of player timing and state, taken once
+// per rendered frame.  Helpers read it instead of locking the player again.
+type playbackFrame struct {
+	position time.Duration
+	duration time.Duration
+	state    audio.State
+}
+
+// snapshotPlayback captures the current player values.  A nil player (tests)
+// yields the zero frame, which renders as a stopped player at 00:00.
+func (a *App) snapshotPlayback() playbackFrame {
+	if a.player == nil {
+		return playbackFrame{}
+	}
+	return playbackFrame{
+		position: a.player.Position(),
+		duration: a.player.Duration(),
+		state:    a.player.State(),
+	}
+}
+
 func (a *App) render() string {
+	a.framePlayback = a.snapshotPlayback()
+
 	// Fullscreen player replaces everything except status bar.
 	if a.currentView == viewFullscreen {
 		return a.renderFullscreen()

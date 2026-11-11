@@ -2,11 +2,11 @@
 
 ## 1. 基线与行为锁定
 
-- [ ] 1.1 新增 golden 渲染测试骨架，固定 `W/H`、语言、图标集与测试曲库，覆盖普通双栏、全屏播放器、全屏歌词、搜索态、帮助/设置/队列/歌单/新建歌单浮层；用当前 HEAD 生成基线文件，验证 `go test ./internal/tui -run 'Golden'` 通过。
-- [ ] 1.2 为 `internal/library` 补单测：`SortByArtistAlbum`、`QualityOf`/格式白名单、`ParseTrackWithCover`（用临时目录生成最小标签文件）；验证 `go test ./internal/library` 通过且覆盖率不再为 0。
-- [ ] 1.3 为 `internal/store` 补迁移与同步测试：临时库首次建表、重复 `Open` 幂等、`SyncDir` 新增/更新/删除分类；验证 `go test ./internal/store` 通过。
-- [ ] 1.4 新增基准：`BenchmarkApplyFilter10K`、`BenchmarkSelectTrackIndices10K`、`BenchmarkViewNormal10K`、`BenchmarkViewFullscreen10K`、`BenchmarkRenderQueueOverlay200`、`BenchmarkUpdateKey10K`；验证 `make bench` 可运行，并把改动前数值记录到 PR 描述。
-- [ ] 1.5 把现有 i18n 覆盖测试扩展为同时检查动态键与空翻译（复用 `T()` 调用点扫描），验证 `go test ./internal/tui -run 'Translation'` 通过。
+- [x] 1.1 新增 golden 渲染测试骨架，固定 `W/H`、语言、图标集与测试曲库，覆盖普通双栏、全屏播放器、全屏歌词、搜索态、帮助/设置/队列/歌单/新建歌单浮层；用当前 HEAD 生成基线文件，验证 `go test ./internal/tui -run 'Golden'` 通过。
+- [x] 1.2 为 `internal/library` 补单测：`SortByArtistAlbum`、`QualityOf`/格式白名单、`ParseTrackWithCover`（用临时目录生成最小标签文件）；验证 `go test ./internal/library` 通过且覆盖率不再为 0。
+- [x] 1.3 为 `internal/store` 补迁移与同步测试：临时库首次建表、重复 `Open` 幂等、`SyncDir` 新增/更新/删除分类；验证 `go test ./internal/store` 通过。
+- [x] 1.4 新增基准：`BenchmarkApplyFilter10K`、`BenchmarkSelectTrackIndices10K`、`BenchmarkViewNormal10K`、`BenchmarkViewFullscreen10K`、`BenchmarkRenderQueueOverlay200`、`BenchmarkUpdateKey10K`；验证 `make bench` 可运行，并把改动前数值记录到 PR 描述。
+- [x] 1.5 把现有 i18n 覆盖测试扩展为同时检查动态键与空翻译（复用 `T()` 调用点扫描），验证 `go test ./internal/tui -run 'Translation'` 通过。
 
 ## 2. 开源基础设施与文档
 

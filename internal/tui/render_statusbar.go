@@ -48,10 +48,7 @@ func (a *App) renderStatusBar() string {
 		return styleStatusLine.Render("  " + iconError() + "  " + fmt.Sprintf(T("sync_error"), a.scanErr.Error()))
 	}
 
-	state := audio.StateStopped
-	if a.player != nil {
-		state = a.player.State()
-	}
+	state := a.framePlayback.state
 
 	// During a track change the player briefly passes through StateStopped
 	// (old stream torn down, new stream not yet started).  Showing "Stopped"

@@ -94,8 +94,8 @@ func (a *App) buildCollapsedPlayStatus(availW int) string {
 	}
 
 	// ── Fixed-width pieces ────────────────────────────────────────────────
-	pos := a.player.Position()
-	dur := a.player.Duration()
+	pos := a.framePlayback.position
+	dur := a.framePlayback.duration
 
 	timeStr := formatDuration(pos) + "/" + formatDuration(dur)
 	const timeGap = 1
