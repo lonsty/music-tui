@@ -392,7 +392,7 @@ func (p *Player) Seek(d time.Duration) error {
 
 // SetVolume sets playback volume. v ∈ [0.0, 2.0]; 1.0 = unity gain.
 // The value is persisted in the player so it is applied automatically when
-// the next track is loaded via Play or PlayAt.
+// the next track is loaded via Play or PlaySource.
 //
 // Note: if a new track starts between the p.mu.Unlock and the speaker.Lock
 // below, vol may refer to the old stream's Volume object.  This is benign —
