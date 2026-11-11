@@ -28,10 +28,10 @@
 
 ## 4. 存储层
 
-- [ ] 4.1 将迁移改为逐版本追加，新增 migration 2：`playlist_tracks(playlist_id, position)` 索引；验证新建库与 v1 旧库升级后 schema 一致，`go test ./internal/store` 通过。
-- [ ] 4.2 新增 `tracks` 排序表达式索引，与 `AllTracks` 的 `ORDER BY` 完全一致；新增测试断言 `EXPLAIN QUERY PLAN` 不出现 `USE TEMP B-TREE`。
-- [ ] 4.3 `SyncDir` 改为单事务 + prepared upsert，每 1000 行分批提交，保持部分失败继续语义；新增测试覆盖全成功、部分解析失败、取消中途，验证计数与数据库内容正确。
-- [ ] 4.4 为 `MoveTrack` 增加 `(playlist_id, position)` 命中验证与回归测试，确认 J/K 顺序结果不变；验证 `go test ./internal/store` 通过。
+- [x] 4.1 将迁移改为逐版本追加，新增 migration 2：`playlist_tracks(playlist_id, position)` 索引；验证新建库与 v1 旧库升级后 schema 一致，`go test ./internal/store` 通过。
+- [x] 4.2 新增 `tracks` 排序表达式索引，与 `AllTracks` 的 `ORDER BY` 完全一致；新增测试断言 `EXPLAIN QUERY PLAN` 不出现 `USE TEMP B-TREE`。
+- [x] 4.3 `SyncDir` 改为单事务 + prepared upsert，每 1000 行分批提交，保持部分失败继续语义；新增测试覆盖全成功、部分解析失败、取消中途，验证计数与数据库内容正确。
+- [x] 4.4 为 `MoveTrack` 增加 `(playlist_id, position)` 命中验证与回归测试，确认 J/K 顺序结果不变；验证 `go test ./internal/store` 通过。
 
 ## 5. 性能优化
 

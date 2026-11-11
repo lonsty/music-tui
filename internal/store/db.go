@@ -118,6 +118,22 @@ func migrate(db *sql.DB) error {
 				PRIMARY KEY (playlist_id, track_id)
 			);
 		`},
+		{2, `
+			-- Playlist tracks are always read in position order.
+			CREATE INDEX IF NOT EXISTS idx_playlist_tracks_pos
+				ON playlist_tracks(playlist_id, position);
+
+			-- Expression index matching AllTracks' ORDER BY exactly, so the
+			-- startup/reload query avoids a temporary B-tree sort.
+			CREATE INDEX IF NOT EXISTS idx_tracks_order
+				ON tracks(
+					LOWER(COALESCE(NULLIF(album_artist,''), artist, '')),
+					year,
+					LOWER(album),
+					CAST(SUBSTR(track_number, 1, INSTR(track_number||'/', '/')-1) AS INTEGER),
+					LOWER(title)
+				);
+		`},
 	}
 
 	for _, m := range migrations {
@@ -203,10 +219,9 @@ func (s *Store) SetSettings(pairs map[string]string) error {
 
 // ── Tracks ────────────────────────────────────────────────────────────────────
 
-// AllTracks returns all tracks from the database in the standard sort order:
-// album artist → year → album → track number → title.
-func (s *Store) AllTracks() ([]library.Track, error) {
-	rows, err := s.db.Query(`
+// allTracksQuery is shared by AllTracks and the query-plan test that verifies
+// idx_tracks_order removes the temporary sort.
+const allTracksQuery = `
 		SELECT id, path, title, artist, album_artist, album,
 		       year, track_number, genre, comment,
 		       duration_ms, cover_path, format
@@ -217,7 +232,12 @@ func (s *Store) AllTracks() ([]library.Track, error) {
 			LOWER(album),
 			CAST(SUBSTR(track_number, 1, INSTR(track_number||'/', '/')-1) AS INTEGER),
 			LOWER(title)
-	`)
+	`
+
+// AllTracks returns all tracks from the database in the standard sort order:
+// album artist → year → album → track number → title.
+func (s *Store) AllTracks() ([]library.Track, error) {
+	rows, err := s.db.Query(allTracksQuery)
 	if err != nil {
 		return nil, err
 	}
@@ -275,8 +295,8 @@ func (s *Store) AllTrackMtimes() (map[string]int64, error) {
 }
 
 // UpsertTrack inserts or replaces a track record.
-func (s *Store) UpsertTrack(t library.Track, mtime int64) error {
-	_, err := s.db.Exec(`
+// upsertTrackSQL is shared by the single-row API and the batched sync writer.
+const upsertTrackSQL = `
 		INSERT INTO tracks
 			(id, path, title, artist, album_artist, album,
 			 year, track_number, genre, comment,
@@ -296,12 +316,19 @@ func (s *Store) UpsertTrack(t library.Track, mtime int64) error {
 			cover_path   = excluded.cover_path,
 			format       = excluded.format,
 			mtime        = excluded.mtime
-	`,
+	`
+
+func upsertTrackArgs(t library.Track, mtime int64) []any {
+	return []any{
 		t.ID, t.Path, t.Title, t.Artist, t.AlbumArtist, t.Album,
 		t.Year, t.TrackNumber, t.Genre, t.Comment,
 		t.Duration.Milliseconds(), t.CoverPath,
 		t.FileFormat, mtime, time.Now().Unix(),
-	)
+	}
+}
+
+func (s *Store) UpsertTrack(t library.Track, mtime int64) error {
+	_, err := s.db.Exec(upsertTrackSQL, upsertTrackArgs(t, mtime)...)
 	return err
 }
 

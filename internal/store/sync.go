@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 	"io/fs"
 	"os"
@@ -164,6 +165,44 @@ func SyncDir(
 	}()
 
 	// ── Main goroutine: drain results and write to DB ─────────────────────
+	// Writes are batched into one transaction with a prepared statement and
+	// committed every syncCommitEvery rows.  This keeps the first scan of a
+	// large library from paying one fsync per file while bounding WAL growth.
+	const syncCommitEvery = 1000
+
+	var (
+		tx          *sql.Tx
+		stmt        *sql.Stmt
+		pending     int
+		batchFailed error
+	)
+	startBatch := func() {
+		t, err := s.db.BeginTx(ctx, nil)
+		if err != nil {
+			batchFailed = err
+			return
+		}
+		st, err := t.PrepareContext(ctx, upsertTrackSQL)
+		if err != nil {
+			_ = t.Rollback()
+			batchFailed = err
+			return
+		}
+		tx, stmt = t, st
+	}
+	flushBatch := func() {
+		if stmt != nil {
+			_ = stmt.Close()
+		}
+		if tx != nil {
+			if err := tx.Commit(); err != nil && batchFailed == nil {
+				batchFailed = err
+			}
+		}
+		tx, stmt, pending = nil, nil, 0
+	}
+
+	startBatch()
 	done := total - len(candidates) // files skipped (already up-to-date)
 	for r := range resultCh {
 		done++
@@ -177,19 +216,32 @@ func SyncDir(
 			continue
 		}
 
-		if dbErr := s.UpsertTrack(r.track, r.mtime); dbErr != nil {
-			if firstErr == nil {
-				firstErr = dbErr
+		if batchFailed == nil && stmt != nil && ctx.Err() == nil {
+			if _, dbErr := stmt.ExecContext(ctx, upsertTrackArgs(r.track, r.mtime)...); dbErr != nil {
+				if firstErr == nil {
+					firstErr = dbErr
+				}
+			} else if r.isNew {
+				added++
+			} else {
+				updated++
 			}
-		} else if r.isNew {
-			added++
-		} else {
-			updated++
+			pending++
+			if pending >= syncCommitEvery {
+				flushBatch()
+				if batchFailed == nil {
+					startBatch()
+				}
+			}
 		}
 
 		if onProgress != nil {
 			onProgress(done, total)
 		}
+	}
+	flushBatch()
+	if batchFailed != nil && firstErr == nil {
+		firstErr = batchFailed
 	}
 
 	// Report skipped files' progress after workers are done (for accurate bar).

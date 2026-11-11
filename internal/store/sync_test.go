@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -169,6 +170,117 @@ func TestSyncDirCancelledBeforeStart(t *testing.T) {
 	}
 	if added != 0 {
 		t.Fatalf("cancelled SyncDir added %d tracks, want 0", added)
+	}
+}
+
+func TestSyncDirWriteFailureIsReported(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "a.mp3"), []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	st, err := Open(filepath.Join(t.TempDir(), "music.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := st.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	added, updated, deleted, syncErr := SyncDir(context.Background(), dir, st, "", nil)
+	if syncErr == nil {
+		t.Fatal("expected an error from a closed database")
+	}
+	if added != 0 || updated != 0 || deleted != 0 {
+		t.Fatalf("counts = (%d,%d,%d), want all zero", added, updated, deleted)
+	}
+}
+
+func TestMigrationUpgradeFromV1(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "music.db")
+	st, err := Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Roll the database back to the v1 shape: drop v2 objects and its marker.
+	if _, err := st.db.Exec(`
+		DROP INDEX IF EXISTS idx_tracks_order;
+		DROP INDEX IF EXISTS idx_playlist_tracks_pos;
+		DELETE FROM schema_migrations WHERE version = 2;
+	`); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	upgraded, err := Open(path)
+	if err != nil {
+		t.Fatalf("upgrade open: %v", err)
+	}
+	t.Cleanup(func() { _ = upgraded.Close() })
+
+	for _, idx := range []string{"idx_tracks_order", "idx_playlist_tracks_pos"} {
+		var n int
+		if err := upgraded.db.QueryRow(
+			`SELECT COUNT(*) FROM sqlite_master WHERE type = 'index' AND name = ?`, idx,
+		).Scan(&n); err != nil {
+			t.Fatal(err)
+		}
+		if n != 1 {
+			t.Fatalf("index %q missing after upgrade", idx)
+		}
+	}
+}
+
+func queryPlan(t *testing.T, st *Store, query string) string {
+	t.Helper()
+	rows, err := st.db.Query("EXPLAIN QUERY PLAN " + query)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = rows.Close() }()
+
+	var out string
+	for rows.Next() {
+		var (
+			id, parent, notUsed int
+			detail              string
+		)
+		if err := rows.Scan(&id, &parent, &notUsed, &detail); err != nil {
+			t.Fatal(err)
+		}
+		out += detail + "\n"
+	}
+	if err := rows.Err(); err != nil {
+		t.Fatal(err)
+	}
+	return out
+}
+
+func TestAllTracksQueryUsesOrderIndex(t *testing.T) {
+	st := openTestStore(t)
+	plan := queryPlan(t, st, allTracksQuery)
+	if !strings.Contains(plan, "idx_tracks_order") {
+		t.Fatalf("plan does not use idx_tracks_order:\n%s", plan)
+	}
+	if strings.Contains(plan, "TEMP B-TREE") {
+		t.Fatalf("plan still sorts in a temporary B-tree:\n%s", plan)
+	}
+}
+
+func TestPlaylistTracksQueryUsesPositionIndex(t *testing.T) {
+	st := openTestStore(t)
+	plan := queryPlan(t, st, `
+		SELECT track_id FROM playlist_tracks
+		WHERE playlist_id = 'x'
+		ORDER BY position
+	`)
+	if !strings.Contains(plan, "idx_playlist_tracks_pos") {
+		t.Fatalf("plan does not use idx_playlist_tracks_pos:\n%s", plan)
+	}
+	if strings.Contains(plan, "TEMP B-TREE") {
+		t.Fatalf("plan still sorts in a temporary B-tree:\n%s", plan)
 	}
 }
 
