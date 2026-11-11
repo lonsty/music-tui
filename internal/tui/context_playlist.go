@@ -17,13 +17,16 @@ import (
 func (a *App) playlistTrackCtx() TrackListContext {
 	return TrackListContext{
 		// ── Data ─────────────────────────────────────────────────────────
-		Tracks: func() []library.Track {
-			return a.plTracks
+		Count: func() int {
+			return len(a.plTracks)
+		},
+		TrackAt: func(pos int) library.Track {
+			if pos < 0 || pos >= len(a.plTracks) {
+				return library.Track{}
+			}
+			return a.plTracks[pos]
 		},
 		CursorPos: &a.trackCursor,
-		TotalCount: func() int {
-			return a.plTrackCount
-		},
 		PlayingPos: func(id string) int {
 			for i, t := range a.plTracks {
 				if t.ID == id {
@@ -32,6 +35,7 @@ func (a *App) playlistTrackCtx() TrackListContext {
 			}
 			return -1
 		},
+		PageSize: a.trackPageSize,
 
 		// ── Rendering ────────────────────────────────────────────────────
 		HeaderTitle: func() string {
@@ -55,16 +59,50 @@ func (a *App) playlistTrackCtx() TrackListContext {
 		OnExtraKeys: func(a *App, msg tea.KeyMsg) (bool, tea.Cmd) {
 			switch msg.String() {
 			case "x":
-				// Remove cursor track from the playlist.
+				// Remove cursor track from the playlist and arm undo.
 				tracks := a.plTracks
 				if a.trackCursor >= 0 && a.trackCursor < len(tracks) {
 					pl := a.currentPlaylist()
 					t := tracks[a.trackCursor]
+					a.undoRemove = &undoRemove{
+						playlistID: pl.ID,
+						trackID:    t.ID,
+						position:   a.trackCursor,
+						title:      t.DisplayTitle(),
+						expiresAt:  time.Now().Add(playlistUndoWindow),
+					}
 					a.statusMsg = fmt.Sprintf(T("playlist_removed_detail"), t.DisplayTitle())
 					a.statusMsgExpiry = time.Now().Add(statusMsgDuration)
 					return true, a.cmdRemoveTrackFromPlaylist(pl.ID, t.ID)
 				}
 				return true, nil
+			case "u":
+				undo := a.undoRemove
+				if undo == nil || time.Now().After(undo.expiresAt) {
+					a.undoRemove = nil
+					a.statusMsg = T("undo_expired")
+					a.statusMsgExpiry = time.Now().Add(statusMsgDuration)
+					return true, nil
+				}
+				a.undoRemove = nil
+				a.statusMsg = fmt.Sprintf(T("undo_restored"), undo.title)
+				a.statusMsgExpiry = time.Now().Add(statusMsgDuration)
+				return true, a.cmdInsertTrackAt(undo.playlistID, undo.trackID, undo.position)
+			case "J", "K":
+				delta := 1
+				if msg.String() == "K" {
+					delta = -1
+				}
+				tracks := a.plTracks
+				next := a.trackCursor + delta
+				if a.trackCursor < 0 || a.trackCursor >= len(tracks) || next < 0 || next >= len(tracks) {
+					return true, nil
+				}
+				pl := a.currentPlaylist()
+				t := tracks[a.trackCursor]
+				a.trackCursor = next
+				a.syncPlaylistTrackMarquee()
+				return true, a.cmdMoveTrack(pl.ID, t.ID, delta)
 			case "a":
 				// Open inline add-tracks search panel.
 				a.addingTracks = true

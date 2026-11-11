@@ -21,6 +21,20 @@ func (a *App) cmdQuit() tea.Cmd {
 	)
 }
 
+// quitOrConfirm makes q require a second press within the status-message
+// window, preventing an accidental single-key quit.
+func (a *App) quitOrConfirm() tea.Cmd {
+	now := time.Now()
+	if !a.quitArmedAt.IsZero() && now.Sub(a.quitArmedAt) <= statusMsgDuration {
+		a.quitArmedAt = time.Time{}
+		return a.cmdQuit()
+	}
+	a.quitArmedAt = now
+	a.statusMsg = T("quit_confirm")
+	a.statusMsgExpiry = now.Add(statusMsgDuration)
+	return nil
+}
+
 // openSettings initialises and opens the settings overlay.
 func (a *App) openSettings() {
 	a.activeOvl = overlaySettings
@@ -89,6 +103,10 @@ func (a *App) handleKey(msg tea.KeyMsg) tea.Cmd {
 	if msg.String() == "ctrl+c" {
 		return a.cmdQuit()
 	}
+	// Any non-q key disarms a pending quit confirmation.
+	if msg.String() != "q" {
+		a.quitArmedAt = time.Time{}
+	}
 
 	// Media keys: handle globally regardless of view/overlay.
 	// Terminals do not forward OS-level media keys directly; users can map
@@ -109,7 +127,7 @@ func (a *App) handleKey(msg tea.KeyMsg) tea.Cmd {
 		a.currentTrack = nil
 		return nil
 	case "f9":
-		return a.cmdPlayNext()
+		return a.cmdAdvance()
 	case "f6":
 		return a.cmdPlayPrev()
 	case "f11":
@@ -118,6 +136,16 @@ func (a *App) handleKey(msg tea.KeyMsg) tea.Cmd {
 	case "f12":
 		a.adjustVolume(+volumeStep)
 		return nil
+	}
+
+	// Global library rescan. Text inputs (settings editing, search, playlist
+	// naming, add-tracks search) keep Ctrl+R for themselves or ignore it.
+	if msg.String() == "ctrl+r" &&
+		a.activeOvl == overlayNone &&
+		!a.settingsEditing &&
+		a.inputMode == playlistInputNone &&
+		!a.addingTracks {
+		return a.reloadLibrary()
 	}
 
 	// Fullscreen view has its own minimal key set.
@@ -139,6 +167,8 @@ func (a *App) handleKey(msg tea.KeyMsg) tea.Cmd {
 		return a.handleAddToPlaylistKey(msg)
 	case overlayDeletePlaylist:
 		return a.handleDeletePlaylistKey(msg)
+	case overlayQueue:
+		return a.handleQueueKey(msg)
 	}
 
 	// Playlist tab has its own key handler.
@@ -152,6 +182,9 @@ func (a *App) handleKey(msg tea.KeyMsg) tea.Cmd {
 // ── Normal mode ───────────────────────────────────────────────────────────────
 
 func (a *App) handleNormalKey(msg tea.KeyMsg) tea.Cmd {
+	if a.view != libraryViewTracks {
+		return a.handleGroupKey(msg)
+	}
 	return a.handleSharedTrackListKey(a.localTrackListCtx(), msg)
 }
 
@@ -166,7 +199,7 @@ func (a *App) handleFullscreenKey(msg tea.KeyMsg) tea.Cmd {
 		return a.cmdTogglePause()
 
 	case "n":
-		return a.cmdPlayNext()
+		return a.cmdAdvance()
 
 	case "p":
 		return a.cmdPlayPrev()
@@ -199,6 +232,13 @@ func (a *App) handleFullscreenKey(msg tea.KeyMsg) tea.Cmd {
 
 	case ">":
 		return a.cmdSeek(+seekStep)
+
+	// ── Lyrics timing offset ──────────────────────────────────────────────────
+	case "[":
+		a.adjustLyricsOffset(-lyricsOffsetStep)
+
+	case "]":
+		a.adjustLyricsOffset(+lyricsOffsetStep)
 
 	// ── Lyrics browse (synced lyrics only) ────────────────────────────────────
 	// ↑/k scroll the visible window up (browse cursor moves toward earlier lines).
@@ -244,7 +284,7 @@ func (a *App) handleFullscreenKey(msg tea.KeyMsg) tea.Cmd {
 	// Enter in browse mode: seek to the pinned line and resume playback.
 	case "enter":
 		if a.synced && a.browseCenterIdx >= 0 {
-			target := a.lines[a.browseCenterIdx].Time
+			target := lyricSeekTarget(a.lines[a.browseCenterIdx], a.offset)
 			a.browseCenterIdx = -1
 			a.browseTicks = 0
 			a.browseExpired = false
@@ -252,7 +292,7 @@ func (a *App) handleFullscreenKey(msg tea.KeyMsg) tea.Cmd {
 		}
 
 	case "q":
-		return a.cmdQuit()
+		return a.quitOrConfirm()
 
 		// normalOpenSettings placeholder
 	}
@@ -280,6 +320,7 @@ func (a *App) handleSearchKey(msg tea.KeyMsg) tea.Cmd {
 		a.searchInput.Blur()
 		a.searchInput.SetValue("")
 		a.applyFilter()
+		a.syncSearchLibraryView(false)
 		// After restoring the full list, position the cursor on the currently
 		// playing track so the user can see where they were.  visibleWindow
 		// will centre the playing row in the visible area automatically.
@@ -311,6 +352,7 @@ func (a *App) handleSearchKey(msg tea.KeyMsg) tea.Cmd {
 	// Let textinput handle typing; update filter on every keystroke.
 	var cmd tea.Cmd
 	a.searchInput, cmd = a.searchInput.Update(msg)
+	a.syncSearchLibraryView(strings.TrimSpace(a.searchInput.Value()) != "")
 	a.applyFilter()
 	a.syncRowMarquee()
 	return cmd
@@ -402,14 +444,16 @@ func (a *App) handleSettingsKey(msg tea.KeyMsg) tea.Cmd {
 // settingsMoveNext moves the selection to the next field, wrapping around,
 // and scrolls ovlScrollRow to keep the selected field visible.
 func (a *App) settingsMoveNext() {
+	rows := settingsFieldRows()
 	a.settingsActive = (a.settingsActive + 1) % settingsFieldCount
-	a.ovlScrollRow = settingsFieldBodyRow[a.settingsActive]
+	a.ovlScrollRow = rows[a.settingsActive]
 }
 
 // settingsMovePrev moves the selection to the previous field, wrapping around.
 func (a *App) settingsMovePrev() {
+	rows := settingsFieldRows()
 	a.settingsActive = (a.settingsActive + settingsFieldCount - 1) % settingsFieldCount
-	a.ovlScrollRow = settingsFieldBodyRow[a.settingsActive]
+	a.ovlScrollRow = rows[a.settingsActive]
 }
 
 // settingsActivateField handles Enter in browse mode.
@@ -474,7 +518,7 @@ func (a *App) settingsCommitField() tea.Cmd {
 
 	if a.settingsActive == settingsFieldMusicDir && newDir != a.musicDir && newDir != "" {
 		if info, err := os.Stat(newDir); err != nil || !info.IsDir() {
-			a.statusMsg = iconError() + " Directory not found: " + newDir
+			a.statusMsg = fmt.Sprintf(T("dir_not_found"), newDir)
 			a.statusMsgExpiry = time.Now().Add(statusMsgDuration)
 			return nil
 		}
@@ -501,7 +545,7 @@ func (a *App) settingsCommitField() tea.Cmd {
 func (a *App) handlePlaylistKey(msg tea.KeyMsg) tea.Cmd {
 	// Global quit still works.
 	if msg.String() == "q" {
-		return a.cmdQuit()
+		return a.quitOrConfirm()
 	}
 
 	// When name input is active, only Esc/Enter are control keys.
@@ -720,9 +764,46 @@ func (a *App) handleAddTracksKey(msg tea.KeyMsg) tea.Cmd {
 
 // handleAddToPlaylistKey handles keys in the overlayAddToPlaylist overlay.
 func (a *App) handleAddToPlaylistKey(msg tea.KeyMsg) tea.Cmd {
+	if a.overlayCreating {
+		switch msg.String() {
+		case "esc":
+			a.overlayCreating = false
+			a.nameInput.Blur()
+			a.nameInput.SetValue("")
+			return nil
+		case "enter":
+			name := strings.TrimSpace(a.nameInput.Value())
+			if name == "" {
+				return nil
+			}
+			trackID := a.ovlNewTrackID
+			a.overlayCreating = false
+			a.ovlNewTrackID = ""
+			a.nameInput.Blur()
+			a.nameInput.SetValue("")
+			a.closeOverlay()
+			return a.cmdCreatePlaylistAndAdd(name, trackID)
+		default:
+			var cmd tea.Cmd
+			a.nameInput, cmd = a.nameInput.Update(msg)
+			return cmd
+		}
+	}
+
 	switch msg.String() {
 	case "esc":
 		a.closeOverlay()
+	case "n":
+		ct := a.cursorTrack()
+		if ct == nil {
+			return nil
+		}
+		a.overlayCreating = true
+		a.ovlNewTrackID = ct.ID
+		a.nameInput.Placeholder = T("playlist_new_prompt")
+		a.nameInput.SetValue("")
+		a.nameInput.Focus()
+		return textinput.Blink
 	case "j", "down":
 		if a.ovlPlCursor < len(a.ovlPlaylists)-1 {
 			a.ovlPlCursor++
@@ -752,7 +833,7 @@ func (a *App) handleAddToPlaylistKey(msg tea.KeyMsg) tea.Cmd {
 }
 
 // handleDeletePlaylistKey handles key presses inside the delete-confirm overlay.
-// "d" confirms the deletion; any other key (Esc, Enter, …) cancels.
+// Enter confirms the deletion; any other key (Esc, …) cancels.
 func (a *App) handleDeletePlaylistKey(msg tea.KeyMsg) tea.Cmd {
 	switch msg.String() {
 	case "enter":
@@ -768,6 +849,19 @@ func (a *App) handleDeletePlaylistKey(msg tea.KeyMsg) tea.Cmd {
 	}
 }
 
+// reloadLibrary starts an incremental scan of the current music directory.
+// It is shared by the global Ctrl+R handler and the Settings overlay action.
+func (a *App) reloadLibrary() tea.Cmd {
+	if a.st == nil || a.musicDir == "" {
+		return nil
+	}
+	a.loading = true
+	a.statusMsg = T("reloading_library")
+	a.statusMsgExpiry = time.Time{}
+	a.libScanFromReload = true
+	return a.cmdSyncLibrary()
+}
+
 // settingsReloadLibrary saves the current dir value and triggers a library scan.
 func (a *App) settingsReloadLibrary() tea.Cmd {
 	a.settingsEditing = false
@@ -779,7 +873,7 @@ func (a *App) settingsReloadLibrary() tea.Cmd {
 		a.musicDir = strings.TrimSpace(a.musicDirInput.Placeholder)
 	}
 	if info, err := os.Stat(a.musicDir); err != nil || !info.IsDir() {
-		a.statusMsg = iconError() + " Directory not found: " + a.musicDir
+		a.statusMsg = fmt.Sprintf(T("dir_not_found"), a.musicDir)
 		a.statusMsgExpiry = time.Now().Add(statusMsgDuration)
 		a.closeSettings()
 		return nil
@@ -788,8 +882,5 @@ func (a *App) settingsReloadLibrary() tea.Cmd {
 		_ = a.st.SetSetting(store.KeyMusicDir, a.musicDir)
 	}
 	a.closeSettings()
-	a.loading = true
-	a.statusMsg = "Reloading library…"
-	a.libScanFromReload = true // trigger "Loaded N tracks" on next scanDoneMsg
-	return a.cmdSyncLibrary()
+	return a.reloadLibrary()
 }

@@ -10,6 +10,12 @@ playtest
 # Go test cache
 *.test
 
+# OpenSpec-generated agent tooling (regenerate with `openspec init`)
+.claude/commands/opsx/
+.claude/skills/openspec-*/
+.claude/worktrees/
+.claude/settings.local.json
+
 .codebuddy/
 examples/
 docs/

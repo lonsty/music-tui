@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"fmt"
 	"strings"
 
 	"github.com/lonsty/music-tui/internal/audio"
@@ -44,10 +45,13 @@ func (a *App) renderStatusBar() string {
 		return styleStatusLine.Render("  " + iconSpinner() + "  " + T("scanning_library"))
 	}
 	if a.scanErr != nil {
-		return styleStatusLine.Render("  " + iconError() + "  " + a.scanErr.Error())
+		return styleStatusLine.Render("  " + iconError() + "  " + fmt.Sprintf(T("sync_error"), a.scanErr.Error()))
 	}
 
-	state := a.player.State()
+	state := audio.StateStopped
+	if a.player != nil {
+		state = a.player.State()
+	}
 
 	// During a track change the player briefly passes through StateStopped
 	// (old stream torn down, new stream not yet started).  Showing "Stopped"
@@ -78,6 +82,11 @@ func (a *App) renderStatusBar() string {
 		chipChip = "  " + styleStatusState.Render(T("chip_active"))
 	}
 
+	var queueChip string
+	if len(a.ids) > 0 {
+		queueChip = "  " + styleStatusState.Render(" "+fmt.Sprintf(T("queue_count"), len(a.ids))+" ")
+	}
+
 	// Fixed prefix: always rendered.
 	// Play mode icon is intentionally omitted here — it is shown in the
 	// mini/fullscreen player controls and in the collapsed-header status line.
@@ -90,7 +99,7 @@ func (a *App) renderStatusBar() string {
 		msgText := a.statusMsg
 		// Reserve space for 2 hint chips (~12 cols each) plus the fixed prefix.
 		const minHintW = 24
-		basePrefix := " " + stateChipStr + retroChip + chipChip + " "
+		basePrefix := " " + stateChipStr + retroChip + chipChip + queueChip + " "
 		maxMsgW := a.W - strWidth(basePrefix) - minHintW - 2 // -2 = trailing "  "
 		if maxMsgW < 8 {
 			maxMsgW = 8
@@ -100,7 +109,7 @@ func (a *App) renderStatusBar() string {
 		}
 		msgChip = " " + styleStatusState.Render(" "+msgText+" ")
 	}
-	prefix := " " + stateChipStr + retroChip + chipChip + msgChip + "  "
+	prefix := " " + stateChipStr + retroChip + chipChip + queueChip + msgChip + "  "
 	prefixW := strWidth(prefix)
 
 	// Build the prioritised hint list for the current state.
@@ -134,6 +143,17 @@ func (a *App) renderStatusBar() string {
 			{"n", T("hint_playlist_new")},
 			{"r", T("hint_playlist_rename")},
 			{"d", T("hint_playlist_delete")},
+			{",", T("hint_settings")},
+			{"Tab", T("hint_switch_tab")},
+			{"q", T("hint_quit")},
+		}
+	} else if a.view != libraryViewTracks {
+		hints = []statusHint{
+			{"?", T("hint_help")},
+			{"Enter", T("hint_open_group")},
+			{"v", T("hint_view")},
+			{"c", T("hint_jump_playing")},
+			{"/", T("hint_search")},
 			{",", T("hint_settings")},
 			{"Tab", T("hint_switch_tab")},
 			{"q", T("hint_quit")},

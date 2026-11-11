@@ -107,8 +107,14 @@ func iconPlayMode(m playMode) string {
 // iconLibrary returns the local music library glyph.
 func iconLibrary() string { return icon("󰋌", "♫", "") }
 
-// iconOnline returns the online music tab glyph.
-func iconOnline() string { return icon("󰖟", "⊕", "") }
+// iconAlbum returns the album group glyph.
+func iconAlbum() string { return icon("󰀥", "💿", "") }
+
+// iconArtist returns the artist group glyph.
+func iconArtist() string { return icon("󰠃", "🎤", "") }
+
+// iconQueue returns the play-queue glyph.
+func iconQueue() string { return icon("󰐕", "🎶", "") }
 
 // iconSearch returns the search prompt glyph.
 func iconSearch() string { return icon("󰍉", "⌕", "/") }
@@ -116,19 +122,12 @@ func iconSearch() string { return icon("󰍉", "⌕", "/") }
 // iconLyrics returns the lyrics / music-box glyph.
 func iconLyrics() string { return icon("󰝚", "♩", "") }
 
-// iconMusic returns the generic music / placeholder glyph.
-func iconMusic() string { return icon("󰎄", "♪", "") }
-
 // iconPlaying returns the "currently playing" indicator glyph shown in the
 // track list next to the active row.
 func iconPlaying() string { return icon("󰎆", "▶", ">") }
 
 // iconSpinner returns the loading / spinner glyph.
 func iconSpinner() string { return icon("󰔟", "⟳", "~") }
-
-// iconLyricsSync returns the lyrics-sync / microphone glyph used in the
-// online feature list.
-func iconLyricsSync() string { return icon("󰍋", "♬", "") }
 
 // ── Status / feedback ─────────────────────────────────────────────────────────
 

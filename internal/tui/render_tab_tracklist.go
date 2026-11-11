@@ -21,7 +21,6 @@ func (a *App) renderTabBar() string {
 	tabs := []tabDef{
 		{tabPlaylist, iconPlaylist(), T("tab_playlist")},
 		{tabLocal, iconLibrary(), T("tab_local")},
-		{tabOnline, iconOnline(), T("tab_online")},
 	}
 
 	// activeMark is the left marker rendered on the active tab.
@@ -56,13 +55,14 @@ func (a *App) renderTabBar() string {
 
 func (a *App) renderNormalBody() string {
 	switch a.activeTab {
-	case tabOnline:
-		return a.renderOnlinePlaceholder()
 	case tabPlaylist:
 		return a.renderPlaylistTab()
 	default:
 	}
 	left := a.renderSharedTrackList(a.localTrackListCtx(), a.trackListInnerW(), a.panelInnerH())
+	if a.view != libraryViewTracks {
+		left = a.renderGroupList(a.trackListInnerW(), a.panelInnerH())
+	}
 	if !a.showMiniPlayer() {
 		return left
 	}
@@ -73,42 +73,6 @@ func (a *App) renderNormalBody() string {
 		right = a.renderMiniPlayer()
 	}
 	return lipgloss.JoinHorizontal(lipgloss.Top, left, right)
-}
-
-// ── Online tab placeholder ────────────────────────────────────────────────────
-
-func (a *App) renderOnlinePlaceholder() string {
-	outerW := a.W
-	innerW := outerW - borderW
-	innerH := a.panelInnerH()
-
-	features := []struct{ icon, text string }{
-		{iconLyrics(), "Online streaming & radio"},
-		{iconLibrary(), "Netease / Spotify integration"},
-		{iconLyricsSync(), "Lyrics sync & search"},
-		{iconMusic(), "Playlist discovery"},
-	}
-
-	var lines []string
-	lines = append(lines,
-		gradientText(iconWithSpace(iconOnline())+"Online", true, blue, mauve, pink),
-		"",
-		styleOverlayMuted.Render(T("online_coming_soon")),
-		"",
-	)
-	for _, f := range features {
-		icon := styleModeIcon.Render(f.icon)
-		label := styleOverlayValue.Render(" " + f.text)
-		lines = append(lines, " "+icon+label)
-	}
-	lines = append(lines,
-		"",
-		styleOverlayMuted.Render(T("online_back_hint")),
-	)
-
-	block := lipgloss.JoinVertical(lipgloss.Left, lines...)
-	centered := lipgloss.Place(innerW, innerH, lipgloss.Center, lipgloss.Center, block)
-	return stylePanelBorder.Width(innerW).Height(innerH).Render(centered)
 }
 
 // buildCollapsedPlayStatus builds a compact playback-status string that fits

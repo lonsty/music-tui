@@ -1,6 +1,9 @@
 package tui
 
 import (
+	"strings"
+	"time"
+
 	tea "github.com/charmbracelet/bubbletea"
 
 	"github.com/lonsty/music-tui/internal/audio"
@@ -24,12 +27,11 @@ import (
 func (a *App) handleSharedTrackListKey(ctx TrackListContext, msg tea.KeyMsg) tea.Cmd {
 	switch msg.String() {
 	case "q":
-		return a.cmdQuit()
+		return a.quitOrConfirm()
 
 	// ── Navigation ───────────────────────────────────────────────────────────
 	case "j", "down":
-		tracks := ctx.Tracks()
-		if *ctx.CursorPos < len(tracks)-1 {
+		if *ctx.CursorPos < ctx.Count()-1 {
 			*ctx.CursorPos++
 			if ctx.UseMarquee {
 				syncMarquee(a, ctx)
@@ -44,6 +46,12 @@ func (a *App) handleSharedTrackListKey(ctx TrackListContext, msg tea.KeyMsg) tea
 			}
 		}
 
+	case "pgdown", "ctrl+d":
+		moveCursor(a, ctx, ctx.PageSize())
+
+	case "pgup", "ctrl+u":
+		moveCursor(a, ctx, -ctx.PageSize())
+
 	case "g":
 		*ctx.CursorPos = 0
 		if ctx.UseMarquee {
@@ -51,26 +59,42 @@ func (a *App) handleSharedTrackListKey(ctx TrackListContext, msg tea.KeyMsg) tea
 		}
 
 	case "G":
-		tracks := ctx.Tracks()
-		if len(tracks) > 0 {
-			*ctx.CursorPos = len(tracks) - 1
+		if n := ctx.Count(); n > 0 {
+			*ctx.CursorPos = n - 1
 			if ctx.UseMarquee {
 				syncMarquee(a, ctx)
 			}
 		}
 
+	case "c":
+		if a.currentTrack == nil {
+			a.statusMsg = T("no_track_selected")
+			a.statusMsgExpiry = time.Now().Add(statusMsgDuration)
+			return nil
+		}
+		pos := ctx.PlayingPos(a.currentTrack.ID)
+		if pos < 0 {
+			a.statusMsg = T("track_not_in_list")
+			a.statusMsgExpiry = time.Now().Add(statusMsgDuration)
+			return nil
+		}
+		*ctx.CursorPos = pos
+		if ctx.UseMarquee {
+			syncMarquee(a, ctx)
+		}
+
 	// ── Playback ─────────────────────────────────────────────────────────────
 	case "enter":
-		tracks := ctx.Tracks()
-		if len(tracks) == 0 {
+		n := ctx.Count()
+		if n == 0 {
 			return nil
 		}
 		pos := *ctx.CursorPos
-		if pos < 0 || pos >= len(tracks) {
+		if pos < 0 || pos >= n {
 			return nil
 		}
 		// Second Enter on the currently-playing track → open fullscreen.
-		if a.currentTrack != nil && a.currentTrack.ID == tracks[pos].ID {
+		if a.currentTrack != nil && a.currentTrack.ID == ctx.TrackAt(pos).ID {
 			a.currentView = viewFullscreen
 			return nil
 		}
@@ -80,7 +104,7 @@ func (a *App) handleSharedTrackListKey(ctx TrackListContext, msg tea.KeyMsg) tea
 		return a.cmdTogglePause()
 
 	case "n":
-		return a.cmdPlayNext()
+		return a.cmdAdvance()
 
 	case "p":
 		return a.cmdPlayPrev()
@@ -110,8 +134,15 @@ func (a *App) handleSharedTrackListKey(ctx TrackListContext, msg tea.KeyMsg) tea
 		return a.cmdSeek(-seekStep)
 	case ">":
 		return a.cmdSeek(+seekStep)
+	case "[":
+		a.adjustLyricsOffset(-lyricsOffsetStep)
+	case "]":
+		a.adjustLyricsOffset(+lyricsOffsetStep)
 
 	// ── Views / panel control ─────────────────────────────────────────────────
+	case "v":
+		return a.cycleLibraryView()
+
 	case "f":
 		a.currentView = viewFullscreen
 
@@ -144,10 +175,19 @@ func (a *App) handleSharedTrackListKey(ctx TrackListContext, msg tea.KeyMsg) tea
 		if ctx.ShowSearchBar {
 			a.activeOvl = overlaySearch
 			a.searchInput.Focus()
-			a.searchInput.SetValue("")
-			a.applyFilter()
-			a.syncRowMarquee()
+			a.searchInput.CursorEnd()
 		}
+
+	// ── Queue ─────────────────────────────────────────────────────────────────
+	case "e":
+		return a.enqueueCursor(ctx, true)
+	case "z":
+		return a.enqueueCursor(ctx, false)
+	case "Q":
+		a.activeOvl = overlayQueue
+		a.cursor = 0
+		a.ovlScrollRow = 0
+		return nil
 
 	// ── Like / Unlike ─────────────────────────────────────────────────────────
 	case "L":
@@ -164,6 +204,8 @@ func (a *App) handleSharedTrackListKey(ctx TrackListContext, msg tea.KeyMsg) tea
 		case tabLocal:
 			a.restoreLocalFilter()
 		case tabPlaylist:
+			// Refresh the cached playlist list (names and track counts)
+			// whenever the user returns to this tab.
 			if len(a.playlists) == 0 {
 				return a.cmdLoadPlaylists()
 			}
@@ -182,10 +224,32 @@ func (a *App) handleSharedTrackListKey(ctx TrackListContext, msg tea.KeyMsg) tea
 					return a.cmdLoadPlaylistTracks(pl.ID)
 				}
 			}
+			return a.cmdLoadPlaylists()
 		}
 
 	// ── Esc ───────────────────────────────────────────────────────────────────
 	case "esc":
+		// Drilled-in album/artist returns to its group list first.
+		if a.drilldown != nil {
+			a.exitDrilldown()
+			return nil
+		}
+		// A visible search filter is cleared before any context-level Esc
+		// action, so the list never stays silently filtered.
+		if ctx.ShowSearchBar && strings.TrimSpace(a.searchInput.Value()) != "" {
+			a.searchInput.SetValue("")
+			a.searchInput.Blur()
+			a.lastQuery = ""
+			a.applyFilter()
+			a.syncSearchLibraryView(false)
+			if a.currentTrack != nil {
+				if pos := a.filteredPos(a.currentTrack.ID); pos >= 0 {
+					*ctx.CursorPos = pos
+				}
+			}
+			syncMarquee(a, ctx)
+			return nil
+		}
 		if ctx.OnEsc != nil {
 			ctx.OnEsc(a)
 		}
@@ -201,6 +265,32 @@ func (a *App) handleSharedTrackListKey(ctx TrackListContext, msg tea.KeyMsg) tea
 	}
 
 	return nil
+}
+
+// moveCursor moves the cursor by delta rows, clamped to the list bounds.
+func moveCursor(a *App, ctx TrackListContext, delta int) {
+	if delta == 0 {
+		return
+	}
+	n := ctx.Count()
+	if n == 0 {
+		*ctx.CursorPos = 0
+		return
+	}
+	pos := *ctx.CursorPos + delta
+	if pos < 0 {
+		pos = 0
+	}
+	if pos >= n {
+		pos = n - 1
+	}
+	if pos == *ctx.CursorPos {
+		return
+	}
+	*ctx.CursorPos = pos
+	if ctx.UseMarquee {
+		syncMarquee(a, ctx)
+	}
 }
 
 // syncMarquee calls ctx.SyncMarquee if set, otherwise falls back to the
@@ -350,6 +440,10 @@ func buildTrackListHints(a *App, ctx TrackListContext, displayState audio.State)
 				{"q", T("hint_quit")},
 			}
 		}
+	}
+
+	if len(a.ids) > 0 {
+		hints = append(hints, statusHint{"Q", T("hint_queue")})
 	}
 
 	return hints

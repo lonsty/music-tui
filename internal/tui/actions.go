@@ -88,7 +88,12 @@ func (a *App) cmdPlayTrack(pos int) tea.Cmd {
 	if pos < 0 || pos >= a.filteredLen() {
 		return nil
 	}
-	track := a.filteredTrack(pos) // value copy — safe across goroutine boundary
+	return a.cmdPlayTrackValue(a.filteredTrack(pos))
+}
+
+// cmdPlayTrackValue plays an explicit track value.  It is shared by list
+// selection and queue playback; neither touches filteredIdxs.
+func (a *App) cmdPlayTrackValue(track library.Track) tea.Cmd {
 	return func() tea.Msg {
 		src, err := a.resolveSource(context.Background(), track)
 		if err != nil {
@@ -100,6 +105,23 @@ func (a *App) cmdPlayTrack(pos int) tea.Cmd {
 		t := track
 		return playResultMsg{track: &t}
 	}
+}
+
+// cmdPlayTrackByID plays a track by ID without changing the visible list.
+func (a *App) cmdPlayTrackByID(id string) tea.Cmd {
+	t := a.findTrackByID(id)
+	if t == nil {
+		return nil
+	}
+	return a.cmdPlayTrackValue(*t)
+}
+
+// cmdAdvance chooses the next track: queue first, then the current play mode.
+func (a *App) cmdAdvance() tea.Cmd {
+	if id := a.popPlayableQueueID(); id != "" {
+		return a.cmdPlayTrackByID(id)
+	}
+	return a.cmdPlayNext()
 }
 
 // cmdPlayNext picks the next track according to the current playMode.
@@ -290,66 +312,34 @@ func (a *App) cmdRetroDown() tea.Cmd {
 func (a *App) applyFilter() {
 	raw := strings.TrimSpace(a.searchInput.Value())
 
-	var field, q string
-	switch {
-	case strings.HasPrefix(raw, "s:"):
-		field = "artist"
-		q = strings.ToLower(strings.TrimPrefix(raw, "s:"))
-	case strings.HasPrefix(raw, "a:"):
-		field = "album"
-		q = strings.ToLower(strings.TrimPrefix(raw, "a:"))
-	case strings.HasPrefix(raw, "t:"):
-		field = "title"
-		q = strings.ToLower(strings.TrimPrefix(raw, "t:"))
-	case strings.HasPrefix(raw, "f:"):
-		field = "format"
-		q = strings.ToLower(strings.TrimPrefix(raw, "f:"))
-	default:
-		q = strings.ToLower(raw)
-	}
-
-	var candidate []library.Track
-	if q == "" {
-		candidate = a.tracks
-	} else {
+	source := a.tracks
+	if a.drilldown != nil {
+		source = make([]library.Track, 0, len(a.tracks))
 		for _, t := range a.tracks {
-			var match bool
-			switch field {
-			case "artist":
-				match = strings.Contains(strings.ToLower(t.DisplayArtist()), q)
-			case "album":
-				match = strings.Contains(strings.ToLower(t.Album), q)
-			case "title":
-				match = strings.Contains(strings.ToLower(t.DisplayTitle()), q)
-			case "format":
-				match = strings.Contains(strings.ToLower(t.Format()), q)
-			default:
-				match = strings.Contains(strings.ToLower(t.DisplayTitle()), q) ||
-					strings.Contains(strings.ToLower(t.DisplayArtist()), q) ||
-					strings.Contains(strings.ToLower(t.Album), q)
-			}
-			if match {
-				candidate = append(candidate, t)
+			if a.drilldown.ids[t.ID] {
+				source = append(source, t)
 			}
 		}
 	}
 
-	// Build the filtered index table from the candidate slice.
-	// candidate is already a subset of a.tracks (same Track values), so we
-	// look up each candidate's position in a.tracks by ID.
-	idToTrackPos := make(map[string]int, len(a.tracks))
-	for i := range a.tracks {
-		idToTrackPos[a.tracks[i].ID] = i
-	}
-
-	preferred := applyFormatPreference(candidate, a.formatPref)
-	newIdxs := make([]int, 0, len(preferred))
-	for _, t := range preferred {
-		if pos, ok := idToTrackPos[t.ID]; ok {
-			newIdxs = append(newIdxs, pos)
+	idxs := selectTrackIndices(source, raw, a.formatPref)
+	if a.drilldown != nil {
+		// selectTrackIndices returns positions into source; remap to a.tracks.
+		idToPos := make(map[string]int, len(a.tracks))
+		for i := range a.tracks {
+			idToPos[a.tracks[i].ID] = i
 		}
+		remapped := make([]int, 0, len(idxs))
+		for _, i := range idxs {
+			if pos, ok := idToPos[source[i].ID]; ok {
+				remapped = append(remapped, pos)
+			}
+		}
+		idxs = remapped
 	}
-	a.filteredIdxs = newIdxs
+	a.filteredIdxs = idxs
+	a.rebuildFilteredPos()
+	a.rebuildGroups()
 
 	// Invalidate shuffle so it is rebuilt from the new filtered list on next use.
 	a.shuffleIDs = nil
@@ -360,7 +350,7 @@ func (a *App) applyFilter() {
 	queryChanged := raw != a.lastQuery
 	a.lastQuery = raw
 
-	if queryChanged && q != "" {
+	if queryChanged && strings.TrimSpace(raw) != "" {
 		// New non-empty search: jump to first result.
 		a.cursorPos = 0
 	} else if len(a.filteredIdxs) == 0 {
@@ -487,10 +477,16 @@ func (a *App) cmdLoadLyrics(track library.Track) tea.Cmd {
 
 	id := track.ID
 	p := a.provider // capture; safe — provider is read-only after NewApp
+	st := a.st
 	return func() tea.Msg {
 		defer cancel()
 		lines, err := p.Fetch(ctx, track)
-		return lyricsLoadedMsg{trackID: id, lines: lines, err: err}
+		return lyricsLoadedMsg{
+			trackID: id,
+			lines:   lines,
+			offset:  loadLyricsOffset(st, id),
+			err:     err,
+		}
 	}
 }
 
@@ -599,6 +595,9 @@ func chip8CacheKey(path string) string {
 }
 
 // shellSplit splits a string into tokens the way a POSIX shell would,
+// playlistUndoWindow is how long a removed playlist track can be restored.
+const playlistUndoWindow = 5 * time.Second
+
 // ── Playlist commands ─────────────────────────────────────────────────────────
 
 // cmdLoadPlaylists fetches all playlists from the DB and returns them via
@@ -617,10 +616,11 @@ func (a *App) cmdLoadPlaylists() tea.Cmd {
 func (a *App) cmdLoadPlaylistTracks(playlistID string) tea.Cmd {
 	return func() tea.Msg {
 		if a.st == nil {
-			return playlistTracksLoadedMsg{}
+			return playlistTracksLoadedMsg{playlistID: playlistID}
 		}
 		tracks, err := a.st.GetPlaylistTracks(playlistID)
-		return playlistTracksLoadedMsg{tracks: tracks, err: err}
+		count, _ := a.st.PlaylistTrackCount(playlistID)
+		return playlistTracksLoadedMsg{playlistID: playlistID, tracks: tracks, count: count, err: err}
 	}
 }
 
@@ -671,15 +671,80 @@ func (a *App) cmdRenamePlaylist(id, name string) tea.Cmd {
 func (a *App) cmdAddTrackToPlaylist(playlistID, trackID string) tea.Cmd {
 	return func() tea.Msg {
 		if a.st == nil {
-			return playlistTracksLoadedMsg{}
+			return playlistTracksLoadedMsg{playlistID: playlistID}
+		}
+		if in, _ := a.st.IsTrackInPlaylist(playlistID, trackID); in {
+			tracks, _ := a.st.GetPlaylistTracks(playlistID)
+			count, _ := a.st.PlaylistTrackCount(playlistID)
+			return playlistTracksLoadedMsg{
+				playlistID: playlistID,
+				tracks:     tracks,
+				count:      count,
+				duplicate:  true,
+			}
 		}
 		// Use current track count as append position.
 		count, _ := a.st.PlaylistTrackCount(playlistID)
 		if err := a.st.AddTrackToPlaylist(playlistID, trackID, count); err != nil {
-			return playlistTracksLoadedMsg{err: err}
+			return playlistTracksLoadedMsg{playlistID: playlistID, err: err}
 		}
 		tracks, err := a.st.GetPlaylistTracks(playlistID)
-		return playlistTracksLoadedMsg{tracks: tracks, err: err}
+		newCount, _ := a.st.PlaylistTrackCount(playlistID)
+		return playlistTracksLoadedMsg{playlistID: playlistID, tracks: tracks, count: newCount, err: err}
+	}
+}
+
+// cmdMoveTrack moves a track within its playlist and returns the reloaded list.
+func (a *App) cmdMoveTrack(playlistID, trackID string, delta int) tea.Cmd {
+	return func() tea.Msg {
+		if a.st == nil {
+			return playlistTracksLoadedMsg{playlistID: playlistID}
+		}
+		if err := a.st.MoveTrack(playlistID, trackID, delta); err != nil {
+			return playlistTracksLoadedMsg{playlistID: playlistID, err: err}
+		}
+		tracks, err := a.st.GetPlaylistTracks(playlistID)
+		count, _ := a.st.PlaylistTrackCount(playlistID)
+		return playlistTracksLoadedMsg{playlistID: playlistID, tracks: tracks, count: count, err: err}
+	}
+}
+
+// cmdInsertTrackAt restores a removed track at its original position.
+func (a *App) cmdInsertTrackAt(playlistID, trackID string, position int) tea.Cmd {
+	return func() tea.Msg {
+		if a.st == nil {
+			return playlistTracksLoadedMsg{playlistID: playlistID}
+		}
+		if err := a.st.InsertTrackAt(playlistID, trackID, position); err != nil {
+			return playlistTracksLoadedMsg{playlistID: playlistID, err: err}
+		}
+		tracks, err := a.st.GetPlaylistTracks(playlistID)
+		count, _ := a.st.PlaylistTrackCount(playlistID)
+		return playlistTracksLoadedMsg{playlistID: playlistID, tracks: tracks, count: count, err: err}
+	}
+}
+
+// cmdCreatePlaylistAndAdd creates a playlist and adds trackID to it.
+func (a *App) cmdCreatePlaylistAndAdd(name, trackID string) tea.Cmd {
+	return func() tea.Msg {
+		if a.st == nil {
+			return playlistsLoadedMsg{}
+		}
+		pl, err := a.st.CreatePlaylist(name)
+		if err != nil {
+			return playlistsLoadedMsg{err: err}
+		}
+		if trackID != "" {
+			if err := a.st.AddTrackToPlaylist(pl.ID, trackID, 0); err != nil {
+				return playlistsLoadedMsg{err: err}
+			}
+		}
+		pls, err := a.st.GetPlaylists()
+		return playlistsLoadedMsg{
+			playlists:  pls,
+			err:        err,
+			successMsg: fmt.Sprintf(T("playlist_created_added"), name),
+		}
 	}
 }
 
@@ -687,13 +752,14 @@ func (a *App) cmdAddTrackToPlaylist(playlistID, trackID string) tea.Cmd {
 func (a *App) cmdRemoveTrackFromPlaylist(playlistID, trackID string) tea.Cmd {
 	return func() tea.Msg {
 		if a.st == nil {
-			return playlistTracksLoadedMsg{}
+			return playlistTracksLoadedMsg{playlistID: playlistID}
 		}
 		if err := a.st.RemoveTrackFromPlaylist(playlistID, trackID); err != nil {
-			return playlistTracksLoadedMsg{err: err}
+			return playlistTracksLoadedMsg{playlistID: playlistID, err: err}
 		}
 		tracks, err := a.st.GetPlaylistTracks(playlistID)
-		return playlistTracksLoadedMsg{tracks: tracks, err: err}
+		count, _ := a.st.PlaylistTrackCount(playlistID)
+		return playlistTracksLoadedMsg{playlistID: playlistID, tracks: tracks, count: count, err: err}
 	}
 }
 

@@ -6,7 +6,6 @@ import (
 
 	"github.com/charmbracelet/lipgloss"
 
-	"github.com/lonsty/music-tui/internal/library"
 	"github.com/lonsty/music-tui/internal/store"
 )
 
@@ -103,12 +102,8 @@ func (a *App) renderPlaylistListLevel(innerW, innerH int) string {
 				leftIcon = fgColorBold(iconHeartFilled(), mauve) + " "
 			}
 
-			// Right: track count (dynamic width).
-			var count int
-			if a.st != nil {
-				count, _ = a.st.PlaylistTrackCount(pl.ID)
-			}
-			countStr := fmt.Sprintf(T("playlist_track_count"), count)
+			// Right: track count (loaded with the playlist list).
+			countStr := fmt.Sprintf(T("playlist_track_count"), pl.TrackCount)
 			rightStr := fgColor(padLeft(countStr, rightColW), overlay0)
 
 			// Middle: playlist name (elastic, marquee on selected row).
@@ -184,7 +179,7 @@ func (a *App) renderPlaylistAddPanel(innerW, innerH int) string {
 func (a *App) renderAddTrackResults(sb *strings.Builder, innerW, maxRows int) {
 	results := a.addResults
 	if len(results) == 0 {
-		sb.WriteString(styleOverlayMuted.Render("  "+T("playlist_tracks_empty")) + "\n")
+		sb.WriteString(styleOverlayMuted.Render("  "+T("playlist_add_no_results")) + "\n")
 		return
 	}
 
@@ -262,34 +257,11 @@ func (a *App) currentPlaylist() store.Playlist {
 }
 
 // applyAddFilter rebuilds a.addResults from a.tracks using the addInput query.
+// It uses the same matcher as the Local tab search.
 func (a *App) applyAddFilter() {
-	q := strings.ToLower(strings.TrimSpace(a.addInput.Value()))
-	var src []library.Track
-	if q == "" {
-		src = a.tracks
-	} else {
-		for _, t := range a.tracks {
-			haystack := strings.ToLower(t.Title + " " + t.Artist + " " + t.Album)
-			if strings.Contains(haystack, q) {
-				src = append(src, t)
-			}
-		}
-	}
-	// Apply format preference so add results stay consistent with
-	// the Local tab's filtered view.
-	filtered := applyFormatPreference(src, a.formatPref)
-	var results []int
-	for _, t := range filtered {
-		for i := range a.tracks {
-			if a.tracks[i].ID == t.ID {
-				results = append(results, i)
-				break
-			}
-		}
-	}
-	a.addResults = results
-	if a.addCursor >= len(results) {
-		a.addCursor = len(results) - 1
+	a.addResults = selectTrackIndices(a.tracks, a.addInput.Value(), a.formatPref)
+	if a.addCursor >= len(a.addResults) {
+		a.addCursor = len(a.addResults) - 1
 	}
 	if a.addCursor < 0 {
 		a.addCursor = 0

@@ -1,8 +1,11 @@
 package tui
 
 import (
+	"fmt"
 	"strings"
 	"testing"
+
+	"github.com/lonsty/music-tui/internal/library"
 )
 
 // ── Test data ─────────────────────────────────────────────────────────────────
@@ -24,6 +27,66 @@ const (
 
 // panelWidth simulates a typical mini-player panel width.
 const panelWidth = 40
+
+// ── Filtered lookup ───────────────────────────────────────────────────────────
+
+// BenchmarkFilteredPos10K measures the position cache lookup on a 10k-track
+// library.  It must stay constant-time rather than scanning the list.
+func BenchmarkFilteredPos10K(b *testing.B) {
+	tracks := make([]library.Track, 10000)
+	for i := range tracks {
+		tracks[i] = library.Track{ID: fmt.Sprintf("id-%d", i)}
+	}
+	a := &App{LibraryState: LibraryState{tracks: tracks}}
+	a.filteredIdxs = make([]int, len(tracks))
+	for i := range a.filteredIdxs {
+		a.filteredIdxs[i] = i
+	}
+	a.rebuildFilteredPos()
+
+	b.ResetTimer()
+	for range b.N {
+		_ = a.filteredPos("id-9999")
+	}
+}
+
+// BenchmarkFilteredPosLinear10K measures the pre-cache linear scan for
+// comparison with BenchmarkFilteredPos10K.
+func BenchmarkFilteredPosLinear10K(b *testing.B) {
+	tracks := make([]library.Track, 10000)
+	for i := range tracks {
+		tracks[i] = library.Track{ID: fmt.Sprintf("id-%d", i)}
+	}
+	b.ResetTimer()
+	for range b.N {
+		for i := range tracks {
+			if tracks[i].ID == "id-9999" {
+				break
+			}
+		}
+	}
+}
+
+// BenchmarkTrackAt10K measures indexed access into the 10k-track list.
+func BenchmarkTrackAt10K(b *testing.B) {
+	tracks := make([]library.Track, 10000)
+	for i := range tracks {
+		tracks[i] = library.Track{ID: fmt.Sprintf("id-%d", i)}
+	}
+	a := &App{LibraryState: LibraryState{
+		tracks:       tracks,
+		filteredIdxs: make([]int, len(tracks)),
+	}}
+	for i := range a.filteredIdxs {
+		a.filteredIdxs[i] = i
+	}
+	ctx := a.localTrackListCtx()
+
+	b.ResetTimer()
+	for range b.N {
+		_ = ctx.TrackAt(5000)
+	}
+}
 
 // ── colSlice ─────────────────────────────────────────────────────────────────
 

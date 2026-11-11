@@ -66,10 +66,20 @@ type PlaybackState struct {
 type LibraryState struct {
 	tracks       []library.Track
 	filteredIdxs []int            // positions in a.tracks that pass the current filter
+	posByID      map[string]int   // Track.ID → position in filteredIdxs (O(1) lookup)
 	shuffleIDs   []string         // Track.ID values in shuffled order (random play mode)
 	cursorPos    int              // position in filteredIdxs of the cursor-selected track
 	formatPref   formatPreference // active format-display preference
 	lastQuery    string           // last applied search query; used to detect query changes
+
+	// Grouped browsing.  The group caches are rebuilt whenever the filter or
+	// format preference changes; render and key handling only read them.
+	view         libraryView
+	prevView     libraryView // view to restore when a search filter is cleared
+	groupCursor  int
+	albumGroups  []trackGroup
+	artistGroups []trackGroup
+	drilldown    *groupRef // non-nil while showing one album/artist's tracks
 }
 
 // ChipState holds the 8-bit chip conversion state.
@@ -84,17 +94,26 @@ type ChipState struct {
 	chip8Options   string // extra CLI options forwarded to p2chip
 }
 
+// undoRemove records a removed playlist track so it can be restored within
+// the undo window.
+type undoRemove struct {
+	playlistID string
+	trackID    string
+	position   int
+	title      string
+	expiresAt  time.Time
+}
+
 // PlaylistState holds playlist management state.
 // It is embedded in App and accessed via a.playlists, a.listCursor, etc.
 type PlaylistState struct {
-	depth        playlistDepth     // current navigation level
-	playlists    []store.Playlist  // cached list of all playlists (index 0 = Favorites)
-	listCursor   int               // cursor in the playlist list (depth == list)
-	plTracks     []library.Track   // tracks of the currently open playlist
-	trackCursor  int               // cursor in the track list (depth == tracks)
-	plTrackCount int               // cached track count for the open playlist (avoids per-frame DB query)
-	inputMode    playlistInputMode // purpose of nameInput (none / create / rename)
-	nameInput    textinput.Model   // inline input for new-playlist name or rename
+	depth       playlistDepth     // current navigation level
+	playlists   []store.Playlist  // cached list of all playlists (index 0 = Favorites)
+	listCursor  int               // cursor in the playlist list (depth == list)
+	plTracks    []library.Track   // tracks of the currently open playlist
+	trackCursor int               // cursor in the track list (depth == tracks)
+	inputMode   playlistInputMode // purpose of nameInput (none / create / rename)
+	nameInput   textinput.Model   // inline input for new-playlist name or rename
 
 	// addingTracks is true while the inline "add tracks" search panel is open.
 	addingTracks bool
@@ -102,6 +121,16 @@ type PlaylistState struct {
 	addResults   []int           // indices into a.tracks that match addInput
 	addCursor    int             // cursor in addResults
 	addDelta     map[string]int  // net change per track: +1 added, -1 removed, 0 cancelled
+
+	// overlayCreating is true while the add-to-playlist overlay shows its
+	// inline "create playlist" input.  ovlNewTrackID remembers which track
+	// should be added to the newly created playlist.
+	overlayCreating bool
+	ovlNewTrackID   string
+
+	// undoRemove is the most recent track removal, kept for the 5-second
+	// undo window.
+	undoRemove *undoRemove
 
 	// plListMaxColW caches the max display width of the right-column
 	// track count across all playlists.  Recomputed in playlistsLoadedMsg
@@ -125,19 +154,11 @@ type PlaylistState struct {
 	restorePlaylistID string
 }
 
-// OnlineState holds the state for the online music search tab.
-// It is embedded in App and accessed via a.onlineTracks, a.onlineCursor, etc.
-// The online tab maintains its own track list, separate from a.filtered,
-// so that local and online results never intermix.
-// Fields are declared here for future online tab implementation;
-// they are intentionally unused until the online search UI is built.
-//
-//nolint:unused
-type OnlineState struct {
-	onlineTracks  []library.Track // search results from an online TrackProvider
-	onlineCursor  int             // index of the selected track in a.onlineTracks
-	onlineQuery   string          // the most recent search query
-	onlineLoading bool            // true while an online search is in-flight
+// QueueState holds the temporary play queue.  It is never persisted: quitting
+// discards it.
+type QueueState struct {
+	ids    []string // Track.ID values in play order
+	cursor int      // cursor inside the queue overlay
 }
 
 // LyricsState holds the lyrics for the currently playing track.
@@ -150,6 +171,7 @@ type LyricsState struct {
 	provider      lyrics.Provider // chain of local + online providers; set in NewApp
 	lyricsLoading bool            // true while a background fetch is in-flight
 	synced        bool            // true when at least one line has a non-zero timestamp
+	offset        time.Duration   // per-track timing offset; positive delays lyrics
 
 	// Manual browse state (fullscreen lyrics panel only).
 	//
@@ -191,7 +213,7 @@ type App struct {
 	ChipState
 	LyricsState
 	PlaylistState
-	OnlineState
+	QueueState
 
 	// ── Search ───────────────────────────────────────────────────────────────
 	searchInput textinput.Model
@@ -221,6 +243,7 @@ type App struct {
 	statusMsg         string
 	statusMsgExpiry   time.Time // when non-zero, statusMsg is cleared after this time
 	libScanFromReload bool      // true when the current scan was triggered by Ctrl+R (not startup)
+	quitArmedAt       time.Time // first q press; a second q within the window quits
 
 	// ── Loading ──────────────────────────────────────────────────────────────
 	loading bool
@@ -578,6 +601,12 @@ func (a *App) Init() tea.Cmd {
 	if a.session != nil && a.session.LastTrackID != "" {
 		cmds = append(cmds, a.cmdRestoreSession())
 	}
+	// Sync the library on every launch so files added while the app was
+	// closed show up without requiring a manual reload.
+	if a.st != nil && a.musicDir != "" {
+		a.loading = true
+		cmds = append(cmds, a.cmdSyncLibrary())
+	}
 	// Preload playlists when the initial tab is Playlists.
 	if a.activeTab == tabPlaylist && a.st != nil {
 		cmds = append(cmds, a.cmdLoadPlaylists())
@@ -641,12 +670,12 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		}
 		if msg.err != nil {
-			a.statusMsg = "Sync error: " + msg.err.Error()
+			a.statusMsg = fmt.Sprintf(T("sync_error"), msg.err.Error())
 			a.statusMsgExpiry = time.Now().Add(statusMsgDuration)
 		} else if a.libScanFromReload {
 			// Only show "Loaded N tracks" when the scan was explicitly
-			// triggered by Ctrl+R in Settings, not on every startup.
-			a.statusMsg = fmt.Sprintf("Loaded %d tracks", len(a.tracks))
+			// triggered by Ctrl+R, not on every startup.
+			a.statusMsg = fmt.Sprintf(T("loaded_tracks"), len(a.tracks))
 			a.statusMsgExpiry = time.Now().Add(statusMsgDuration)
 			a.libScanFromReload = false
 		}
@@ -654,7 +683,7 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case playResultMsg:
 		if msg.err != nil {
-			a.statusMsg = iconError() + " " + msg.err.Error()
+			a.statusMsg = fmt.Sprintf(T("playback_error"), msg.err.Error())
 			a.statusMsgExpiry = time.Now().Add(statusMsgDuration)
 			return a, nil
 		}
@@ -694,6 +723,7 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		a.prevActiveIdx = -1
 		a.trackID = ""
 		a.synced = false
+		a.offset = 0
 		a.lyricsLoading = msg.track != nil // loading until lyricsLoadedMsg arrives
 		a.browseCenterIdx = -1
 		a.browseTicks = 0
@@ -743,21 +773,26 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if msg.err != nil {
 			a.statusMsg = T("playlist_load_error") + ": " + msg.err.Error()
 			a.statusMsgExpiry = time.Now().Add(statusMsgDuration)
-		} else {
-			a.plTracks = msg.tracks
-			// Cache the definitive count from the store for the header.
-			if a.st != nil {
-				if c, err := a.st.PlaylistTrackCount(a.currentPlaylist().ID); err == nil {
-					a.plTrackCount = c
-					// Also update the max-col-width cache if this playlist
-					// now has a wider track count display.
-					if w := strWidth(fmt.Sprintf(T("playlist_track_count"), c)); w > a.plListMaxColW {
-						a.plListMaxColW = w
-					}
-				}
-			} else {
-				a.plTrackCount = len(a.plTracks)
+			return a, nil
+		}
+		if msg.duplicate {
+			a.statusMsg = T("playlist_duplicate")
+			a.statusMsgExpiry = time.Now().Add(statusMsgDuration)
+		}
+		// Keep the cached list counts fresh for every playlist mutation.
+		for i := range a.playlists {
+			if a.playlists[i].ID == msg.playlistID {
+				a.playlists[i].TrackCount = msg.count
+				a.refreshPlListMaxColW()
+				break
 			}
+		}
+		// Only replace the visible track list when the message is about the
+		// playlist currently open.  Adding from another tab must not overwrite
+		// the track list being viewed.
+		if a.activeTab == tabPlaylist && a.depth == playlistDepthTracks &&
+			a.currentPlaylist().ID == msg.playlistID {
+			a.plTracks = msg.tracks
 			if a.trackCursor >= len(a.plTracks) {
 				a.trackCursor = len(a.plTracks) - 1
 			}
@@ -791,7 +826,10 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		// Show feedback only for explicit user actions (trackTitle is set by
 		// cmdToggleFavorite; cmdCheckFavorite leaves it empty).
-		if msg.trackTitle != "" {
+		if msg.trackTitle == "" {
+			return a, nil
+		}
+		{
 			if msg.isFavorite {
 				a.statusMsg = iconHeartFilled() + " " + msg.trackTitle
 			} else {
@@ -800,12 +838,16 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			a.statusMsgExpiry = time.Now().Add(statusMsgDuration)
 		}
 		// If we're viewing the Favorites playlist, reload its track list.
+		// The playlist list is also refreshed so cached counts stay accurate.
 		if a.activeTab == tabPlaylist &&
 			a.depth == playlistDepthTracks &&
 			a.currentPlaylist().ID == store.FavoritesPlaylistID {
-			return a, a.cmdLoadPlaylistTracks(store.FavoritesPlaylistID)
+			return a, tea.Batch(
+				a.cmdLoadPlaylistTracks(store.FavoritesPlaylistID),
+				a.cmdLoadPlaylists(),
+			)
 		}
-		return a, nil
+		return a, a.cmdLoadPlaylists()
 
 	case playlistPlayMsg:
 		// Replace the local library filteredIdxs with the playlist track order.
@@ -836,6 +878,7 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			a.statusMsgExpiry = time.Now().Add(statusMsgDuration)
 		}
 		a.filteredIdxs = newIdxs
+		a.rebuildFilteredPos()
 		pos := msg.startPos
 		if pos >= len(newIdxs) {
 			pos = 0
@@ -852,7 +895,7 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// Conversion failed — unlock and surface the error.
 			a.chipBusy = false
 			a.chipConverting = false
-			a.statusMsg = iconError() + " 8-bit convert failed: " + msg.err.Error()
+			a.statusMsg = fmt.Sprintf(T("chip_convert_failed"), msg.err.Error())
 			a.statusMsgExpiry = time.Now().Add(statusMsgDuration)
 			return a, nil
 		}
@@ -883,6 +926,7 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				a.synced = false
 			} else {
 				a.lines = msg.lines
+				a.offset = msg.offset
 				a.activeIdx = -1
 				a.trackID = msg.trackID
 				// Determine whether any line carries a real timestamp.
@@ -935,7 +979,7 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return a, tick()
 
 	case trackDoneMsg:
-		return a, a.cmdPlayNext()
+		return a, a.cmdAdvance()
 
 	case tea.KeyMsg:
 		return a, a.handleKey(msg)
@@ -1012,6 +1056,16 @@ func (a *App) panelInnerH() int {
 	return h
 }
 
+// trackPageSize is the number of rows moved by PageUp/PageDown: one viewport
+// of track rows (panel height minus the header and divider).
+func (a *App) trackPageSize() int {
+	n := a.panelInnerH() - 2
+	if n < 1 {
+		return 1
+	}
+	return n
+}
+
 // showMiniPlayer returns true when the terminal is wide enough and the right
 // panel is not collapsed.
 func (a *App) showMiniPlayer() bool { return !a.rightCollapsed && a.W >= miniPlayerMinWidth }
@@ -1068,9 +1122,23 @@ func (a *App) filteredTrack(pos int) library.Track {
 	return a.tracks[a.filteredIdxs[pos]]
 }
 
+// rebuildFilteredPos rebuilds the ID → filtered-position cache.
+func (a *App) rebuildFilteredPos() {
+	a.posByID = make(map[string]int, len(a.filteredIdxs))
+	for pos, idx := range a.filteredIdxs {
+		a.posByID[a.tracks[idx].ID] = pos
+	}
+}
+
 // filteredPos returns the position of the track with the given ID in the
 // filtered list, or -1 if it is not present.
 func (a *App) filteredPos(id string) int {
+	if a.posByID != nil {
+		if pos, ok := a.posByID[id]; ok {
+			return pos
+		}
+		return -1
+	}
 	for i, idx := range a.filteredIdxs {
 		if a.tracks[idx].ID == id {
 			return i
@@ -1138,8 +1206,8 @@ func (a *App) syncMarquees() {
 	}
 	t := a.currentTrack
 	a.mqTitle.SetText(t.DisplayTitle())
-	a.mqMeta.SetText(t.DisplayArtist() + " · " + t.Album)
-	a.mqArtist.SetText(t.DisplayArtist())
+	a.mqMeta.SetText(displayArtist(*t) + " · " + t.Album)
+	a.mqArtist.SetText(displayArtist(*t))
 	a.mqAlbum.SetText(t.Album)
 }
 
@@ -1269,15 +1337,8 @@ func (a *App) keepOvlCursorVisible() {
 func (a *App) refreshPlListMaxColW() {
 	const minW = 4
 	a.plListMaxColW = minW
-	if a.st == nil {
-		return
-	}
 	for _, pl := range a.playlists {
-		c, err := a.st.PlaylistTrackCount(pl.ID)
-		if err != nil {
-			continue
-		}
-		if w := strWidth(fmt.Sprintf(T("playlist_track_count"), c)); w > a.plListMaxColW {
+		if w := strWidth(fmt.Sprintf(T("playlist_track_count"), pl.TrackCount)); w > a.plListMaxColW {
 			a.plListMaxColW = w
 		}
 	}
@@ -1355,15 +1416,11 @@ func (a *App) syncLyricsActive() {
 		a.activeIdx = -1
 		return
 	}
-	pos := a.player.Position()
-	idx := -1
-	for i, l := range a.lines {
-		if l.Time <= pos {
-			idx = i
-		} else {
-			break
-		}
+	if a.player == nil {
+		return
 	}
+	pos := a.player.Position()
+	idx := lyricIndexAt(a.lines, pos, a.offset)
 
 	// Snap-back on natural line advance when browse has expired.
 	if a.browseExpired && idx != a.prevActiveIdx && idx >= 0 {

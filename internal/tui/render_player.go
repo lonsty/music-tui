@@ -2,6 +2,7 @@ package tui
 
 import (
 	"fmt"
+	"math"
 	"strings"
 
 	"github.com/charmbracelet/lipgloss"
@@ -148,7 +149,12 @@ func (a *App) buildControls(w int) string {
 	if a.volume == 0 {
 		volIcon = iconVolumeMute()
 	}
-	volPct := int(a.volume / maxVolume * 100)
+	volPct := volumePercent(a.volume)
+	volText := fmt.Sprintf("%d%%", volPct)
+	if a.volume > 1.0 {
+		// Above unity gain the slider stays at 100%; the plus marks boost.
+		volText = "100%+"
+	}
 
 	// Heart icon: filled when the current track is in Favorites, empty otherwise.
 	// Only show when an icon is available (not empty in Plain mode).
@@ -161,8 +167,21 @@ func (a *App) buildControls(w int) string {
 		heartPart = "    " + heartIcon
 	}
 
-	ctrl := iconPrev() + "  " + playIcon + "  " + iconNext() + "    " + modeIcon + "  " + volIcon + " " + fmt.Sprintf("%d%%", volPct) + heartPart
+	ctrl := iconPrev() + "  " + playIcon + "  " + iconNext() + "    " + modeIcon + "  " + volIcon + " " + volText + heartPart
 	return styleControls.Width(w).Render(ctrl)
+}
+
+// volumePercent maps the volume knob to the displayed 0-100 scale.
+// 1.0 (unity gain) is 100%; the boost range above it is reported separately
+// as a "+" marker rather than as a percentage over 100.
+func volumePercent(v float64) int {
+	if v <= 0 {
+		return 0
+	}
+	if v >= 1 {
+		return 100
+	}
+	return int(math.Round(v * 100))
 }
 
 // ── Fullscreen player ─────────────────────────────────────────────────────────

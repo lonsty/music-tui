@@ -24,6 +24,33 @@ const (
 	viewFullscreen             // Full-screen player + lyrics
 )
 
+// ── Library browsing ─────────────────────────────────────────────────────────
+
+// libraryView selects the grouping of the Local tab.
+type libraryView int
+
+const (
+	libraryViewTracks  libraryView = iota // flat track list
+	libraryViewAlbums                     // album groups
+	libraryViewArtists                    // artist groups
+	libraryViewCount                      // sentinel — must be last
+)
+
+// trackGroup is one album or artist row in a grouped library view.
+type trackGroup struct {
+	Key      string
+	Title    string
+	Subtitle string
+	IDs      []string
+}
+
+// groupRef identifies the group currently drilled into.
+type groupRef struct {
+	kind libraryView
+	key  string
+	ids  map[string]bool
+}
+
 // ── Settings overlay fields ───────────────────────────────────────────────────
 
 // settingsField identifies the active input field in the settings overlay.
@@ -72,15 +99,73 @@ func parseRightPanelMode(s string) rightPanelMode {
 	}
 }
 
-// settingsFieldBodyRow maps each settingsField to its row index within the
-// Settings overlay's scrollable body.  Used to keep ovlScrollRow in sync
-// with the selected field when the user navigates with ↑/↓.
-var settingsFieldBodyRow = [settingsFieldCount]int{
-	settingsFieldMusicDir: 3,
-	settingsFieldChipOpts: 8,
-	settingsFieldLanguage: 15,
-	settingsFieldFormat:   19,
-	settingsFieldIconSet:  23,
+// settingsRow identifies one row of the settings overlay body.  The render
+// path and keyboard navigation both derive positions from settingsBodyPlan,
+// so adding or moving a row cannot silently desynchronise them.
+type settingsRow int
+
+const (
+	settingsRowBlank settingsRow = iota
+	settingsRowSectionLib
+	settingsRowDir
+	settingsRowReload
+	settingsRowSectionChip
+	settingsRowOpts
+	settingsRowOptsHint
+	settingsRowOptsEx
+	settingsRowSectionLang
+	settingsRowLang
+	settingsRowSectionFmt
+	settingsRowFmt
+	settingsRowSectionIcon
+	settingsRowIcon
+)
+
+var settingsBodyPlan = []settingsRow{
+	settingsRowBlank,
+	settingsRowSectionLib,
+	settingsRowBlank,
+	settingsRowDir,
+	settingsRowReload,
+	settingsRowBlank,
+	settingsRowSectionChip,
+	settingsRowBlank,
+	settingsRowOpts,
+	settingsRowBlank,
+	settingsRowOptsHint,
+	settingsRowOptsEx,
+	settingsRowBlank,
+	settingsRowSectionLang,
+	settingsRowBlank,
+	settingsRowLang,
+	settingsRowBlank,
+	settingsRowSectionFmt,
+	settingsRowBlank,
+	settingsRowFmt,
+	settingsRowBlank,
+	settingsRowSectionIcon,
+	settingsRowBlank,
+	settingsRowIcon,
+}
+
+// settingsFieldRows returns the body row index of each settings field.
+func settingsFieldRows() [settingsFieldCount]int {
+	var rows [settingsFieldCount]int
+	for i, row := range settingsBodyPlan {
+		switch row {
+		case settingsRowDir:
+			rows[settingsFieldMusicDir] = i
+		case settingsRowOpts:
+			rows[settingsFieldChipOpts] = i
+		case settingsRowLang:
+			rows[settingsFieldLanguage] = i
+		case settingsRowFmt:
+			rows[settingsFieldFormat] = i
+		case settingsRowIcon:
+			rows[settingsFieldIconSet] = i
+		}
+	}
+	return rows
 }
 
 // ── Icon set serialisation ────────────────────────────────────────────────────
@@ -136,6 +221,7 @@ const (
 	overlaySettings               // , key — settings
 	overlayAddToPlaylist          // a key in Library tab — add cursor track to a playlist
 	overlayDeletePlaylist         // d key in Playlist list — confirm delete
+	overlayQueue                  // Q key — temporary play queue
 )
 
 // ── Tab ───────────────────────────────────────────────────────────────────────
@@ -146,7 +232,6 @@ type tabID int
 const (
 	tabPlaylist tabID = iota // playlist management
 	tabLocal                 // local music library
-	tabOnline                // online music search — placeholder
 	tabCount                 // sentinel — must be the last constant
 )
 
@@ -294,8 +379,11 @@ type playlistsLoadedMsg struct {
 
 // playlistTracksLoadedMsg carries the tracks for one playlist.
 type playlistTracksLoadedMsg struct {
-	tracks []library.Track
-	err    error
+	playlistID string
+	tracks     []library.Track
+	count      int
+	duplicate  bool
+	err        error
 }
 
 // favoriteChangedMsg is sent after a Like/Unlike operation completes.
@@ -326,6 +414,7 @@ type chipCrossfadeDoneMsg struct{ chipMode bool }
 type lyricsLoadedMsg struct {
 	trackID string
 	lines   []lyrics.Line
+	offset  time.Duration
 	err     error
 }
 

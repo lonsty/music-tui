@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"fmt"
 	"strings"
 
 	"github.com/charmbracelet/lipgloss"
@@ -55,12 +56,18 @@ func (a *App) renderHelpOverlay() string {
 			{"j / ↓", T("action_move_down")},
 			{"k / ↑", T("action_move_up")},
 			{"g / G", T("action_top_bottom")},
+			{"c", T("action_jump_playing")},
+			{"PgUp / PgDn", T("action_page")},
+			{"v", T("action_view")},
 			{"Enter", T("action_play")},
 			{"Space", T("action_pause_resume")},
 			{"n / p", T("action_next_prev")},
 			{"< / >", T("action_seek")},
+			{"[ / ]", T("action_offset")},
 			{"+ / -", T("action_volume")},
 			{"m", T("action_cycle_mode")},
+			{"e / z", T("action_queue_add")},
+			{"Q", T("action_queue_open")},
 			{"r / R", T("action_lofi")},
 			{"b", T("action_chip")},
 			{"f", T("action_fullscreen")},
@@ -83,6 +90,8 @@ func (a *App) renderHelpOverlay() string {
 			{"r", T("action_rename_playlist")},
 			{"d", T("action_delete_playlist")},
 			{"x", T("action_remove_track")},
+			{"u", T("action_undo")},
+			{"J / K", T("action_move_track")},
 			{"L", T("action_like")},
 		}},
 		{T("help_section_media"), []binding{
@@ -184,7 +193,7 @@ func (a *App) renderInfoOverlay() string {
 	if t != nil {
 		for _, lines := range [][]string{
 			row(T("label_title"), t.DisplayTitle()),
-			row(T("label_artist"), t.DisplayArtist()),
+			row(T("label_artist"), displayArtist(*t)),
 			row(T("label_album_artist"), t.AlbumArtist),
 			row(T("label_album"), t.Album),
 			row(T("label_year"), t.Year),
@@ -373,31 +382,41 @@ func (a *App) renderSettingsOverlay() string {
 
 	titleRows := []string{title, topDiv}
 
-	bodyRows := []string{
-		"",
-		sectionLabel(T("settings_section_lib")),
-		"",
-		dirLine,
-		reloadHint,
-		"",
-		sectionLabel(T("settings_section_chip")),
-		"",
-		optsLine,
-		"",
-		optsHint,
-		optsEx,
-		"",
-		sectionLabel(T("settings_lang_label")),
-		"",
-		langLine,
-		"",
-		sectionLabel(T("settings_fmt_label")),
-		"",
-		fmtLine,
-		"",
-		sectionLabel(T("settings_icon_set_label")),
-		"",
-		iconSetLine,
+	rowText := func(row settingsRow) string {
+		switch row {
+		case settingsRowSectionLib:
+			return sectionLabel(T("settings_section_lib"))
+		case settingsRowDir:
+			return dirLine
+		case settingsRowReload:
+			return reloadHint
+		case settingsRowSectionChip:
+			return sectionLabel(T("settings_section_chip"))
+		case settingsRowOpts:
+			return optsLine
+		case settingsRowOptsHint:
+			return optsHint
+		case settingsRowOptsEx:
+			return optsEx
+		case settingsRowSectionLang:
+			return sectionLabel(T("settings_lang_label"))
+		case settingsRowLang:
+			return langLine
+		case settingsRowSectionFmt:
+			return sectionLabel(T("settings_fmt_label"))
+		case settingsRowFmt:
+			return fmtLine
+		case settingsRowSectionIcon:
+			return sectionLabel(T("settings_icon_set_label"))
+		case settingsRowIcon:
+			return iconSetLine
+		default:
+			return ""
+		}
+	}
+	bodyRows := make([]string, 0, len(settingsBodyPlan))
+	for _, row := range settingsBodyPlan {
+		bodyRows = append(bodyRows, rowText(row))
 	}
 
 	hintRows := []string{"", footer}
@@ -502,6 +521,50 @@ func (a *App) renderScrollableOverlay(titleRows, bodyRows, hintRows []string, in
 		lipgloss.Place(a.W, a.H-topPad, lipgloss.Center, lipgloss.Center, box)
 }
 
+// ── Queue overlay ─────────────────────────────────────────────────────────────
+
+func (a *App) renderQueueOverlay() string {
+	innerW := a.overlayInnerW(idealOverlayW, minOverlayW)
+	div := styleOverlayMuted.Render(strings.Repeat("─", innerW))
+
+	titleRows := []string{
+		styleOverlayTitle.Render(iconWithSpace(iconQueue()) + T("queue_title")),
+		div,
+	}
+
+	var bodyRows []string
+	if len(a.ids) == 0 {
+		bodyRows = append(bodyRows, "  "+styleOverlayMuted.Render(T("queue_empty")))
+	} else {
+		for i, id := range a.ids {
+			t := a.findTrackByID(id)
+			text := T("queue_missing_track")
+			if t != nil {
+				text = t.DisplayTitle() + " · " + displayArtist(*t)
+			}
+			isSelected := i == a.cursor
+			row := fmt.Sprintf("%2d  %s", i+1, text)
+			if isSelected {
+				bodyRows = append(bodyRows, styleTrackRowSelected.Render(padRight(row, innerW)))
+			} else {
+				bodyRows = append(bodyRows, styleTrackRowDefault.Render(padRight(row, innerW)))
+			}
+		}
+	}
+
+	xKey := styleOverlayKey.Render("❮x❯")
+	cKey := styleOverlayKey.Render("❮C❯")
+	escKey := styleOverlayKey.Render("❮Esc❯")
+	hintRows := []string{
+		div,
+		"  " + xKey + styleOverlayMuted.Render(" "+T("queue_remove")) + "  " +
+			cKey + styleOverlayMuted.Render(" "+T("queue_clear")) + "  " +
+			escKey + styleOverlayMuted.Render(" "+T("queue_close")),
+	}
+
+	return a.renderScrollableOverlay(titleRows, bodyRows, hintRows, innerW)
+}
+
 // ── Delete-playlist confirm overlay ──────────────────────────────────────────
 
 // renderDeletePlaylistOverlay renders a compact Yes/No confirm overlay for
@@ -533,8 +596,8 @@ func (a *App) renderDeletePlaylistOverlay() string {
 	nKey := styleOverlayKey.Render("❮Esc❯")
 	hintRows := []string{
 		div,
-		"  " + yKey + styleOverlayMuted.Render(" confirm  ") +
-			nKey + styleOverlayMuted.Render(" cancel"),
+		"  " + yKey + styleOverlayMuted.Render(" "+T("overlay_confirm")+"  ") +
+			nKey + styleOverlayMuted.Render(" "+T("overlay_cancel")),
 	}
 
 	return a.renderScrollableOverlay(titleRows, bodyRows, hintRows, innerW)
@@ -547,6 +610,26 @@ func (a *App) renderDeletePlaylistOverlay() string {
 func (a *App) renderAddToPlaylistOverlay() string {
 	innerW := a.overlayInnerW(idealOverlayW, minOverlayW)
 	div := styleOverlayMuted.Render(strings.Repeat("─", innerW))
+
+	if a.overlayCreating {
+		titleRows := []string{
+			styleOverlayTitle.Render(iconWithSpace(iconPlaylist()) + T("playlist_create_add_title")),
+			div,
+		}
+		bodyRows := []string{
+			"",
+			"  " + styleSearchPrompt.Render(T("playlist_new_prompt")+": ") + a.nameInput.View(),
+			"",
+		}
+		enterKey := styleOverlayKey.Render("❮Enter❯")
+		escKey := styleOverlayKey.Render("❮Esc❯")
+		hintRows := []string{
+			div,
+			"  " + enterKey + styleOverlayMuted.Render(" "+T("settings_save")) + "  " +
+				escKey + styleOverlayMuted.Render(" "+T("settings_cancel")),
+		}
+		return a.renderScrollableOverlay(titleRows, bodyRows, hintRows, innerW)
+	}
 
 	titleRows := []string{
 		styleOverlayTitle.Render(iconWithSpace(iconPlaylist()) + T("playlist_add_title")),
@@ -572,10 +655,12 @@ func (a *App) renderAddToPlaylistOverlay() string {
 
 	enterKey := styleOverlayKey.Render("❮Enter❯")
 	escKey := styleOverlayKey.Render("❮Esc❯")
+	newKey := styleOverlayKey.Render("❮n❯")
 	hintRows := []string{
 		div,
-		"  " + enterKey + styleOverlayMuted.Render(" add  ") +
-			escKey + styleOverlayMuted.Render(" cancel"),
+		"  " + enterKey + styleOverlayMuted.Render(" "+T("overlay_add")+"  ") +
+			newKey + styleOverlayMuted.Render(" "+T("hint_playlist_new")+"  ") +
+			escKey + styleOverlayMuted.Render(" "+T("overlay_cancel")),
 	}
 
 	return a.renderScrollableOverlay(titleRows, bodyRows, hintRows, innerW)
