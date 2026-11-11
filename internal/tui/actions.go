@@ -316,34 +316,47 @@ func (a *App) cmdRetroDown() tea.Cmd {
 func (a *App) applyFilter() {
 	raw := strings.TrimSpace(a.searchInput.Value())
 
-	source := a.tracks
-	if a.drilldown != nil {
-		source = make([]library.Track, 0, len(a.tracks))
-		for _, t := range a.tracks {
-			if a.drilldown.ids[t.ID] {
-				source = append(source, t)
+	var idxs []int
+	if raw == "" && a.formatPref == formatPrefAll && a.drilldown == nil {
+		// Unfiltered view: reuse the cached identity table instead of copying
+		// every track or remapping through a temporary ID map.
+		idxs = a.identityIndices()
+	} else {
+		source := a.tracks
+		if a.drilldown != nil {
+			source = make([]library.Track, 0, len(a.tracks))
+			for _, t := range a.tracks {
+				if a.drilldown.ids[t.ID] {
+					source = append(source, t)
+				}
 			}
 		}
-	}
 
-	idxs := selectTrackIndices(source, raw, a.formatPref)
-	if a.drilldown != nil {
-		// selectTrackIndices returns positions into source; remap to a.tracks.
-		idToPos := make(map[string]int, len(a.tracks))
-		for i := range a.tracks {
-			idToPos[a.tracks[i].ID] = i
-		}
-		remapped := make([]int, 0, len(idxs))
-		for _, i := range idxs {
-			if pos, ok := idToPos[source[i].ID]; ok {
-				remapped = append(remapped, pos)
+		idxs = selectTrackIndices(source, raw, a.formatPref)
+		if a.drilldown != nil {
+			// selectTrackIndices returns positions into source; remap to a.tracks.
+			idToPos := make(map[string]int, len(a.tracks))
+			for i := range a.tracks {
+				idToPos[a.tracks[i].ID] = i
 			}
+			remapped := make([]int, 0, len(idxs))
+			for _, i := range idxs {
+				if pos, ok := idToPos[source[i].ID]; ok {
+					remapped = append(remapped, pos)
+				}
+			}
+			idxs = remapped
 		}
-		idxs = remapped
 	}
 	a.filteredIdxs = idxs
 	a.rebuildFilteredPos()
-	a.rebuildGroups()
+
+	// Groups depend only on tracks and the format preference, not on the
+	// search query.  Mark them dirty instead of rebuilding on every keystroke.
+	if !a.groupsBuilt || a.groupsPref != a.formatPref {
+		a.groupsDirty = true
+	}
+	a.groupsPref = a.formatPref
 
 	// Invalidate shuffle so it is rebuilt from the new filtered list on next use.
 	a.shuffleIDs = nil
@@ -361,6 +374,67 @@ func (a *App) applyFilter() {
 		a.cursorPos = 0
 	} else if a.cursorPos >= len(a.filteredIdxs) {
 		a.cursorPos = len(a.filteredIdxs) - 1
+	}
+}
+
+// formatDedupKey is the identity used by lossless-first deduplication:
+// lowercase (artist · album · title).
+func formatDedupKey(t *library.Track) string {
+	return strings.ToLower(t.DisplayArtist()) + "\x00" +
+		strings.ToLower(t.Album) + "\x00" +
+		strings.ToLower(t.DisplayTitle())
+}
+
+// applyFormatPreferenceIndices is the position-based counterpart of
+// applyFormatPreference.  It preserves input order and never copies tracks.
+func applyFormatPreferenceIndices(tracks []library.Track, idxs []int, pref formatPreference) []int {
+	switch pref {
+	case formatPrefAll:
+		return idxs
+
+	case formatPrefLosslessFirst:
+		type entry struct {
+			pos     int
+			quality int
+		}
+		best := make(map[string]entry, len(idxs))
+		for _, i := range idxs {
+			t := &tracks[i]
+			key := formatDedupKey(t)
+			q := library.QualityOf(t.Format())
+			if prev, ok := best[key]; !ok || q > prev.quality {
+				best[key] = entry{pos: i, quality: q}
+			}
+		}
+		out := make([]int, 0, len(best))
+		for _, i := range idxs {
+			if e := best[formatDedupKey(&tracks[i])]; e.pos == i {
+				out = append(out, i)
+			}
+		}
+		return out
+
+	case formatPrefLosslessOnly:
+		const losslessThreshold = 30
+		out := make([]int, 0, len(idxs))
+		for _, i := range idxs {
+			if library.QualityOf(tracks[i].Format()) >= losslessThreshold {
+				out = append(out, i)
+			}
+		}
+		return out
+
+	case formatPrefMP3Only:
+		out := make([]int, 0, len(idxs))
+		for _, i := range idxs {
+			if strings.EqualFold(tracks[i].Format(), "MP3") {
+				out = append(out, i)
+			}
+		}
+		return out
+
+	default:
+		return idxs
 	}
 }
 
@@ -389,9 +463,7 @@ func applyFormatPreference(tracks []library.Track, pref formatPreference) []libr
 		}
 		best := make(map[string]entry, len(tracks))
 		for i, t := range tracks {
-			key := strings.ToLower(t.DisplayArtist()) + "\x00" +
-				strings.ToLower(t.Album) + "\x00" +
-				strings.ToLower(t.DisplayTitle())
+			key := formatDedupKey(&tracks[i])
 			q := library.QualityOf(t.Format())
 			if prev, ok := best[key]; !ok || q > prev.quality {
 				best[key] = entry{idx: i, quality: q}

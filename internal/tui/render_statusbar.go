@@ -174,22 +174,21 @@ func (a *App) renderStatusBar() string {
 		return 1 + strWidth(h.key) + 1 + 1 + strWidth(h.label) + 1
 	}
 
-	// Drop hints from right to left until the remaining ones fit.
+	// Drop hints from right to left until the remaining ones fit.  Sum the
+	// widths once, then subtract each dropped hint instead of re-summing the
+	// surviving prefix (which was O(n²)).
 	available := a.W - prefixW
 	if available < 0 {
 		available = 0
 	}
-	// end is the first index to exclude (one past the last visible hint).
+	total := 0
+	for _, h := range hints {
+		total += hintWidth(h)
+	}
 	end := len(hints)
-	for end > 0 {
-		total := 0
-		for i := 0; i < end; i++ {
-			total += hintWidth(hints[i])
-		}
-		if total <= available {
-			break
-		}
+	for end > 0 && total > available {
 		end--
+		total -= hintWidth(hints[end])
 	}
 
 	var sb strings.Builder

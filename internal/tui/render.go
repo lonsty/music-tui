@@ -415,7 +415,13 @@ func gradientTextBg(s string, bold bool, bgHex string, colors ...string) string 
 
 	col := 0
 	for _, r := range s {
-		rw := strWidth(string(r))
+		// Printable ASCII is always one column; skip the string(r) allocation
+		// on the hot path.  Non-ASCII keeps the existing width calculation so
+		// the rendered bytes stay identical.
+		rw := 1
+		if r < 0x20 || r >= 0x7f {
+			rw = strWidth(string(r))
+		}
 		var t float64
 		if totalW > 1 {
 			t = float64(col) / float64(totalW-1)

@@ -8,6 +8,7 @@ import (
 	"github.com/charmbracelet/lipgloss"
 
 	"github.com/lonsty/music-tui/internal/audio"
+	"github.com/lonsty/music-tui/internal/lyrics"
 )
 
 // ── Lyric line decoration constants ──────────────────────────────────────────
@@ -326,6 +327,17 @@ func (a *App) renderFullLyrics() string {
 //
 // When active < 0 (plain-text / unsynchronised lyrics) the function delegates
 // to renderLyricsPlain which shows lines top-to-bottom without any highlight.
+// maxLineWidth returns the widest line in display columns.
+func maxLineWidth(lines []lyrics.Line) int {
+	maxW := 0
+	for _, l := range lines {
+		if tw := strWidth(l.Text); tw > maxW {
+			maxW = tw
+		}
+	}
+	return maxW
+}
+
 func (a *App) renderLyricsScroll(w, h int) string {
 	lines := a.lines
 	active := a.activeIdx
@@ -336,12 +348,12 @@ func (a *App) renderLyricsScroll(w, h int) string {
 		return a.renderLyricsPlain(w, h)
 	}
 
-	// Pre-compute the maximum displayed text width for consistent rule lengths.
-	maxTextW := 0
-	for _, l := range lines {
-		if tw := strWidth(l.Text); tw > maxTextW {
-			maxTextW = tw
-		}
+	// Widest line, computed once when the lyrics load.  The fallback keeps
+	// tests and any direct assignment of a.lines working.
+	maxTextW := a.maxTextW
+	if maxTextW == 0 && total > 0 {
+		maxTextW = maxLineWidth(lines)
+		a.maxTextW = maxTextW
 	}
 
 	// Determine the line that sits at the centre of the visible window.
@@ -728,8 +740,7 @@ func (a *App) buildMiniLyricsContent(w, h int) string {
 	dur := a.framePlayback.duration
 	pct := progressPct(pos, dur)
 	a.progressBar.Width = w - 4
-	bar := lipgloss.NewStyle().Width(w).Align(lipgloss.Center).
-		Render(a.progressBar.ViewAs(pct))
+	bar := styleCentered.Width(w).Render(a.progressBar.ViewAs(pct))
 	timeStr := styleTime.Width(w).Align(lipgloss.Center).
 		Render(fmt.Sprintf("%s / %s", formatDuration(pos), formatDuration(dur)))
 

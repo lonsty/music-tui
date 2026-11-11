@@ -35,16 +35,16 @@
 
 ## 5. 性能优化
 
-- [ ] 5.1 重写 `selectTrackIndices` 为位置直出、去掉整库 Track 复制；新增表驱动测试覆盖空查询、前缀、格式偏好、drilldown，验证结果与旧实现一致，`BenchmarkSelectTrackIndices10K` 的分配显著下降。
-- [ ] 5.2 增加恒等索引缓存与 `groupsDirty` 惰性重建；新增测试覆盖“搜索→清除→切换 Albums”“格式切换后进入 Albums”，验证分组内容正确、搜索期间不重建。
-- [ ] 5.3 搜索输入转发路径仅在查询值变化时调用 `applyFilter`；新增测试用光标闪烁消息验证 `filteredIdxs` 不变且未重建。
-- [ ] 5.4 新增 `trackPosByID` 缓存并改造 `findTrackByID`；新增测试覆盖队列中包含被过滤曲目，验证 `BenchmarkRenderQueueOverlay200` 不再随曲库线性增长。
-- [ ] 5.5 歌词 `maxTextW` 在加载时计算、宽度变化时失效；新增测试验证高亮行与截断结果不变，验证不再逐帧全量测量。
-- [ ] 5.6 `Marquee` 缓存 `textW` 并在 `Tick` 复用；新增测试验证滚动起止与文本宽度不变，基准分配下降。
-- [ ] 5.7 `gradientText` 增加 ASCII 无分配快路径；验证 golden 渲染测试逐字节一致，并记录该函数基准变化。
-- [ ] 5.8 封面占位图纳入 `coverRendered` 缓存；新增测试断言无封面曲目多帧渲染结果相同且只构建一次。
-- [ ] 5.9 将每帧构造的样式提升为包级变量，状态栏提示宽度改为单次求和；验证 golden 一致，`BenchmarkViewNormal10K` 分配下降。
-- [ ] 5.10 音频位置/时长改为每帧快照；验证 golden 一致，并新增测试断言渲染期间只读取一次播放器位置。
+- [x] 5.1 重写 `selectTrackIndices` 为位置直出、去掉整库 Track 复制；新增表驱动测试覆盖空查询、前缀、格式偏好、drilldown，验证结果与旧实现一致，`BenchmarkSelectTrackIndices10K` 的分配显著下降。
+- [x] 5.2 增加恒等索引缓存与 `groupsDirty` 惰性重建；新增测试覆盖“搜索→清除→切换 Albums”“格式切换后进入 Albums”，验证分组内容正确、搜索期间不重建。
+- [x] 5.3 搜索输入转发路径仅在查询值变化时调用 `applyFilter`；新增测试用光标闪烁消息验证 `filteredIdxs` 不变且未重建。
+- [x] 5.4 新增 `trackPosByID` 缓存并改造 `findTrackByID`；新增测试覆盖队列中包含被过滤曲目，验证 `BenchmarkRenderQueueOverlay200` 不再随曲库线性增长。
+- [x] 5.5 歌词 `maxTextW` 在加载时计算、宽度变化时失效；新增测试验证高亮行与截断结果不变，验证不再逐帧全量测量。
+- [x] 5.6 `Marquee` 缓存 `textW` 并在 `Tick` 复用；新增测试验证滚动起止与文本宽度不变，基准分配下降。
+- [x] 5.7 `gradientText` 增加 ASCII 无分配快路径；验证 golden 渲染测试逐字节一致，并记录该函数基准变化。
+- [x] 5.8 封面占位图纳入 `coverRendered` 缓存；新增测试断言无封面曲目多帧渲染结果相同且只构建一次。
+- [x] 5.9 将每帧构造的样式提升为包级变量，状态栏提示宽度改为单次求和；验证 golden 一致，`BenchmarkViewNormal10K` 分配下降。
+- [x] 5.10 音频位置/时长改为每帧快照；验证 golden 一致，并新增测试断言渲染期间只读取一次播放器位置。
 
 ## 6. 结构整理与死代码
 

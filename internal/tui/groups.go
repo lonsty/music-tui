@@ -16,6 +16,9 @@ func (a *App) rebuildGroups() {
 	preferred := applyFormatPreference(a.tracks, a.formatPref)
 	a.albumGroups = buildTrackGroups(preferred, libraryViewAlbums)
 	a.artistGroups = buildTrackGroups(preferred, libraryViewArtists)
+	a.groupsBuilt = true
+	a.groupsDirty = false
+	a.groupsPref = a.formatPref
 	if a.groupCursor >= a.activeGroupCount() {
 		a.groupCursor = a.activeGroupCount() - 1
 	}
@@ -57,8 +60,12 @@ func buildTrackGroups(tracks []library.Track, kind libraryView) []trackGroup {
 	return groups
 }
 
-// activeGroups returns the group cache for the current view.
+// activeGroups returns the group cache for the current view, rebuilding it
+// lazily when tracks or the format preference changed since it was built.
 func (a *App) activeGroups() []trackGroup {
+	if !a.groupsBuilt || a.groupsDirty {
+		a.rebuildGroups()
+	}
 	if a.view == libraryViewArtists {
 		return a.artistGroups
 	}

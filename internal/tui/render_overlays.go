@@ -7,6 +7,19 @@ import (
 	"github.com/charmbracelet/lipgloss"
 )
 
+// Pre-declared settings-row styles.  The selected variants paint the row with
+// surface0; the unselected ones reuse the shared overlay styles.
+var (
+	styleSettingsSpace         = lipgloss.NewStyle()
+	styleSettingsSpaceSelected = lipgloss.NewStyle().Background(lipgloss.Color(surface0))
+	styleSettingsLabel         = styleOverlayKey
+	styleSettingsLabelSelected = styleOverlayKey.
+					Background(lipgloss.Color(surface0)).
+					Foreground(lipgloss.Color(mauve))
+	styleSettingsValue         = styleOverlayValue
+	styleSettingsValueSelected = styleOverlayValue.Background(lipgloss.Color(surface0))
+)
+
 // overlayInnerW returns the usable content width (columns) for an overlay box
 // given the current terminal width.  It subtracts the box border (2 cols each
 // side = 2 total for RoundedBorder) and the horizontal padding defined by
@@ -239,27 +252,26 @@ func (a *App) renderSettingsOverlay() string {
 		return styleOverlayMuted.Render("── " + label + " " + strings.Repeat("─", fill))
 	}
 
-	// selBg returns the surface0 colour when active, empty (transparent) otherwise.
-	selBg := func(active bool) lipgloss.Color {
-		if active {
-			return lipgloss.Color(surface0)
-		}
-		return lipgloss.Color("")
-	}
-
+	// Styles are pre-declared: lipgloss.Style is a value, so selecting one does
+	// not allocate per field per frame.
 	spaceStyle := func(active bool) lipgloss.Style {
-		return lipgloss.NewStyle().Background(selBg(active))
+		if active {
+			return styleSettingsSpaceSelected
+		}
+		return styleSettingsSpace
 	}
 
 	labelStyle := func(active bool) lipgloss.Style {
-		s := styleOverlayKey.Background(selBg(active))
 		if active {
-			return s.Foreground(lipgloss.Color(mauve))
+			return styleSettingsLabelSelected
 		}
-		return s
+		return styleSettingsLabel
 	}
 	valueStyle := func(active bool) lipgloss.Style {
-		return styleOverlayValue.Background(selBg(active))
+		if active {
+			return styleSettingsValueSelected
+		}
+		return styleSettingsValue
 	}
 
 	buildFieldLine := func(label, value string, active bool) string {

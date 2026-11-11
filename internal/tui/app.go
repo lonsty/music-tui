@@ -67,20 +67,25 @@ type PlaybackState struct {
 type LibraryState struct {
 	tracks       []library.Track
 	filteredIdxs []int            // positions in a.tracks that pass the current filter
+	identityIdxs []int            // cached 0..len(tracks)-1 slice for the unfiltered view
 	posByID      map[string]int   // Track.ID → position in filteredIdxs (O(1) lookup)
+	trackPosByID map[string]int   // Track.ID → position in tracks (O(1) lookup)
 	shuffleIDs   []string         // Track.ID values in shuffled order (random play mode)
 	cursorPos    int              // position in filteredIdxs of the cursor-selected track
 	formatPref   formatPreference // active format-display preference
 	lastQuery    string           // last applied search query; used to detect query changes
 
-	// Grouped browsing.  The group caches are rebuilt whenever the filter or
-	// format preference changes; render and key handling only read them.
+	// Grouped browsing.  The group caches are rebuilt lazily whenever tracks or
+	// the format preference change; render and key handling only read them.
 	view         libraryView
 	prevView     libraryView // view to restore when a search filter is cleared
 	groupCursor  int
 	albumGroups  []trackGroup
 	artistGroups []trackGroup
-	drilldown    *groupRef // non-nil while showing one album/artist's tracks
+	groupsBuilt  bool
+	groupsDirty  bool
+	groupsPref   formatPreference // format preference the group caches were built with
+	drilldown    *groupRef        // non-nil while showing one album/artist's tracks
 }
 
 // ChipState holds the 8-bit chip conversion state.
@@ -173,6 +178,7 @@ type LyricsState struct {
 	lyricsLoading bool            // true while a background fetch is in-flight
 	synced        bool            // true when at least one line has a non-zero timestamp
 	offset        time.Duration   // per-track timing offset; positive delays lyrics
+	maxTextW      int             // widest lyric line, computed once per load
 
 	// Manual browse state (fullscreen lyrics panel only).
 	//
@@ -282,8 +288,9 @@ type App struct {
 	// ── Cover art cache ───────────────────────────────────────────────────────
 	// Pre-rendered terminal art string for the current track's cover.
 	// Invalidated whenever the track changes or the box size changes.
-	coverRendered string
-	coverW        int // outerCols value used to produce coverRendered
+	coverRendered    string
+	coverW           int  // outerCols value used to produce coverRendered
+	coverPlaceholder bool // true when coverRendered is the no-art placeholder
 
 	// ── Favorites / Like ─────────────────────────────────────────────────────
 	// isFavorite caches whether the currently playing track is in the
@@ -486,6 +493,8 @@ func NewApp(player *audio.Player, st *store.Store, musicDir string, tracks []lib
 	if len(tracks) > 0 {
 		library.SortByArtistAlbum(tracks)
 		app.tracks = tracks
+		app.rebuildTrackPos()
+		app.groupsDirty = true
 		// Apply format preference and any existing search query so the initial
 		// filtered list is consistent with the user's persisted settings.
 		app.applyFilter()
@@ -671,6 +680,8 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// the existing library and surface the error in the status bar.
 		if msg.tracks != nil {
 			a.tracks = msg.tracks
+			a.rebuildTrackPos()
+			a.groupsDirty = true
 			// Re-apply the current search query and format preference so the
 			// filtered list stays consistent after a library reload.
 			a.applyFilter()
@@ -762,6 +773,7 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		a.trackID = ""
 		a.synced = false
 		a.offset = 0
+		a.maxTextW = 0
 		a.lyricsLoading = msg.track != nil // loading until lyricsLoadedMsg arrives
 		a.browseCenterIdx = -1
 		a.browseTicks = 0
@@ -981,6 +993,7 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				a.offset = msg.offset
 				a.activeIdx = -1
 				a.trackID = msg.trackID
+				a.maxTextW = maxLineWidth(msg.lines)
 				// Determine whether any line carries a real timestamp.
 				// Pure plain-text lyrics (all Time=0) are shown statically
 				// without any active-line highlight.
@@ -1049,8 +1062,13 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	// Forward to search input while search overlay is active.
 	if a.activeOvl == overlaySearch {
 		var cmd tea.Cmd
+		before := a.searchInput.Value()
 		a.searchInput, cmd = a.searchInput.Update(msg)
-		a.applyFilter()
+		// Cursor-blink and other non-text messages must not re-run the whole
+		// library filter; only an actual query change does.
+		if a.searchInput.Value() != before {
+			a.applyFilter()
+		}
 		return a, cmd
 	}
 
@@ -1182,6 +1200,41 @@ func (a *App) rebuildFilteredPos() {
 	}
 }
 
+// identityIndices returns the cached 0..len(tracks)-1 table used when no
+// filter is active.  Callers must treat the result as read-only.
+func (a *App) identityIndices() []int {
+	n := len(a.tracks)
+	if cap(a.identityIdxs) < n {
+		a.identityIdxs = make([]int, n)
+	} else {
+		a.identityIdxs = a.identityIdxs[:n]
+	}
+	for i := range a.identityIdxs {
+		a.identityIdxs[i] = i
+	}
+	return a.identityIdxs
+}
+
+// rebuildTrackPos rebuilds the ID → full-library-position cache used by queue
+// and overlay lookups.  Call it whenever a.tracks is replaced.
+func (a *App) rebuildTrackPos() {
+	a.trackPosByID = make(map[string]int, len(a.tracks))
+	for i := range a.tracks {
+		a.trackPosByID[a.tracks[i].ID] = i
+	}
+}
+
+// trackPos returns the position of id in a.tracks, or -1 when absent.
+func (a *App) trackPos(id string) int {
+	if len(a.trackPosByID) != len(a.tracks) {
+		a.rebuildTrackPos()
+	}
+	if pos, ok := a.trackPosByID[id]; ok {
+		return pos
+	}
+	return -1
+}
+
 // filteredPos returns the position of the track with the given ID in the
 // filtered list, or -1 if it is not present.
 func (a *App) filteredPos(id string) int {
@@ -1287,7 +1340,7 @@ func (a *App) getCoverArt(maxOuterCols, maxOuterRows int) string {
 	outerCols := outerRows * 2
 
 	if a.currentTrack == nil {
-		return buildCoverPlaceholderSized(outerCols, outerRows)
+		return a.cachedPlaceholder(outerCols, outerRows)
 	}
 
 	// Prefer in-memory CoverArt (fresh scan); fall back to CoverPath (DB load).
@@ -1301,19 +1354,33 @@ func (a *App) getCoverArt(maxOuterCols, maxOuterRows int) string {
 	}
 
 	if len(coverData) == 0 {
-		return buildCoverPlaceholderSized(outerCols, outerRows)
+		return a.cachedPlaceholder(outerCols, outerRows)
 	}
-	if a.coverRendered != "" && a.coverW == outerCols {
+	if a.coverRendered != "" && a.coverW == outerCols && !a.coverPlaceholder {
 		return a.coverRendered
 	}
 
 	rendered := renderCoverArt(coverData, outerCols, outerRows)
 	if rendered == "" {
-		return buildCoverPlaceholderSized(outerCols, outerRows)
+		return a.cachedPlaceholder(outerCols, outerRows)
 	}
 	a.coverRendered = rendered
 	a.coverW = outerCols
+	a.coverPlaceholder = false
 	return a.coverRendered
+}
+
+// cachedPlaceholder returns the no-art placeholder, reusing the previous
+// string when the box size has not changed.
+func (a *App) cachedPlaceholder(outerCols, outerRows int) string {
+	if a.coverRendered != "" && a.coverW == outerCols && a.coverPlaceholder {
+		return a.coverRendered
+	}
+	placeholder := buildCoverPlaceholderSized(outerCols, outerRows)
+	a.coverRendered = placeholder
+	a.coverW = outerCols
+	a.coverPlaceholder = true
+	return placeholder
 }
 
 // tickMarquees advances all Marquee scroll positions.

@@ -10,13 +10,12 @@ import (
 
 // findTrackByID returns a copy of the track with the given ID, or nil.
 func (a *App) findTrackByID(id string) *library.Track {
-	for i := range a.tracks {
-		if a.tracks[i].ID == id {
-			t := a.tracks[i]
-			return &t
-		}
+	pos := a.trackPos(id)
+	if pos < 0 {
+		return nil
 	}
-	return nil
+	t := a.tracks[pos]
+	return &t
 }
 
 func (a *App) queueHas(id string) bool {
