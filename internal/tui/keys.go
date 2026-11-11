@@ -473,17 +473,17 @@ func (a *App) settingsActivateField() tea.Cmd {
 		return nil
 
 	case settingsFieldLanguage:
-		if activeLang == LangEN {
+		if ActiveLang() == LangEN {
 			SetLang(LangZH)
 		} else {
 			SetLang(LangEN)
 		}
 		if a.st != nil {
 			langVal := store.ValLanguageEN
-			if activeLang == LangZH {
+			if ActiveLang() == LangZH {
 				langVal = store.ValLanguageZH
 			}
-			_ = a.st.SetSetting(store.KeyLanguage, langVal)
+			a.saveSetting(store.KeyLanguage, langVal)
 		}
 		a.searchInput.Placeholder = T("search_placeholder")
 		return nil
@@ -491,7 +491,7 @@ func (a *App) settingsActivateField() tea.Cmd {
 	case settingsFieldFormat:
 		a.formatPref = (a.formatPref + 1) % formatPrefCount
 		if a.st != nil {
-			_ = a.st.SetSetting(store.KeyFormatPreference, formatPrefKey(a.formatPref))
+			a.saveSetting(store.KeyFormatPreference, formatPrefKey(a.formatPref))
 		}
 		a.applyFilter()
 		return nil
@@ -500,7 +500,7 @@ func (a *App) settingsActivateField() tea.Cmd {
 		next := (ActiveIconSet() + 1) % iconSetCount
 		setIconSet(next)
 		if a.st != nil {
-			_ = a.st.SetSetting(store.KeyIconSet, iconSetKey(next))
+			a.saveSetting(store.KeyIconSet, iconSetKey(next))
 		}
 		return nil
 	}
@@ -524,14 +524,14 @@ func (a *App) settingsCommitField() tea.Cmd {
 		}
 		a.musicDir = newDir
 		if a.st != nil {
-			_ = a.st.SetSetting(store.KeyMusicDir, newDir)
+			a.saveSetting(store.KeyMusicDir, newDir)
 		}
 	}
 
 	if a.settingsActive == settingsFieldChipOpts && newOpts != a.chip8Options {
 		a.chip8Options = newOpts
 		if a.st != nil {
-			_ = a.st.SetSetting(store.KeyChip8Options, newOpts)
+			a.saveSetting(store.KeyChip8Options, newOpts)
 		}
 		a.chipPath = ""
 		a.chipOrigin = ""
@@ -855,6 +855,10 @@ func (a *App) reloadLibrary() tea.Cmd {
 	if a.st == nil || a.musicDir == "" {
 		return nil
 	}
+	// A scan is already running: do not stack another one on top of it.
+	if a.loading {
+		return nil
+	}
 	a.loading = true
 	a.statusMsg = T("reloading_library")
 	a.statusMsgExpiry = time.Time{}
@@ -879,7 +883,7 @@ func (a *App) settingsReloadLibrary() tea.Cmd {
 		return nil
 	}
 	if a.st != nil {
-		_ = a.st.SetSetting(store.KeyMusicDir, a.musicDir)
+		a.saveSetting(store.KeyMusicDir, a.musicDir)
 	}
 	a.closeSettings()
 	return a.reloadLibrary()

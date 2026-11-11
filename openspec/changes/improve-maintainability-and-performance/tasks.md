@@ -19,11 +19,11 @@
 
 ## 3. 正确性修复
 
-- [ ] 3.1 修复 `applyFormatPreference` 在 lossless-only / MP3-only 下复用输入底层数组的问题（改为不修改入参）；新增测试断言 `rebuildGroups` 前后 `a.tracks` 顺序与内容不变，验证 `go test ./internal/tui` 通过。
-- [ ] 3.2 将 `cmdNextPlayMode` / `cmdRetroUp` / `cmdRetroDown` 改为返回专用消息，状态只在 `Update` 写；新增测试断言 `Update` 后 `playMode`/`retroIdx` 正确、shuffle 已重建，验证 `go test ./internal/tui` 通过。
-- [ ] 3.3 将 i18n 语言表与图标集改为原子快照；新增并发测试（多 goroutine 调 `SetLang`/`T`、`setIconSet`/`icon`）并验证 `go test -race ./internal/tui -run 'Concurrent'` 通过。
-- [ ] 3.4 新增持久化错误上报助手与中英文 i18n 键；验证失败写触发日志与状态栏提示（用已关闭的临时库构造失败），并验证 i18n 覆盖测试通过。
-- [ ] 3.5 为扫描增加 `context.WithCancel` 与 `loading` 防重入，修复 feeder 协程在 worker 退出后阻塞的问题；新增测试验证取消后 `SyncDir` 及时返回、连续触发只启动一次扫描。
+- [x] 3.1 修复 `applyFormatPreference` 在 lossless-only / MP3-only 下复用输入底层数组的问题（改为不修改入参）；新增测试断言 `rebuildGroups` 前后 `a.tracks` 顺序与内容不变，验证 `go test ./internal/tui` 通过。
+- [x] 3.2 将 `cmdNextPlayMode` / `cmdRetroUp` / `cmdRetroDown` 改为返回专用消息，状态只在 `Update` 写；新增测试断言 `Update` 后 `playMode`/`retroIdx` 正确、shuffle 已重建，验证 `go test ./internal/tui` 通过。
+- [x] 3.3 将 i18n 语言表与图标集改为原子快照；新增并发测试（多 goroutine 调 `SetLang`/`T`、`setIconSet`/`icon`）并验证 `go test -race ./internal/tui -run 'Concurrent'` 通过。
+- [x] 3.4 新增持久化错误上报助手与中英文 i18n 键；验证失败写触发日志与状态栏提示（用已关闭的临时库构造失败），并验证 i18n 覆盖测试通过。
+- [x] 3.5 为扫描增加 `context.WithCancel` 与 `loading` 防重入，修复 feeder 协程在 worker 退出后阻塞的问题；新增测试验证取消后 `SyncDir` 及时返回、连续触发只启动一次扫描。
 - [x] 3.6 让 `internal/audio` 测试可移植：去掉硬编码本机路径，文件不存在或 `NewPlayer` 失败时 `t.Skip`；验证 `go test ./internal/audio` 在无音频文件的机器上跳过并通过。
 
 ## 4. 存储层

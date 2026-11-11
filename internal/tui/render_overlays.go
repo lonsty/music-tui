@@ -323,7 +323,7 @@ func (a *App) renderSettingsOverlay() string {
 	}
 	langLabel := labelStyle(langActive).Render(T("settings_lang_label") + strings.Repeat(" ", langPad))
 	var langView string
-	if activeLang == LangZH {
+	if ActiveLang() == LangZH {
 		langView = valueStyle(langActive).Render(T("settings_lang_zh"))
 	} else {
 		langView = valueStyle(langActive).Render(T("settings_lang_en"))

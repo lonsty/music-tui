@@ -4,6 +4,7 @@ package tui
 import (
 	"context"
 	"fmt"
+	"log"
 	"math/rand"
 	"os"
 	"strconv"
@@ -259,6 +260,10 @@ type App struct {
 	// online search).  Call it before starting a new request so that stale
 	// responses from the old request are never applied to the new track's state.
 	netCancel context.CancelFunc
+
+	// scanCancel cancels the in-flight library scan, if any.  A scan is a
+	// single background job; starting a new one cancels the previous one.
+	scanCancel context.CancelFunc
 
 	// ── Enter-twice-to-fullscreen ────────────────────────────────────────────
 	// Tracks the ID of the track that was selected last time Enter was pressed.
@@ -524,6 +529,9 @@ func NewApp(player *audio.Player, st *store.Store, musicDir string, tracks []lib
 // Cleanup saves the current session state to the database and removes
 // the temporary directory.  Call this when the application exits.
 func (a *App) Cleanup() {
+	if a.scanCancel != nil {
+		a.scanCancel()
+	}
 	a.saveSession()
 	if a.tmpDir != "" {
 		_ = os.RemoveAll(a.tmpDir)
@@ -589,7 +597,31 @@ func (a *App) saveSession() {
 	if posMs > 0 || state != audio.StateStopped {
 		pairs[store.KeyLastPositionMs] = strconv.FormatInt(posMs, 10)
 	}
-	_ = a.st.SetSettings(pairs)
+	if err := a.st.SetSettings(pairs); err != nil {
+		// Cleanup runs after the TUI has stopped, so there is no status bar
+		// left to notify; the log is the only visible trace.
+		log.Printf("persist session: %v", err)
+	}
+}
+
+// saveSetting persists one setting and reports failures instead of silently
+// dropping them.  Call it from Update handlers.
+func (a *App) saveSetting(key, value string) {
+	if a.st == nil {
+		return
+	}
+	a.reportPersistErr(a.st.SetSetting(key, value))
+}
+
+// reportPersistErr logs a failed settings write and surfaces it in the status
+// bar.  A nil error is ignored.
+func (a *App) reportPersistErr(err error) {
+	if err == nil {
+		return
+	}
+	log.Printf("persist settings: %v", err)
+	a.statusMsg = fmt.Sprintf(T("settings_save_error"), err)
+	a.statusMsgExpiry = time.Now().Add(statusMsgDuration)
 }
 
 // WithProgram wires the audio "done" callback to send a trackDoneMsg.
@@ -632,6 +664,7 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case scanDoneMsg:
 		a.loading = false
+		a.scanCancel = nil
 		a.scanErr = msg.err
 		// Update tracks regardless of error: cmdSyncLibrary always returns
 		// whatever is in the DB even when syncErr is non-nil, so we show
@@ -893,6 +926,20 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return a, a.cmdPlayTrack(pos)
 
 	case noopMsg:
+		return a, nil
+
+	case playModeChangedMsg:
+		a.playMode = msg.mode
+		if a.playMode == playModeRandom {
+			a.rebuildShuffleIDs()
+		}
+		return a, nil
+
+	case retroChangedMsg:
+		a.retroIdx = msg.idx
+		if a.player != nil {
+			a.player.SetRetroPreset(msg.idx)
+		}
 		return a, nil
 
 	case chip8DoneMsg:

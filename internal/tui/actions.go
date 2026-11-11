@@ -260,37 +260,41 @@ func (a *App) cmdTogglePause() tea.Cmd {
 
 // ── Play-mode cycling ────────────────────────────────────────────────────────
 
-// cmdNextPlayMode advances playMode to the next value and rebuilds shuffle
-// order if switching into random mode.
+// playModeChangedMsg carries the next play mode back to Update, which owns all
+// App state writes.
+type playModeChangedMsg struct{ mode playMode }
+
+// retroChangedMsg carries the next Lo-Fi preset index back to Update.
+type retroChangedMsg struct{ idx int }
+
+// cmdNextPlayMode advances playMode to the next value.  The target is computed
+// synchronously in Update; the returned Cmd carries it back as a message.
 func (a *App) cmdNextPlayMode() tea.Cmd {
+	next := (a.playMode + 1) % playModeCount
 	return func() tea.Msg {
-		a.playMode = (a.playMode + 1) % playModeCount
-		if a.playMode == playModeRandom {
-			a.rebuildShuffleIDs()
-		}
-		return noopMsg{}
+		return playModeChangedMsg{mode: next}
 	}
 }
 
 // cmdRetroUp increases the retro effect preset by one step (lower sample rate).
 func (a *App) cmdRetroUp() tea.Cmd {
+	next := a.retroIdx
+	if next < audio.RetroPresetCount-1 {
+		next++
+	}
 	return func() tea.Msg {
-		if a.retroIdx < audio.RetroPresetCount-1 {
-			a.retroIdx++
-		}
-		a.player.SetRetroPreset(a.retroIdx)
-		return noopMsg{}
+		return retroChangedMsg{idx: next}
 	}
 }
 
 // cmdRetroDown decreases the retro effect preset by one step (higher sample rate / off).
 func (a *App) cmdRetroDown() tea.Cmd {
+	next := a.retroIdx
+	if next > 0 {
+		next--
+	}
 	return func() tea.Msg {
-		if a.retroIdx > 0 {
-			a.retroIdx--
-		}
-		a.player.SetRetroPreset(a.retroIdx)
-		return noopMsg{}
+		return retroChangedMsg{idx: next}
 	}
 }
 
@@ -409,7 +413,7 @@ func applyFormatPreference(tracks []library.Track, pref formatPreference) []libr
 	case formatPrefLosslessOnly:
 		// lossless threshold: quality score ≥ 30 (WAV=30, FLAC=40).
 		const losslessThreshold = 30
-		out := tracks[:0]
+		out := make([]library.Track, 0, len(tracks))
 		for _, t := range tracks {
 			if library.QualityOf(t.Format()) >= losslessThreshold {
 				out = append(out, t)
@@ -418,7 +422,7 @@ func applyFormatPreference(tracks []library.Track, pref formatPreference) []libr
 		return out
 
 	case formatPrefMP3Only:
-		out := tracks[:0]
+		out := make([]library.Track, 0, len(tracks))
 		for _, t := range tracks {
 			if strings.EqualFold(t.Format(), "MP3") {
 				out = append(out, t)
@@ -501,9 +505,18 @@ func (a *App) cmdSyncLibrary() tea.Cmd {
 	}
 	dir := a.musicDir
 	st := a.st
+
+	// Cancel any previous scan before starting a new one.
+	if a.scanCancel != nil {
+		a.scanCancel()
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	a.scanCancel = cancel
+
 	return func() tea.Msg {
+		defer cancel()
 		coverDir, _ := store.CoverCacheDir()
-		_, _, _, syncErr := store.SyncDir(context.Background(), dir, st, coverDir, nil)
+		_, _, _, syncErr := store.SyncDir(ctx, dir, st, coverDir, nil)
 		tracks, dbErr := st.AllTracks()
 		if dbErr != nil {
 			return scanDoneMsg{err: dbErr}

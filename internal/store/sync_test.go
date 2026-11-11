@@ -138,6 +138,40 @@ func TestSyncDirProgress(t *testing.T) {
 	}
 }
 
+func TestSyncDirCancelledBeforeStart(t *testing.T) {
+	dir := t.TempDir()
+	st, err := Open(filepath.Join(t.TempDir(), "music.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = st.Close() })
+
+	for i := 0; i < 3; i++ {
+		name := filepath.Join(dir, string(rune('a'+i))+".mp3")
+		if err := os.WriteFile(name, []byte("x"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	done := make(chan struct{})
+	var added int
+	go func() {
+		added, _, _, _ = SyncDir(ctx, dir, st, "", nil)
+		close(done)
+	}()
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("cancelled SyncDir did not return within 5s")
+	}
+	if added != 0 {
+		t.Fatalf("cancelled SyncDir added %d tracks, want 0", added)
+	}
+}
+
 func TestAllTracksOrder(t *testing.T) {
 	st := openTestStore(t)
 	rows := []library.Track{

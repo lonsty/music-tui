@@ -155,10 +155,11 @@ func SyncDir(
 	go func() {
 		defer close(workCh)
 		for _, c := range candidates {
-			if ctx.Err() != nil {
+			select {
+			case workCh <- c:
+			case <-ctx.Done():
 				return
 			}
-			workCh <- c
 		}
 	}()
 
