@@ -7,7 +7,6 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 
-	"github.com/lonsty/music-tui/internal/audio"
 	"github.com/lonsty/music-tui/internal/library"
 )
 
@@ -132,13 +131,7 @@ func TestQueueOverlayRendersEmptyAndItems(t *testing.T) {
 }
 
 func TestQueueCountChipRendered(t *testing.T) {
-	p, err := audio.NewPlayer()
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer p.Stop()
-
-	a := &App{player: p, W: 120, H: 30, activeTab: tabLocal}
+	a := &App{W: 120, H: 30, activeTab: tabLocal}
 	a.ids = []string{"1", "2"}
 	out := a.renderStatusBar()
 	if !strings.Contains(out, fmt.Sprintf(T("queue_count"), 2)) {
