@@ -141,6 +141,7 @@ var translations = map[Lang]map[string]string{LangEN: {
 	"action_media_vol":       "Vol down / up  (media key mapping)",
 
 	"action_like":            "Toggle like / Favorites",
+	"action_add_to_playlist": "Add to a playlist",
 	"action_reload_library":  "Reload library",
 	"action_open_playlist":   "Open playlist",
 	"action_new_playlist":    "New playlist",
@@ -367,6 +368,7 @@ var translations = map[Lang]map[string]string{LangEN: {
 		"action_media_vol":       "音量减小 / 增大（媒体键映射）",
 
 		"action_like":            "收藏 / 取消收藏",
+		"action_add_to_playlist": "加入歌单",
 		"action_reload_library":  "重新加载曲库",
 		"action_open_playlist":   "打开歌单",
 		"action_new_playlist":    "新建歌单",
