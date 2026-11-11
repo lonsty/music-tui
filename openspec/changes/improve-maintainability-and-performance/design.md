@@ -177,3 +177,26 @@ CI 不设绝对耗时阈值（机器差异大），只保留可手动复跑的 `
 ## Open Questions
 
 - `LICENSE` 版权行暂定 “music-tui contributors”；若需署名个人或组织，在实现前替换即可，不影响其他设计。
+
+## 实现记录（实现后补充）
+
+环境：Apple M2 Pro，`-benchtime 100x`，10k 曲库。基线为本变更第一个提交前的数值；实现后为性能阶段提交后的数值。
+
+| 基准 | 改动前 | 改动后 | 分配变化 |
+|------|--------|--------|----------|
+| `ApplyFilter10K/Empty` | 3466 µs | 403 µs | 46158 → 35 allocs |
+| `ApplyFilter10K/Prefix` | 3145 µs | 394 µs | 56130 → 10008 allocs |
+| `ApplyFilter10K/LosslessFirst` | 8508 µs | 3642 µs | 126293 → 80071 allocs |
+| `SelectTrackIndices10K/Empty` | 899 µs | 132 µs | 35 → 1 alloc |
+| `ViewNormal10K` | 639 µs | 737 µs | 2160 → 1792 allocs |
+| `ViewFullscreen10K` | 618 µs | 591 µs | 2136 → 1783 allocs |
+| `RenderQueueOverlay200` | 2684 µs | 903 µs | 5336 → 5336 allocs |
+| `UpdateKey10K` | 689 ns | 810 ns | 408 B → 408 B |
+
+说明：
+
+- `ApplyFilter` 前缀路径仍有每曲目 `strings.ToLower` 分配，属于搜索语义本身；进一步优化需要预计算小写索引，超出本次范围。
+- `ViewNormal10K` 耗时在 100x 采样下波动较大；分配下降是本项的主要可复现收益。
+- `RenderQueueOverlay200` 的分配未变，但查找从 `O(queue × library)` 降为 `O(queue)`。
+- 无 `benchstat` 可用，故以同一机器两次基准输出直接对比。
+

@@ -58,11 +58,11 @@
 
 ## 7. 集成验证
 
-- [ ] 7.1 运行完整门禁：`CGO_ENABLED=1 go build ./...`、`go test ./...`、`go vet ./...`、`gofmt -l cmd internal` 零输出；记录结果。
-- [ ] 7.2 运行 `go test -race $(go list ./... | grep -v internal/audio)`，验证通过；`internal/audio` 保留已知 oto 竞态说明。
-- [ ] 7.3 真实二进制 pty 冒烟：启动、Tab 切换、搜索、播放/暂停、打开队列与设置、退出，验证无 panic 且退出码为 0。
-- [ ] 7.4 用 `benchstat` 对比 `design.md` 记录的基线，把结果写入 PR 描述；确认新增基准路径的分配与耗时符合预期。
-- [ ] 7.5 运行 `openspec validate improve-maintainability-and-performance --strict`，验证通过。
+- [x] 7.1 运行完整门禁：`CGO_ENABLED=1 go build ./...`、`go test ./...`、`go vet ./...`、`gofmt -l cmd internal` 零输出；记录结果。
+- [x] 7.2 运行 `go test -race $(go list ./... | grep -v internal/audio)`，验证通过；`internal/audio` 保留已知 oto 竞态说明。
+- [x] 7.3 真实二进制 pty 冒烟：启动、Tab 切换、搜索、播放/暂停、打开队列与设置、退出，验证无 panic 且退出码为 0。
+- [x] 7.4 用 `benchstat` 对比 `design.md` 记录的基线，把结果写入 PR 描述；确认新增基准路径的分配与耗时符合预期。
+- [x] 7.5 运行 `openspec validate improve-maintainability-and-performance --strict`，验证通过。
 
 ## Workflow follow-up
 
