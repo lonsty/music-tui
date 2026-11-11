@@ -97,6 +97,7 @@ func (a *App) renderHelpOverlay() string {
 		{T("help_section_media"), []binding{
 			{"F6 / F9", T("action_media_prev_next")},
 			{"F7", T("action_media_play")},
+			{"F8", T("action_media_stop")},
 			{"F11 / F12", T("action_media_vol")},
 		}},
 	}

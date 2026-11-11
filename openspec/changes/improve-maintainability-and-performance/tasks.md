@@ -10,12 +10,12 @@
 
 ## 2. 开源基础设施与文档
 
-- [ ] 2.1 新增 MIT `LICENSE`，版权行为 “Copyright (c) 2025-2026 music-tui contributors”；验证 README 的 License 段落与文件一致。
-- [ ] 2.2 新增 `.github/workflows/ci.yml`：Ubuntu 安装 `libasound2-dev`，执行 `gofmt -l` 零输出检查、`go build ./...`、`go vet ./...`、`go test ./...`，并新增排除 `internal/audio` 的 `-race` 任务；验证工作流在 feature 分支的一次 push 上全绿。
-- [ ] 2.3 新增 `Makefile`（`build`/`test`/`vet`/`fmt`/`bench`）、`CONTRIBUTING.md`、`CHANGELOG.md`（Keep a Changelog）；验证 `make build test vet fmt` 全部成功。
-- [ ] 2.4 修正 README：clone URL 改为 `github.com/lonsty/music-tui`，补 `a`/`l`/`\`/`L` 与全屏 `?`/`[`/`]`/`↑↓`/`Enter` 键位，修正设置面板键位与 Tab 顺序，补 F8 说明与 `GOTOOLCHAIN=auto` 要求；逐条对照 `internal/tui/keys*.go` 与 `model.go` 验证。
-- [ ] 2.5 修正 `ARCHITECTURE.md` 与 `internal/store/db.go` 的迁移说明，统一为“已发布迁移不可修改，只能追加”；验证文档描述与实现一致。
-- [ ] 2.6 `.gitignore` 追加 `.pytest_cache/`；验证 `git status` 不再出现无关缓存目录。
+- [x] 2.1 新增 MIT `LICENSE`，版权行为 “Copyright (c) 2025-2026 music-tui contributors”；验证 README 的 License 段落与文件一致。
+- [x] 2.2 新增 `.github/workflows/ci.yml`：Ubuntu 安装 `libasound2-dev`，执行 `gofmt -l` 零输出检查、`go build ./...`、`go vet ./...`、`go test ./...`，并新增排除 `internal/audio` 的 `-race` 任务；验证工作流在 feature 分支的一次 push 上全绿。
+- [x] 2.3 新增 `Makefile`（`build`/`test`/`vet`/`fmt`/`bench`）、`CONTRIBUTING.md`、`CHANGELOG.md`（Keep a Changelog）；验证 `make build test vet fmt` 全部成功。
+- [x] 2.4 修正 README：clone URL 改为 `github.com/lonsty/music-tui`，补 `a`/`l`/`\`/`L` 与全屏 `?`/`[`/`]`/`↑↓`/`Enter` 键位，修正设置面板键位与 Tab 顺序，补 F8 说明与 `GOTOOLCHAIN=auto` 要求；逐条对照 `internal/tui/keys*.go` 与 `model.go` 验证。
+- [x] 2.5 修正 `ARCHITECTURE.md` 与 `internal/store/db.go` 的迁移说明，统一为“已发布迁移不可修改，只能追加”；验证文档描述与实现一致。
+- [x] 2.6 `.gitignore` 追加 `.pytest_cache/`；验证 `git status` 不再出现无关缓存目录。
 
 ## 3. 正确性修复
 
@@ -24,7 +24,7 @@
 - [ ] 3.3 将 i18n 语言表与图标集改为原子快照；新增并发测试（多 goroutine 调 `SetLang`/`T`、`setIconSet`/`icon`）并验证 `go test -race ./internal/tui -run 'Concurrent'` 通过。
 - [ ] 3.4 新增持久化错误上报助手与中英文 i18n 键；验证失败写触发日志与状态栏提示（用已关闭的临时库构造失败），并验证 i18n 覆盖测试通过。
 - [ ] 3.5 为扫描增加 `context.WithCancel` 与 `loading` 防重入，修复 feeder 协程在 worker 退出后阻塞的问题；新增测试验证取消后 `SyncDir` 及时返回、连续触发只启动一次扫描。
-- [ ] 3.6 让 `internal/audio` 测试可移植：去掉硬编码本机路径，文件不存在或 `NewPlayer` 失败时 `t.Skip`；验证 `go test ./internal/audio` 在无音频文件的机器上跳过并通过。
+- [x] 3.6 让 `internal/audio` 测试可移植：去掉硬编码本机路径，文件不存在或 `NewPlayer` 失败时 `t.Skip`；验证 `go test ./internal/audio` 在无音频文件的机器上跳过并通过。
 
 ## 4. 存储层
 

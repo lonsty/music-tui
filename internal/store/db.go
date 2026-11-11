@@ -58,10 +58,12 @@ func (s *Store) Close() error {
 	return s.db.Close()
 }
 
-// migrate applies all schema changes in a single transaction.
-// There is only one version (1) which creates the complete schema from scratch.
-// New columns or tables should be added directly to this single CREATE TABLE
-// block — no separate ALTER TABLE migrations are needed for a fresh install.
+// migrate applies all pending schema changes in a single transaction.
+//
+// Migrations are append-only: published versions must never be edited, because
+// existing databases have already applied them.  New columns, tables, or
+// indexes are added as a new version with the matching ALTER/CREATE statement;
+// a fresh install simply replays every version in order.
 func migrate(db *sql.DB) error {
 	// Bootstrap the migrations tracker table first (idempotent).
 	if _, err := db.Exec(`

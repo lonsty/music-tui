@@ -138,6 +138,7 @@ var translations = map[Lang]map[string]string{LangEN: {
 	"action_quit":            "Quit  (press q twice)",
 	"action_media_prev_next": "Prev / Next  (media key mapping)",
 	"action_media_play":      "Play / Pause  (media key mapping)",
+	"action_media_stop":      "Stop  (media key mapping)",
 	"action_media_vol":       "Vol down / up  (media key mapping)",
 
 	"action_like":            "Toggle like / Favorites",
@@ -365,6 +366,7 @@ var translations = map[Lang]map[string]string{LangEN: {
 		"action_quit":            "退出（连按两次 q）",
 		"action_media_prev_next": "上一首 / 下一首（媒体键映射）",
 		"action_media_play":      "播放 / 暂停（媒体键映射）",
+		"action_media_stop":      "停止（媒体键映射）",
 		"action_media_vol":       "音量减小 / 增大（媒体键映射）",
 
 		"action_like":            "收藏 / 取消收藏",

@@ -19,3 +19,6 @@ playtest
 .codebuddy/
 examples/
 docs/
+
+# Python test cache (unrelated to this Go project)
+.pytest_cache/

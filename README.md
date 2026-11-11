@@ -54,7 +54,7 @@ brew install fluidsynth
 ## 安装 / Installation
 
 ```bash
-git clone https://github.com/eilianxiao/music-tui
+git clone https://github.com/lonsty/music-tui
 cd music-tui
 
 # 本地编译（CGO 必须启用）
@@ -135,13 +135,17 @@ git tag v1.0.0 && git push origin v1.0.0
 | `m` | 循环切换播放模式（顺序 → 循环 → 单曲 → 随机） |
 | `+` / `-` | 音量 +0.1 / -0.1 |
 | `f` | 切换全屏播放器 |
+| `l` | 在右栏切换播放器 / 歌词面板 |
+| `\` | 折叠 / 展开右栏 |
+| `a` | 将选中曲目加入歌单 |
+| `L` | 喜欢 / 取消喜欢当前曲目 |
 | `b` | 开启 / 关闭 8-bit 芯片模式 |
 | `r` / `R` | Lo-Fi 效果降档 / 升档 |
 | `/` | 搜索（`s:` 艺术家  `a:` 专辑  `t:` 标题  `f:` 格式；Esc 清除筛选） |
 | `i` | 曲目详情（含完整 ID3 标签） |
 | `,` | 打开设置面板 |
 | `?` | 帮助面板（完整快捷键列表） |
-| `Tab` | 切换标签页（Library / Playlists） |
+| `Tab` | 切换标签页（Playlists / Library） |
 | `q` | 退出（连按两次；`Ctrl+C` 立即退出） |
 
 ### 歌单 / Playlists
@@ -313,10 +317,14 @@ pkill xbindkeys; xbindkeys
 | `Esc` / `f` | 返回列表 |
 | `Space` | 暂停 / 继续 |
 | `n` / `p` | 下一曲 / 上一曲 |
+| `<` / `>` | 快退 / 快进 5 秒 |
+| `[` / `]` | 歌词时间轴提前 / 延后 0.5 秒 |
+| `↑` / `↓`（或 `k` / `j`） | 浏览歌词；`Enter` 定位到选中行并继续播放 |
 | `+` / `-` | 音量 |
 | `m` | 切换播放模式 |
 | `b` | 8-bit 芯片模式 |
 | `r` / `R` | Lo-Fi 效果 |
+| `?` | 帮助面板 |
 | `,` | 设置面板 |
 | `q` | 退出 |
 
@@ -324,10 +332,10 @@ pkill xbindkeys; xbindkeys
 
 | 键 | 功能 |
 |----|------|
-| `Tab` | 在 Directory / Options 输入框之间切换 |
+| `↑` / `↓`（或 `k` / `j`） | 在设置项之间移动 |
+| `Enter` | 编辑选中项，或切换语言 / 格式偏好 / 图标集 |
+| `Esc` | 编辑时退出编辑；浏览时放弃并关闭面板 |
 | `Ctrl+R` | 保存目录并立即触发增量扫描 |
-| `Enter` | 保存所有设置并关闭 |
-| `Esc` | 放弃修改并关闭 |
 
 ---
 
@@ -391,10 +399,12 @@ go test ./...                  # 运行测试
 go vet ./...                   # 静态检查
 ```
 
+`go.mod` 要求 Go 1.24.2。系统 Go 较旧时先执行 `export GOTOOLCHAIN=auto`，或直接使用已注入该变量的 `make build` / `make test` / `make vet` / `make bench`。完整门禁与约定见 [CONTRIBUTING.md](./CONTRIBUTING.md)。
+
 也可以用 `build.sh` 同时编译所有平台（见上方安装章节）。
 
 ---
 
 ## 许可证 / License
 
-MIT
+MIT，详见 [LICENSE](./LICENSE)。
