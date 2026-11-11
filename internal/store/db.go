@@ -332,12 +332,6 @@ func (s *Store) UpsertTrack(t library.Track, mtime int64) error {
 	return err
 }
 
-// DeleteTrack removes a track by its file path.
-func (s *Store) DeleteTrack(path string) error {
-	_, err := s.db.Exec(`DELETE FROM tracks WHERE path = ?`, path)
-	return err
-}
-
 // PruneMissing removes all tracks whose paths are NOT in existingPaths.
 // Returns the number of rows deleted.
 func (s *Store) PruneMissing(existingPaths map[string]struct{}) (int, error) {

@@ -60,10 +60,5 @@ func (a *App) localTrackListCtx() TrackListContext {
 		LikeTarget: func(a *App) *library.Track {
 			return a.cursorTrack()
 		},
-
-		// ── Status-bar hints ──────────────────────────────────────────────
-		ExtraHints: func(a *App) []statusHint {
-			return []statusHint{{"L", T("hint_like_toggle")}}
-		},
 	}
 }

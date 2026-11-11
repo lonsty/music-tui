@@ -137,8 +137,5 @@ func (a *App) playlistTrackCtx() TrackListContext {
 		},
 
 		EmptyMsg: "playlist_tracks_empty",
-
-		// ── Status-bar hints ──────────────────────────────────────────────
-		ExtraHints: func(a *App) []statusHint { return nil },
 	}
 }

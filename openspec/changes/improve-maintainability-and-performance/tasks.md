@@ -48,13 +48,13 @@
 
 ## 6. 结构整理与死代码
 
-- [ ] 6.1 删除 `internal/provider`、`internal/provider/local`、`App.providerMap`、`resolveSource` 的 provider 分支及四个未使用导出符号；验证 `go build ./...`、`go vet ./...`、`go test ./...` 通过，`grep` 无残留引用。
-- [ ] 6.2 从 `PlaylistState` 抽出 `OverlayState` 并嵌入 `App`，字段名不变；验证 golden 与全量测试通过。
-- [ ] 6.3 按 `design.md` D11 拆分 `app.go`；每移动一个文件后验证 `go build ./...` 与 golden 测试通过，最终 `app.go` 只保留必要的入口与共享类型。
-- [ ] 6.4 拆分 `keys.go` 与 `actions.go`；每移动一个文件后验证构建与 golden 通过。
-- [ ] 6.5 拆分 `render_player.go`；验证 golden 逐字节一致。
-- [ ] 6.6 合并语义完全相同的滚动夹取与提示宽度助手（仅在输出一致时）；验证 golden 与相关单测通过。
-- [ ] 6.7 更新 `ARCHITECTURE.md` 与 `README.md` 以反映删除的 provider 层、新增的 `OverlayState`、原子全局状态与扫描取消模型；验证文档与代码一致且不带逐文件清单。
+- [x] 6.1 删除 `internal/provider`、`internal/provider/local`、`App.providerMap`、`resolveSource` 的 provider 分支及四个未使用导出符号；验证 `go build ./...`、`go vet ./...`、`go test ./...` 通过，`grep` 无残留引用。
+- [x] 6.2 从 `PlaylistState` 抽出 `OverlayState` 并嵌入 `App`，字段名不变；验证 golden 与全量测试通过。
+- [x] 6.3 按 `design.md` D11 拆分 `app.go`；每移动一个文件后验证 `go build ./...` 与 golden 测试通过，最终 `app.go` 只保留必要的入口与共享类型。
+- [x] 6.4 拆分 `keys.go` 与 `actions.go`；每移动一个文件后验证构建与 golden 通过。
+- [x] 6.5 拆分 `render_player.go`；验证 golden 逐字节一致。
+- [x] 6.6 合并语义完全相同的滚动夹取与提示宽度助手（仅在输出一致时）；验证 golden 与相关单测通过。
+- [x] 6.7 更新 `ARCHITECTURE.md` 与 `README.md` 以反映删除的 provider 层、新增的 `OverlayState`、原子全局状态与扫描取消模型；验证文档与代码一致且不带逐文件清单。
 
 ## 7. 集成验证
 

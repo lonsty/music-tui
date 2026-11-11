@@ -442,6 +442,24 @@ func (a *App) renderSettingsOverlay() string {
 // innerW is the content width (columns) computed by overlayInnerW.  Every row
 // is clipped to innerW before being passed to lipgloss so the box never grows
 // wider than intended regardless of what the callers put in the rows slices.
+// scrollOverlayToCursor adjusts ovlScrollRow so that cursor stays inside the
+// visible body of a scrollable overlay.
+func (a *App) scrollOverlayToCursor(cursor int) {
+	// Approximate body-available rows: terminal height minus overlay chrome.
+	// renderScrollableOverlay: boxBorderH=2 + boxPadV=2 + outerMargin=2 +
+	// titleRows=2 + hintRows=2 = 10 total fixed rows.
+	const chromeRows = 10
+	bodyAvail := a.H - chromeRows
+	if bodyAvail < 1 {
+		bodyAvail = 1
+	}
+	if cursor < a.ovlScrollRow {
+		a.ovlScrollRow = cursor
+	} else if cursor >= a.ovlScrollRow+bodyAvail {
+		a.ovlScrollRow = cursor - bodyAvail + 1
+	}
+}
+
 func (a *App) renderScrollableOverlay(titleRows, bodyRows, hintRows []string, innerW int) string {
 	const boxBorderH = 2  // top + bottom rounded-border lines
 	const boxPadV = 2     // styleOverlayBox.Padding(1, 2) → 1 top + 1 bottom

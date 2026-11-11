@@ -174,12 +174,6 @@ func (p *Player) Play(track library.Track) error {
 	return p.playAt(LocalSource{Path: track.Path}, 0)
 }
 
-// PlayAt starts the track at offsetDur into the file.
-// It is a convenience wrapper around PlaySourceAt for local tracks.
-func (p *Player) PlayAt(track library.Track, offsetDur time.Duration) error {
-	return p.playAt(LocalSource{Path: track.Path}, offsetDur)
-}
-
 // PlaySource stops any current playback and starts the given StreamSource.
 // Use this method when the audio origin is not a local file path (e.g. HTTP
 // streams or platform API sources).

@@ -14,13 +14,12 @@ internal/tui ──► internal/audio
       │              │
       ├──► internal/store
       ├──► internal/library
-      ├──► internal/lyrics ──► internal/lyrics/online
-      └──► internal/provider ──► internal/provider/local
+      └──► internal/lyrics ──► internal/lyrics/online
 ```
 
 - 依赖只能向下，不允许反向导入；`library` 是最底层的数据模型。
 - `store` 负责所有 SQL。TUI 渲染路径不得直接查询数据库。
-- `provider` 负责把外部/本地曲目解析为音频源；TUI 只通过 `TrackProvider` 使用。
+- `audio` 通过 `StreamSource` 接受本地文件；在线音源接入时实现该接口，不经过已删除的空 provider 抽象。
 - `lyrics` 通过 `Provider` 接口组合本地 `.lrc` 与在线缓存。
 
 ## 2. TUI 状态模型
@@ -34,6 +33,7 @@ internal/tui ──► internal/audio
 | `ChipState` | 8-bit 转换状态与临时目录 |
 | `LyricsState` | 歌词行、当前高亮、浏览游标、时间偏移 |
 | `PlaylistState` | 歌单列表、曲目列表、输入模式、撤销状态 |
+| `OverlayState` | “加入歌单”浮层与内联添加曲目面板的临时状态 |
 | `QueueState` | 临时播放队列 |
 
 关键不变量：
@@ -41,15 +41,20 @@ internal/tui ──► internal/audio
 - `tracks` 是曲库唯一真相；`filteredIdxs` 是它的位置索引表。
 - `posByID` 是 `filteredIdxs` 的 ID → 位置缓存，两者必须同时重建。
 - 任何改动 `filteredIdxs` 的路径都必须调用 `rebuildFilteredPos()`。
-- 分组缓存（`albumGroups`、`artistGroups`）只在过滤或格式偏好变化时重建，渲染只读。
+- `trackPosByID` 是 `tracks` 的 ID → 位置缓存；替换 `tracks` 时必须重建。
+- 空查询且无格式偏好时，`filteredIdxs` 直接引用 `identityIdxs`；该表只读。
+- 分组缓存（`albumGroups`、`artistGroups`）在 `tracks` 或格式偏好变化时标记为脏，首次读取时重建，渲染只读。
 - Local 与歌单曲目层级共用 `TrackListContext` 引擎；差异只放在 context 回调里。
 
 ## 3. 事件与并发
 
-- Bubble Tea 的 `Update` 是唯一允许写入 `App` 状态的地方。
+- Bubble Tea 的 `Update` 是唯一允许写入 `App` 状态的地方。`tea.Cmd` 只计算目标值并以消息返回，不直接改字段。
 - `tea.Cmd` 的 goroutine 只允许访问线程安全的播放器、网络客户端和只读配置；结果通过消息回到 `Update`。
+- 语言与图标集是进程级全局状态，通过原子快照发布；`View` 与 `Update` 可并发读取。
+- 曲库扫描最多同时运行一个：`scanCancel` 取消在途任务，`loading` 阻止重入；退出时取消。
 - 切歌或搜索时会取消上一笔网络请求（`netCancel`），避免旧响应污染新状态。
 - `tickMsg` 每 500ms 驱动进度、跑马灯和歌词高亮；所有时间相关状态以它为准。
+- 每次渲染在入口取一次播放位置/时长/状态快照，渲染函数不再重复进入播放器锁。
 
 ## 4. 持久化
 
