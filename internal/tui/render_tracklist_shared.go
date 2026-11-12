@@ -107,7 +107,24 @@ func (a *App) renderSharedTrackList(ctx TrackListContext, innerW, innerH int) st
 				emptyText += "\n" + strings.Join(chips, "  ")
 			}
 		}
-		empty := styleOverlayMuted.Render(emptyText)
+		// Centre every line individually. lipgloss.Place centres a multi-line
+		// block by its widest line, which left-aligns shorter lines.
+		var centeredRows []string
+		for _, ln := range strings.Split(emptyText, "\n") {
+			styled := styleOverlayMuted.Render(ln)
+			w := strWidth(styled)
+			pad := (innerW - w) / 2
+			if pad < 0 {
+				pad = 0
+			}
+			right := innerW - w - pad
+			if right < 0 {
+				right = 0
+			}
+			centeredRows = append(centeredRows,
+				strings.Repeat(" ", pad)+styled+strings.Repeat(" ", right))
+		}
+		empty := strings.Join(centeredRows, "\n")
 		centered := lipgloss.Place(innerW, maxRows, lipgloss.Center, lipgloss.Center, empty)
 		sb.WriteString(centered)
 		content := strings.TrimRight(sb.String(), "\n")

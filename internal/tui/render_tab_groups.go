@@ -20,6 +20,16 @@ func (a *App) renderGroupList(innerW, innerH int) string {
 	title := stylePanelTitle.Render(iconWithSpace(icon) + T("library_title") + " · " + viewLabel)
 	count := styleTrackMeta.Render(fmt.Sprintf("  "+T("library_count"), len(groups)))
 	header := title + count
+	if !a.showMiniPlayer() && a.currentTrack != nil {
+		remainW := innerW - strWidth(header) - 2
+		if ps := a.buildCollapsedPlayStatus(remainW); ps != "" {
+			gap := innerW - strWidth(header) - strWidth(ps)
+			if gap < 1 {
+				gap = 1
+			}
+			header = header + strings.Repeat(" ", gap) + ps
+		}
+	}
 
 	var sb strings.Builder
 	sb.WriteString(header + "\n")

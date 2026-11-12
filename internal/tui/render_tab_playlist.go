@@ -160,8 +160,10 @@ func (a *App) renderPlaylistAddPanel(innerW, innerH int) string {
 	sb.WriteString(title + backHint + "\n")
 	sb.WriteString(styleDivider.Render(strings.Repeat("─", innerW)) + "\n")
 
-	// Search input row + second divider.
+	// Search input row, registry footer, then divider. The footer sits
+	// directly below the input, matching the library search panel.
 	sb.WriteString(styleSearchPrompt.Render(iconSearch()+" ") + a.addInput.View() + "\n")
+	sb.WriteString(a.renderFooterChips(scopeInputAddTracks) + "\n")
 	sb.WriteString(styleDivider.Render(strings.Repeat("─", innerW)) + "\n")
 
 	const fixedRows = 5
@@ -171,7 +173,6 @@ func (a *App) renderPlaylistAddPanel(innerW, innerH int) string {
 	}
 
 	a.renderAddTrackResults(&sb, innerW, maxRows)
-	sb.WriteString(a.renderFooterChips(scopeInputAddTracks) + "\n")
 
 	content := strings.TrimRight(sb.String(), "\n")
 	return stylePanelBorder.Width(innerW).Height(innerH).Render(content)

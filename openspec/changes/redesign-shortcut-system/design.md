@@ -73,7 +73,7 @@
 | 当前对象 | `library.search` | `/` | local.tracks |
 | 当前对象 | `library.clear_filter` | `Esc` | 过滤态 |
 | 当前对象 | `library.add_to_playlist` | `a` | local.tracks |
-| 当前对象 | `library.track_info` | `i` | local.tracks |
+| 当前对象 | `library.track_info` | `i` | local.tracks、playlist.tracks |
 | 当前对象 | `library.like` | `L` | tracklist 与 group，目标为选中曲目；playlist.list 不绑定 |
 | 当前对象 | `queue.append` | `e` | tracklist |
 | 当前对象 | `queue.insert_next` | `E` | tracklist |
@@ -108,13 +108,17 @@
 - T1 状态栏：最多 6 chip，固定槽位 `?` → 主操作 → 导航 → 播放 → 上下文动作 → 退出。窄终端按 `上下文动作 → 播放 → 导航` 顺序丢弃；`?`、主操作、退出标记 pinned，永不丢弃。宽度用现有 `strWidth` 按中英实测，目标 80 列放下 6 chip。
 - T2 浮层 footer：2-4 chip，顺序为 `主操作/确认 → 上下文动作（按分组序） → Esc 取消/关闭`。滚动浮层附 `↑/↓` 文字提示，不占 chip。浮层打开时状态栏不出 chip。
 - T3 帮助浮层：五区固定顺序 `当前上下文 → 全局 → 曲库 → 歌单 → 媒体键`；3/4 区去掉已在 1/2 出现的行。新增 i18n key `help_section_current`，中英各一。
-- T4 README：`<!-- BEGIN GENERATED KEYS -->` / `<!-- END GENERATED KEYS -->` 标记块由 `go:generate` 回填，每 scope 一张表，顺序与 T3 一致。
+- T4 README：`<!-- BEGIN GENERATED KEYS -->` / `<!-- END GENERATED KEYS -->` 标记块由 `go:generate` 回填，按 T3 组合 scope 生成表，顺序与 T3 一致。
+- 曲库搜索与歌单「添加曲目」两个内联输入面板的 T2 footer SHALL 都紧跟输入行下一行，位置一致；不放在结果区底部。
+- 空态多行文案 SHALL 逐行独立居中，不依赖 `lipgloss.Place` 对多行块按最宽行左对齐的行为。
 
 替代方案：保留当前「从右往左丢弃」。否决——`render_statusbar.go:28-40,112-113` 的注释声称「priority 1 = always shown (quit)」，与实现相反；pinned + 显式丢弃顺序可测试且注释一致。
 
 ### D6. 固定分组顺序
 
 分组顺序 `退出/取消 → 主操作 → 导航 → 播放 → 当前对象 → 视图/面板 → 系统`。组内按 `ShortRank` 降序、ActionID 升序。T1/T2/T3/T4 共用同一排序函数，保证同一键在不同页面位置稳定。
+
+相对动作（`n`/`p`、`<`/`>`、`+`/`-`、`r`/`R`、`[`/`]`、`g`/`G`、`e`/`E`、`J`/`K`、F6/F9、F11/F12、`↑`/`↓` 等）SHALL 各有独立描述，不共用「A / B」合并文案。状态栏 chip 标签 SHALL 描述该 chip 的动作：`j/k` 为「下/上一首」、全屏 `↑/↓` 为「浏览歌词」、`< >` 为快退/进、`[ ]` 为歌词偏移，两组不得同标签。
 
 ### D7. 每页矩阵
 
@@ -138,6 +142,8 @@
 | `overlay.info` | 无 T1 | — | `i 或 Esc 关闭 / ↑/↓ 滚动` |
 
 `Enabled` 谓词控制三项：`playlist.undo` 只在撤销窗口内出现；`playback.right_panel` 只在 `showMiniPlayer()` 为真时出现；`queue.open` 始终出现。当前 `keys_tracklist_shared.go:445-447` 只在队列非空时追加 `Q` hint 但绑定始终可用，属于提示与可用性脱钩，须改为由 `Enabled` 决定。
+
+折叠右栏后，曲目视图、分组视图（Albums / Artists）与歌单列表 SHALL 都在头部右侧显示同一份压缩播放状态；分组视图不得缺失。
 
 ### D8. 文案与键名归一
 

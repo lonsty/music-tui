@@ -40,16 +40,16 @@
            │    ❮Ctrl+C❯        Quit immediately                                        │           
            │    ❮q❯             Quit                                                    │           
            │    ❮Space❯         Pause / Resume                                          │           
-           │    ❮n❯             Next / Previous                                         │           
-           │    ❮p❯             Next / Previous                                         │           
-           │    ❮<❯             Seek −5s / +5s                                          │           
-           │    ❮>❯             Seek −5s / +5s                                          │           
-           │    ❮+ / =❯         Volume up / down                                        │           
-           │    ❮-❯             Volume up / down                                        │           
+           │    ❮n❯             Next track                                              │           
+           │    ❮p❯             Previous track                                          │           
+           │    ❮<❯             Seek −5s                                                │           
+           │    ❮>❯             Seek +5s                                                │           
+           │    ❮+ / =❯         Volume up                                               │           
+           │    ❮-❯             Volume down                                             │           
            │    ❮m❯             Cycle play mode                                         │           
            │    ❮b❯             Toggle 8-bit chip mode  (converts + crossfades)         │           
-           │    ❮r❯             Lo-fi effect  lower / raise sample rate                 │           
-           │    ❮R❯             Lo-fi effect  lower / raise sample rate                 │           
+           │    ❮r❯             Lo-fi lower sample rate                                 │           
+           │    ❮R❯             Lo-fi raise sample rate                                 │           
            │    ❮4❯             Open play queue                                         │           
            │    ❮f❯             Toggle fullscreen                                       │           
            │    ❮l❯             Toggle lyrics / player panel                            │           
@@ -63,8 +63,8 @@
            │    ❮Enter❯         Open group                                              │           
            │    ❮j / ↓❯         Move down                                               │           
            │    ❮k / ↑❯         Move up                                                 │           
-           │    ❮g❯             Top / Bottom                                            │           
-           │    ❮G❯             Top / Bottom                                            │           
+           │    ❮g❯             Top                                                     │           
+           │    ❮G❯             Bottom                                                  │           
            │    ❮c❯             Jump to playing track                                   │           
            │    ❮L❯             Toggle like / Favorites                                 │           
            │                                                                            │           
@@ -76,8 +76,8 @@
            │    ❮Esc❯           Back to playlist list                                   │           
            │    ❮a❯             Add or remove track                                     │           
            │    ❮x❯             Remove track                                            │           
-           │    ❮J❯             Move track down / up                                    │           
-           │    ❮K❯             Move track down / up                                    │           
+           │    ❮J❯             Move track down                                         │           
+           │    ❮K❯             Move track up                                           │           
            │    ❮Enter❯         Confirm                                                 │           
            │    ❮Enter❯         Create playlist and add the track                       │           
            │                                                                            │           
@@ -85,9 +85,9 @@
            │    ❮F7❯            Play / Pause  (media key mapping)                       │           
            │    ❮F8❯            Stop  (media key mapping)                               │           
            │    ❮F9❯            Next track  (media key mapping)                         │           
-           │    ❮F6❯            Prev / Next  (media key mapping)                        │           
-           │    ❮F11❯           Vol down / up  (media key mapping)                      │           
-           │    ❮F12❯           Vol down / up  (media key mapping)                      │           
+           │    ❮F6❯            Previous track (media key mapping)                      │           
+           │    ❮F11❯           Volume down (media key mapping)                         │           
+           │    ❮F12❯           Volume up (media key mapping)                           │           
            │                                                                            │           
            │                                                                            │           
            │    ❮↑/↓❯ Scroll  ❮Esc❯ cancel                                              │           

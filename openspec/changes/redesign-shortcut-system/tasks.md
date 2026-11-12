@@ -46,6 +46,18 @@
 - [x] 5.4 做一次独立 review，检查所有用户可见文案中英齐全、`filteredIdxs` 与 `posByID` 同步、渲染路径无 DB 查询、后台 `tea.Cmd` 不直接写 App 状态、`tabID` 只追加；验证：只读子会话审查完成，1 个 P0（歌单列表导航未绑定）与 7 个 P1 全部修复，补回归测试后全量门禁重跑通过。
 - [x] 5.5 跑 `openspec validate redesign-shortcut-system --strict`；验证：退出码 0 且无 warning。
 
+## 6. 用户反馈修复
+
+- [x] 6.1 `j/k` chip 文案改为「下/上一首」，不再误标「下一首」；验证：`TestStatusBarChipLabelsMatchActions` 通过。
+- [x] 6.2 成对动作描述拆分：n/p、< >、+/-、r/R、[ ]、g/G、e/E、J/K、F6/F9、F11/F12、↑/↓；验证：`TestPairedActionsHaveDistinctDescriptions` 中英双语通过。
+- [x] 6.3 折叠右栏后分组视图补压缩播放状态；验证：`TestGroupViewCollapsedPlayStatus` 通过。
+- [x] 6.4 歌单曲目层 `i` 绑定 `library.track_info`；验证：`TestTrackInfoInPlaylistTracks` 通过。
+- [x] 6.5 空态多行文案逐行独立居中；验证：`TestEmptyStateLinesIndividuallyCentered` 通过。
+- [x] 6.6 添加曲目 footer 移到输入行下一行，与曲库搜索一致；验证：`TestSearchInputFootersSharePosition` 通过。
+- [x] 6.7 全屏 `↑/↓` chip 文案改为「浏览歌词」；验证：`TestStatusBarChipLabelsMatchActions` 通过。
+- [x] 6.8 `< >` 与 `[ ]` 使用不同 chip 标签；验证：`TestStatusBarChipLabelsMatchActions` 通过。
+- [x] 6.9 同步 design.md D4/D5/D6/D7 与 keybinding-system delta spec，新增 5 条行为需求；验证：`openspec validate redesign-shortcut-system --strict` 通过。
+
 ## Workflow follow-up
 
 - 实现完成且门禁通过后，按 OpenSpec archive 流程归档本 change。
