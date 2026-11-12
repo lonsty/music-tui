@@ -181,7 +181,7 @@ var (
 				Bold(true).
 				Foreground(lipgloss.Color(mauve))
 
-	// styleOverlayKey renders keyboard shortcut chips as ❮key❯ using Unicode
+	// styleOverlayKey renders registry-generated shortcut chips with Unicode
 	// angle quotation marks (U+276E / U+276F).  No background fill is used to
 	// avoid the rectangular colour-block artefacts that appear on some terminals
 	// when a lipgloss style with Background + Width is rendered inside a box
@@ -232,12 +232,9 @@ func (a *App) snapshotPlayback() playbackFrame {
 func (a *App) render() string {
 	a.framePlayback = a.snapshotPlayback()
 
-	// Fullscreen player replaces everything except status bar.
-	if a.currentView == viewFullscreen {
-		return a.renderFullscreen()
-	}
-
-	// Overlays are rendered on top of the normal layout.
+	// Overlays are rendered above every view, including fullscreen. The key
+	// dispatcher uses the same order, so an overlay opened in fullscreen can
+	// always be closed with the cancel action.
 	switch a.activeOvl {
 	case overlayHelp:
 		return a.renderHelpOverlay()
@@ -251,6 +248,11 @@ func (a *App) render() string {
 		return a.renderDeletePlaylistOverlay()
 	case overlayQueue:
 		return a.renderQueueOverlay()
+	}
+
+	// Fullscreen player replaces everything except status bar.
+	if a.currentView == viewFullscreen {
+		return a.renderFullscreen()
 	}
 
 	tab := a.renderTabBar()

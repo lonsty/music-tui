@@ -15,6 +15,11 @@ import (
 )
 
 func main() {
+	if err := tui.ValidateKeyRegistry(); err != nil {
+		fmt.Fprintf(os.Stderr, "invalid key registry: %v\n", err)
+		os.Exit(1)
+	}
+
 	// ── Open (or create) the persistent database ──────────────────────────
 	dataDir, err := store.DataDir()
 	if err != nil {

@@ -214,7 +214,7 @@ func NewApp(player *audio.Player, st *store.Store, musicDir string, tracks []lib
 		app.applyFilter()
 		app.rebuildShuffleIDs()
 		// DO NOT set statusMsg here — the "Loaded N tracks" message should
-		// only appear after an explicit library reload (Ctrl+R → scanDoneMsg).
+		// only appear after an explicit reload action (scanDoneMsg).
 		// Setting it on every startup causes a visible status-bar flash/jump.
 		// Pre-populate currentTrack so the first rendered frame already shows
 		// the correct playing state (no flash/blank period while the async

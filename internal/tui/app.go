@@ -151,7 +151,7 @@ func (a *App) saveSession() {
 
 	// Only write last_position_ms when the player is alive; skip the write
 	// when pos==0 and the player is stopped (would overwrite a valid position
-	// saved moments earlier by the q-key handler).
+	// saved moments earlier by the quit handler).
 	posMs := pos.Milliseconds()
 	collapsedVal := store.ValRightExpanded
 	if a.rightCollapsed {

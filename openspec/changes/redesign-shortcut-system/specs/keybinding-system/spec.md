@@ -68,7 +68,7 @@
 
 ### Requirement: 冲突检测
 
-应用启动 SHALL 校验注册表：同一 scope 内一个物理键 SHALL 只属于一个 ActionID；禁用组合 SHALL NOT 出现在注册表；每个 ActionID SHALL 有中英描述。禁用组合指 `Alt+*`、`Ctrl+Shift+字母`、`Ctrl+I` / `Ctrl+M` / `Ctrl+[` / `Ctrl+Space` / `Ctrl+S` / `Ctrl+Q` / `Ctrl+Z` / `Ctrl+C`。校验失败 SHALL 阻止启动并报告具体冲突。
+应用启动 SHALL 校验注册表：同一 scope 内一个物理键 SHALL 只属于一个 ActionID；禁用组合 SHALL NOT 出现在注册表；每个 ActionID SHALL 有中英描述。禁用组合指 `Alt+*`、`Ctrl+Shift+字母`、`Ctrl+I` / `Ctrl+M` / `Ctrl+[` / `Ctrl+Space` / `Ctrl+S` / `Ctrl+Q` / `Ctrl+Z`。`Ctrl+C` SHALL 作为立即退出绑定保留，因为应用在 raw mode 下自行处理中断。校验失败 SHALL 阻止启动并报告具体冲突。
 
 #### Scenario: 重复键阻止启动
 
@@ -94,9 +94,15 @@
 
 #### Scenario: 页面不显示未绑定键
 
-- **WHEN** 用户在歌单列表层查看状态栏与帮助浮层
-- **THEN** 只显示该 scope 已绑定的键
-- **AND** 不显示 `Space`、`e`、`x` 等当前 scope 未绑定的键
+- **WHEN** 用户在歌单列表层查看状态栏
+- **THEN** 状态栏只显示该页面 scope 栈中可解析的键
+- **AND** 不显示当前页面未绑定的键
+
+#### Scenario: 帮助浮层分区展示
+
+- **WHEN** 用户在歌单列表层打开帮助浮层
+- **THEN** 当前上下文区只显示该页面的绑定
+- **AND** 全局、曲库、歌单、媒体键分区分别展示各自 scope 的绑定
 
 #### Scenario: 帮助浮层分区
 

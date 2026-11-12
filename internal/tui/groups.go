@@ -177,38 +177,44 @@ func (a *App) syncSearchLibraryView(active bool) {
 	}
 }
 
-// handleGroupKey handles keys while an album or artist list is visible.
-// Navigation keys are group-specific; everything else falls through to the
-// shared track-list engine so playback and overlays keep working.
+// handleGroupKey is the test-facing entry point for grouped library views.
 func (a *App) handleGroupKey(msg tea.KeyMsg) tea.Cmd {
+	scopes := []Scope{scopeGroup, scopeLocalGroups, scopeLocalTracks, scopeTracklist, scopeGlobal}
+	return a.runAction(scopes, msg, a.handleGroupAction)
+}
+
+// handleGroupAction handles the album/artist list layer. Unhandled actions
+// fall through to the shared track-list engine.
+func (a *App) handleGroupAction(action ActionID, msg tea.KeyMsg) tea.Cmd {
 	groups := a.activeGroups()
-	switch msg.String() {
-	case "j", "down":
+	switch action {
+	case actionNavDown:
 		if a.groupCursor < len(groups)-1 {
 			a.groupCursor++
 		}
 		return nil
-	case "k", "up":
+	case actionNavUp:
 		if a.groupCursor > 0 {
 			a.groupCursor--
 		}
 		return nil
-	case "g":
+	case actionNavTop:
 		a.groupCursor = 0
 		return nil
-	case "G":
+	case actionNavBottom:
 		if len(groups) > 0 {
 			a.groupCursor = len(groups) - 1
 		}
 		return nil
-	case "enter":
+	case actionDrillDown:
 		return a.enterGroup()
-	case "v":
-		return a.cycleLibraryView()
-	case "c":
+	case actionJumpPlaying:
 		a.jumpToPlayingGroup()
 		return nil
-	case "esc":
+	case actionGroupBack, actionCancel:
+		if a.drilldown != nil {
+			a.exitDrilldown()
+		}
 		if strings.TrimSpace(a.searchInput.Value()) != "" {
 			a.searchInput.SetValue("")
 			a.searchInput.Blur()
@@ -217,7 +223,6 @@ func (a *App) handleGroupKey(msg tea.KeyMsg) tea.Cmd {
 			a.syncSearchLibraryView(false)
 		}
 		return nil
-	default:
-		return a.handleSharedTrackListKey(a.localTrackListCtx(), msg)
 	}
+	return a.handleSharedTrackListAction(a.localTrackListCtx(), action, msg)
 }

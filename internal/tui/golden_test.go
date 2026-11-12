@@ -4,6 +4,7 @@ import (
 	"flag"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/charmbracelet/bubbles/progress"
@@ -122,7 +123,11 @@ func TestGoldenRender(t *testing.T) {
 			a.synced = false
 			a.activeIdx = -1
 		}},
-		{"help", func(a *App) { a.activeOvl = overlayHelp }},
+		{"help", func(a *App) {
+			a.activeOvl = overlayHelp
+			// Tall viewport so the golden captures every generated section.
+			a.H = 120
+		}},
 		{"settings", func(a *App) {
 			a.activeOvl = overlaySettings
 			a.musicDirInput.SetValue("/music")
@@ -180,6 +185,16 @@ func TestGoldenRender(t *testing.T) {
 			if got != string(want) {
 				t.Fatalf("render mismatch for %s\n--- want ---\n%q\n--- got ---\n%q", tc.name, want, got)
 			}
-		})
+			})
+	}
+
+	// The help snapshot must cover the full generated table, not only the
+	// first few chips.
+	data, err := os.ReadFile(filepath.Join(dir, "help.golden"))
+	if err != nil {
+		t.Fatalf("read help golden: %v", err)
+	}
+	if lines := strings.Count(string(data), "\n"); lines <= 29 {
+		t.Fatalf("help golden has %d lines, want more than 29", lines)
 	}
 }

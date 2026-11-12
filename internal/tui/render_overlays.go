@@ -55,66 +55,30 @@ const (
 	minOverlayW   = 28
 )
 
+// renderFooterChips builds an overlay footer from the registry. The last chip
+// is always the cancel/close action.
+func (a *App) renderFooterChips(s Scope) string {
+	var sb strings.Builder
+	sb.WriteString("  ")
+	for _, h := range a.footerHints(s) {
+		sb.WriteString(styleOverlayKey.Render("❮" + h.key + "❯"))
+		sb.WriteString(styleOverlayMuted.Render(" " + h.label + "  "))
+	}
+	return sb.String()
+}
+
+// renderChip renders one registry chip for inline hints.
+func (a *App) renderChip(action ActionID) string {
+	bd, ok := registry.bindingFor(action)
+	if !ok {
+		return ""
+	}
+	return styleOverlayKey.Render("❮" + bd.ShortKey + "❯")
+}
+
 // ── Help overlay ──────────────────────────────────────────────────────────────
 
 func (a *App) renderHelpOverlay() string {
-	type binding struct{ key, action string }
-	type section struct {
-		title    string
-		bindings []binding
-	}
-
-	sections := []section{
-		{T("help_section_global"), []binding{
-			{"j / ↓", T("action_move_down")},
-			{"k / ↑", T("action_move_up")},
-			{"g / G", T("action_top_bottom")},
-			{"c", T("action_jump_playing")},
-			{"PgUp / PgDn", T("action_page")},
-			{"v", T("action_view")},
-			{"Enter", T("action_play")},
-			{"Space", T("action_pause_resume")},
-			{"n / p", T("action_next_prev")},
-			{"< / >", T("action_seek")},
-			{"[ / ]", T("action_offset")},
-			{"+ / -", T("action_volume")},
-			{"m", T("action_cycle_mode")},
-			{"e / z", T("action_queue_add")},
-			{"Q", T("action_queue_open")},
-			{"r / R", T("action_lofi")},
-			{"b", T("action_chip")},
-			{"f", T("action_fullscreen")},
-			{"l", T("action_lyrics_mode")},
-			{`\`, T("action_collapse_panel")},
-			{",", T("action_settings")},
-			{"Tab", T("action_switch_tab")},
-			{"?", T("action_this_help")},
-			{"q", T("action_quit")},
-		}},
-		{T("help_section_local"), []binding{
-			{"/", T("action_search")},
-			{"i", T("action_track_info")},
-			{"L", T("action_like")},
-			{"a", T("action_add_to_playlist")},
-		}},
-		{T("help_section_playlist"), []binding{
-			{"Enter", T("action_open_playlist")},
-			{"n", T("action_new_playlist")},
-			{"r", T("action_rename_playlist")},
-			{"d", T("action_delete_playlist")},
-			{"x", T("action_remove_track")},
-			{"u", T("action_undo")},
-			{"J / K", T("action_move_track")},
-			{"L", T("action_like")},
-		}},
-		{T("help_section_media"), []binding{
-			{"F6 / F9", T("action_media_prev_next")},
-			{"F7", T("action_media_play")},
-			{"F8", T("action_media_stop")},
-			{"F11 / F12", T("action_media_vol")},
-		}},
-	}
-
 	const keyColW = 14
 	innerW := a.overlayInnerW(idealOverlayW, minOverlayW)
 	actionW := innerW - 2 - keyColW - 2
@@ -128,29 +92,30 @@ func (a *App) renderHelpOverlay() string {
 		div,
 	}
 
-	var bodyRows []string
-	renderBinding := func(b binding) string {
-		chip := styleOverlayKey.Render("❮" + b.key + "❯")
-		chipW := 2 + strWidth(b.key)
+	renderBinding := func(h keyHint) string {
+		chip := styleOverlayKey.Render("❮" + h.key + "❯")
+		chipW := 2 + strWidth(h.key)
 		if chipW < keyColW {
 			chip += strings.Repeat(" ", keyColW-chipW)
 		}
-		action := b.action
+		action := h.label
 		if strWidth(action) > actionW {
 			action = truncate(action, actionW)
 		}
 		return "  " + chip + "  " + styleOverlayValue.Render(action)
 	}
 
-	for _, sec := range sections {
+	var bodyRows []string
+	for _, sec := range a.helpSectionsRendered(a.currentContextScope()) {
 		bodyRows = append(bodyRows, styleOverlayMuted.Render("  "+sec.title))
-		for _, b := range sec.bindings {
-			bodyRows = append(bodyRows, renderBinding(b))
+		for _, row := range sec.rows {
+			bodyRows = append(bodyRows, renderBinding(row))
 		}
 		bodyRows = append(bodyRows, "")
 	}
 
-	hintRows := []string{"", styleOverlayMuted.Render("  " + T("overlay_hint_close"))}
+	hintRows := []string{"", a.renderFooterChips(scopeOverlayHelp),
+		styleOverlayMuted.Render("  " + T("help_close_key"))}
 
 	return a.renderScrollableOverlay(titleRows, bodyRows, hintRows, innerW)
 }
@@ -224,7 +189,8 @@ func (a *App) renderInfoOverlay() string {
 		bodyRows = append(bodyRows, styleOverlayMuted.Render("  "+T("info_no_track")))
 	}
 
-	hintRows := []string{"", styleOverlayMuted.Render("  " + T("overlay_hint_close"))}
+	hintRows := []string{"", a.renderFooterChips(scopeOverlayInfo),
+		styleOverlayMuted.Render("  " + T("help_close_key"))}
 
 	return a.renderScrollableOverlay(titleRows, bodyRows, hintRows, innerW)
 }
@@ -302,8 +268,7 @@ func (a *App) renderSettingsOverlay() string {
 		dirView = valueStyle(dirActive).Render(val)
 	}
 	dirLine := buildFieldLine(dirLabel, dirView, dirActive)
-	reloadKey := styleOverlayKey.Render("❮Ctrl+R❯")
-	reloadHint := "  " + reloadKey + styleOverlayMuted.Render(" "+T("settings_reload_hint"))
+	reloadHint := "  " + a.renderChip(actionReload) + styleOverlayMuted.Render(" "+T("settings_reload_hint"))
 
 	// ── 8-bit Conversion section ──────────────────────────────────────────
 	optsActive := a.settingsActive == settingsFieldChipOpts
@@ -361,37 +326,11 @@ func (a *App) renderSettingsOverlay() string {
 	iconSetLine := buildFieldLine(iconSetLabel, valueStyle(iconSetActive).Render(iconSetDisplayLabel(ActiveIconSet())), iconSetActive)
 
 	// ── Footer ────────────────────────────────────────────────────────────
-	// Build footer that fits within lineW by progressively dropping hints.
-	enterKey := styleOverlayKey.Render("❮Enter❯")
-	escKey := styleOverlayKey.Render("❮Esc❯")
-	upKey := styleOverlayKey.Render("❮↑/↓❯")
-	sep := styleOverlayMuted.Render("  ·  ")
-	var footer string
+	footerScope := scopeOverlaySettingsBrowse
 	if a.settingsEditing {
-		full := "  " + enterKey + styleOverlayMuted.Render(" "+T("settings_save")) + sep +
-			escKey + styleOverlayMuted.Render(" "+T("settings_cancel"))
-		short := "  " + escKey + styleOverlayMuted.Render(" "+T("settings_cancel"))
-		if strWidth(full) <= lineW {
-			footer = full
-		} else {
-			footer = short
-		}
-	} else {
-		full := "  " + enterKey + styleOverlayMuted.Render(" "+T("settings_edit")) + sep +
-			upKey + styleOverlayMuted.Render(" "+T("settings_navigate")) + sep +
-			escKey + styleOverlayMuted.Render(" "+T("settings_cancel"))
-		noNav := "  " + enterKey + styleOverlayMuted.Render(" "+T("settings_edit")) + sep +
-			escKey + styleOverlayMuted.Render(" "+T("settings_cancel"))
-		short := "  " + escKey + styleOverlayMuted.Render(" "+T("settings_cancel"))
-		switch {
-		case strWidth(full) <= lineW:
-			footer = full
-		case strWidth(noNav) <= lineW:
-			footer = noNav
-		default:
-			footer = short
-		}
+		footerScope = scopeOverlaySettingsEdit
 	}
+	footer := a.renderFooterChips(footerScope)
 
 	titleRows := []string{title, topDiv}
 
@@ -583,15 +522,7 @@ func (a *App) renderQueueOverlay() string {
 		}
 	}
 
-	xKey := styleOverlayKey.Render("❮x❯")
-	cKey := styleOverlayKey.Render("❮C❯")
-	escKey := styleOverlayKey.Render("❮Esc❯")
-	hintRows := []string{
-		div,
-		"  " + xKey + styleOverlayMuted.Render(" "+T("queue_remove")) + "  " +
-			cKey + styleOverlayMuted.Render(" "+T("queue_clear")) + "  " +
-			escKey + styleOverlayMuted.Render(" "+T("queue_close")),
-	}
+	hintRows := []string{div, a.renderFooterChips(scopeOverlayQueue)}
 
 	return a.renderScrollableOverlay(titleRows, bodyRows, hintRows, innerW)
 }
@@ -623,13 +554,7 @@ func (a *App) renderDeletePlaylistOverlay() string {
 		"",
 	}
 
-	yKey := styleOverlayKey.Render("❮Enter❯")
-	nKey := styleOverlayKey.Render("❮Esc❯")
-	hintRows := []string{
-		div,
-		"  " + yKey + styleOverlayMuted.Render(" "+T("overlay_confirm")+"  ") +
-			nKey + styleOverlayMuted.Render(" "+T("overlay_cancel")),
-	}
+	hintRows := []string{div, a.renderFooterChips(scopeConfirm)}
 
 	return a.renderScrollableOverlay(titleRows, bodyRows, hintRows, innerW)
 }
@@ -652,13 +577,7 @@ func (a *App) renderAddToPlaylistOverlay() string {
 			"  " + styleSearchPrompt.Render(T("playlist_new_prompt")+": ") + a.nameInput.View(),
 			"",
 		}
-		enterKey := styleOverlayKey.Render("❮Enter❯")
-		escKey := styleOverlayKey.Render("❮Esc❯")
-		hintRows := []string{
-			div,
-			"  " + enterKey + styleOverlayMuted.Render(" "+T("settings_save")) + "  " +
-				escKey + styleOverlayMuted.Render(" "+T("settings_cancel")),
-		}
+		hintRows := []string{div, a.renderFooterChips(scopeOverlayAddCreate)}
 		return a.renderScrollableOverlay(titleRows, bodyRows, hintRows, innerW)
 	}
 
@@ -684,15 +603,7 @@ func (a *App) renderAddToPlaylistOverlay() string {
 		}
 	}
 
-	enterKey := styleOverlayKey.Render("❮Enter❯")
-	escKey := styleOverlayKey.Render("❮Esc❯")
-	newKey := styleOverlayKey.Render("❮n❯")
-	hintRows := []string{
-		div,
-		"  " + enterKey + styleOverlayMuted.Render(" "+T("overlay_add")+"  ") +
-			newKey + styleOverlayMuted.Render(" "+T("hint_playlist_new")+"  ") +
-			escKey + styleOverlayMuted.Render(" "+T("overlay_cancel")),
-	}
+	hintRows := []string{div, a.renderFooterChips(scopeOverlayAddList)}
 
 	return a.renderScrollableOverlay(titleRows, bodyRows, hintRows, innerW)
 }

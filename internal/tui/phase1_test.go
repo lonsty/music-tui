@@ -76,10 +76,12 @@ func TestGlobalCtrlRRespectsTextInputs(t *testing.T) {
 		t.Fatal("Ctrl+R in a main view did not start a scan")
 	}
 
-	editing := &App{st: st, musicDir: t.TempDir(), activeOvl: overlaySettings, settingsEditing: true}
+	editing := &App{st: st, musicDir: t.TempDir(), activeOvl: overlaySettings, settingsEditing: true,
+		musicDirInput: textinput.New(), settingsInput: textinput.New()}
+	editing.musicDirInput.SetValue(editing.musicDir)
 	editing.handleKey(ctrlR)
-	if editing.loading {
-		t.Fatal("Ctrl+R in settings editing mode started a scan")
+	if !editing.loading {
+		t.Fatal("Ctrl+R in settings editing mode did not save and rescan")
 	}
 
 	naming := &App{st: st, musicDir: t.TempDir(), PlaylistState: PlaylistState{inputMode: playlistInputCreate}}

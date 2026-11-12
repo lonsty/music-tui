@@ -46,22 +46,21 @@ type TrackListContext struct {
 	// (true = Local) or is statically truncated (false = Playlist / Online).
 	UseMarquee bool
 
-	// ShowSearchBar controls whether the "/" key activates the search overlay
-	// and the header is replaced by the search input while it is open.
+	// ShowSearchBar controls whether the search action is available in this
+	// context and the header is replaced by the search input while it is open.
 	ShowSearchBar bool
 
-	// ── Key callbacks ─────────────────────────────────────────────────────────
+	// ── Action callbacks ──────────────────────────────────────────────────────
 
-	// OnEnter is called when the user presses Enter on a row.
+	// OnEnter is called when the play action fires on a row.
 	// pos is the position within the displayed list.
 	OnEnter func(a *App, pos int) tea.Cmd
 
-	// OnExtraKeys is called for any key that the shared engine does not handle.
-	// Return (true, cmd) to consume the key; return (false, nil) to let the
-	// engine fall through to its default no-op.
-	OnExtraKeys func(a *App, msg tea.KeyMsg) (handled bool, cmd tea.Cmd)
+	// OnExtraKeys is called for any action the shared engine does not handle.
+	// Return (true, cmd) to consume it; return (false, nil) to fall through.
+	OnExtraKeys func(a *App, action ActionID, msg tea.KeyMsg) (handled bool, cmd tea.Cmd)
 
-	// OnEsc is called when Esc is pressed and no overlay is active.
+	// OnEsc is called when the cancel action fires with no overlay active.
 	// Local: clears the search overlay.
 	// Playlist track level: returns to the playlist list.
 	OnEsc func(a *App)
@@ -72,11 +71,15 @@ type TrackListContext struct {
 	// supply its own implementation that reads from plTracks[trackCursor].
 	SyncMarquee func(a *App)
 
-	// LikeTarget returns the track that the "L" key should toggle in Favorites.
+	// LikeTarget returns the track the like action should toggle in Favorites.
 	// Return nil to disable the Like action in this context.
 	LikeTarget func(a *App) *library.Track
 
 	// EmptyMsg is the i18n key shown when Count() returns zero.
 	// Defaults to "no_tracks_hint" when empty.
 	EmptyMsg string
+
+	// EmptyHints lists actions whose chips are rendered in the empty state.
+	// Chips come from the key registry, so changing a key needs no text edit.
+	EmptyHints []ActionID
 }

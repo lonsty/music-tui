@@ -26,7 +26,7 @@ func TestPlaylistMoveKeys(t *testing.T) {
 	a.trackCursor = 0
 	ctx := a.playlistTrackCtx()
 
-	handled, cmd := ctx.OnExtraKeys(a, keyMsg("J"))
+	handled, cmd := ctx.OnExtraKeys(a, actionPlaylistMoveDown, keyMsg("J"))
 	if !handled || cmd == nil {
 		t.Fatal("J did not issue a move")
 	}
@@ -35,7 +35,7 @@ func TestPlaylistMoveKeys(t *testing.T) {
 	}
 
 	a.trackCursor = 0
-	_, cmd = ctx.OnExtraKeys(a, keyMsg("K"))
+	_, cmd = ctx.OnExtraKeys(a, actionPlaylistMoveUp, keyMsg("K"))
 	if cmd != nil {
 		t.Fatal("K at the first position issued a move")
 	}
@@ -48,7 +48,7 @@ func TestPlaylistUndoWindow(t *testing.T) {
 	a.trackCursor = 0
 	ctx := a.playlistTrackCtx()
 
-	_, cmd := ctx.OnExtraKeys(a, keyMsg("x"))
+	_, cmd := ctx.OnExtraKeys(a, actionPlaylistRemove, keyMsg("x"))
 	if cmd == nil || a.undoRemove == nil {
 		t.Fatal("x did not arm undo")
 	}
@@ -56,7 +56,7 @@ func TestPlaylistUndoWindow(t *testing.T) {
 		t.Fatalf("undo state = %#v", a.undoRemove)
 	}
 
-	_, cmd = ctx.OnExtraKeys(a, keyMsg("u"))
+	_, cmd = ctx.OnExtraKeys(a, actionPlaylistUndo, keyMsg("u"))
 	if cmd == nil {
 		t.Fatal("u inside the window did not restore")
 	}
@@ -74,7 +74,7 @@ func TestPlaylistUndoWindow(t *testing.T) {
 		title:      "a",
 		expiresAt:  time.Now().Add(-time.Second),
 	}
-	_, cmd = ctx.OnExtraKeys(a, keyMsg("u"))
+	_, cmd = ctx.OnExtraKeys(a, actionPlaylistUndo, keyMsg("u"))
 	if cmd != nil {
 		t.Fatal("expired undo issued a command")
 	}
@@ -95,7 +95,7 @@ func TestCreatePlaylistFromAddOverlay(t *testing.T) {
 	a.nameInput = textinput.New()
 	a.activeOvl = overlayAddToPlaylist
 
-	a.handleAddToPlaylistKey(keyMsg("n"))
+	a.handleAddToPlaylistKey(keyMsg("N"))
 	if !a.overlayCreating || a.ovlNewTrackID != "t1" {
 		t.Fatalf("create mode not armed: %#v", a.PlaylistState)
 	}

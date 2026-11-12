@@ -20,13 +20,13 @@
 
 ### Requirement: 喜欢操作目标一致
 
-触发 `library.like` SHALL 作用于当前光标或选中的曲目；SHALL NOT 因 scope 不同而改作用于正在播放的曲目。
+触发 `library.like` SHALL 作用于当前光标选中的曲目；SHALL NOT 因 scope 不同而改作用于正在播放的曲目。歌单列表层选中对象是歌单而非曲目，该 scope SHALL NOT 绑定 `library.like`。
 
-#### Scenario: 歌单列表层喜欢选中曲目
+#### Scenario: 歌单列表层不绑定喜欢动作
 
-- **WHEN** 用户在歌单列表层选中某歌单并触发 `library.like`
-- **THEN** 喜欢状态作用于该选中曲目
-- **AND** 不作用于正在播放的曲目
+- **WHEN** 用户在歌单列表层按 `L`
+- **THEN** 喜欢状态不变
+- **AND** `L` 不出现在该页面的键位提示中
 
 ## MODIFIED Requirements
 

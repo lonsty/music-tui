@@ -4,7 +4,7 @@
 
 ### Requirement: 歌词偏移调整
 
-同步歌词下，触发 `lyrics.offset_earlier` SHALL 将歌词提前 0.5 秒，触发 `lyrics.offset_later` SHALL 延后 0.5 秒；`,` 与 `.` SHALL 分别为两者的等效键；范围限制在 ±30 秒；调整后当前高亮行立即更新。
+同步歌词下，触发 `lyrics.offset_earlier` SHALL 将歌词提前 0.5 秒，触发 `lyrics.offset_later` SHALL 延后 0.5 秒；范围限制在 ±30 秒；调整后当前高亮行立即更新。全屏歌词视图中 `,` 与 `.` SHALL 分别为两者的等效键；列表视图 SHALL 使用 `[` 与 `]`。
 
 #### Scenario: 延后
 
@@ -17,11 +17,17 @@
 - **WHEN** 偏移已达 +30 秒再触发 `lyrics.offset_later`
 - **THEN** 偏移保持 +30 秒
 
-#### Scenario: 等效键
+#### Scenario: 全屏等效键
 
-- **WHEN** 用户在同步歌词下按 `,` 或 `.`
+- **WHEN** 用户在全屏同步歌词视图按 `,` 或 `.`
 - **THEN** 偏移分别按 `lyrics.offset_earlier` 与 `lyrics.offset_later` 调整
 - **AND** 不打开设置面板
+
+#### Scenario: 列表层等效键
+
+- **WHEN** 用户在曲目列表按 `[` 或 `]`
+- **THEN** 偏移分别按 `lyrics.offset_earlier` 与 `lyrics.offset_later` 调整
+- **AND** 按 `,` 打开设置面板
 
 ### Requirement: 浏览定位使用偏移
 

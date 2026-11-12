@@ -1,30 +1,120 @@
                                                                                                     
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
            ╭────────────────────────────────────────────────────────────────────────────╮           
            │                                                                            │           
            │  󰋼 Keyboard shortcuts                                                      │           
            │  ────────────────────────────────────────────────────────────────────────  │           
+           │    ── Current context ──────────────────────────                           │           
+           │    ❮Enter❯         Play selected track                                     │           
+           │    ❮/❯             Search  (s: artist  a: album  t: title  f: format)      │           
+           │    ❮a❯             Add to a playlist                                       │           
+           │    ❮i❯             Track info                                              │           
+           │    ❮1❯             Show tracks view                                        │           
+           │    ❮2❯             Show albums view                                        │           
+           │    ❮3❯             Show artists view                                       │           
+           │    ❮,❯             Settings  (music dir · p2chip options)                  │           
+           │                                                                            │           
            │    ── Global ────────────────────────────────                              │           
-           │    ❮j / ↓❯         Move down                                               │           
-           │    ❮k / ↑❯         Move up                                                 │           
-           │    ❮g / G❯         Top / Bottom                                            │           
-           │    ❮c❯             Jump to playing track                                   │           
-           │    ❮PgUp / PgDn❯   Page up / down                                          │           
-           │    ❮v❯             Cycle view  Tracks / Albums / Artists                   │           
-           │    ❮Enter❯         Play  (2nd Enter → Fullscreen)                          │           
+           │    ❮Esc❯           Cancel / close                                          │           
+           │    ❮Ctrl+C❯        Quit immediately                                        │           
+           │    ❮q❯             Quit                                                    │           
            │    ❮Space❯         Pause / Resume                                          │           
-           │    ❮n / p❯         Next / Previous                                         │           
-           │    ❮< / >❯         Seek −5s / +5s                                          │           
-           │    ❮[ / ]❯         Lyrics earlier / later  (0.5s)                          │           
-           │    ❮+ / -❯         Volume up / down                                        │           
+           │    ❮n❯             Next / Previous                                         │           
+           │    ❮p❯             Next / Previous                                         │           
+           │    ❮<❯             Seek −5s / +5s                                          │           
+           │    ❮>❯             Seek −5s / +5s                                          │           
+           │    ❮+ / =❯         Volume up / down                                        │           
+           │    ❮-❯             Volume up / down                                        │           
            │    ❮m❯             Cycle play mode                                         │           
-           │    ❮e / z❯         Play next / add to queue                                │           
-           │    ❮Q❯             Open play queue                                         │           
-           │    ❮r / R❯         Lo-fi effect  lower / raise sample rate                 │           
            │    ❮b❯             Toggle 8-bit chip mode  (converts + crossfades)         │           
+           │    ❮r❯             Lo-fi effect  lower / raise sample rate                 │           
+           │    ❮R❯             Lo-fi effect  lower / raise sample rate                 │           
+           │    ❮4❯             Open play queue                                         │           
            │    ❮f❯             Toggle fullscreen                                       │           
            │    ❮l❯             Toggle lyrics / player panel                            │           
+           │    ❮\❯             Collapse / expand right panel                           │           
+           │    ❮Tab❯           Switch tab                                              │           
+           │    ❮?❯             This help                                               │           
+           │    ❮Ctrl+R❯        Reload library                                          │           
            │                                                                            │           
-           │    Esc to close  ·  ↑↓ to scroll  ↓                                        │           
+           │    ── Local Tab ─────────────────────────────                              │           
+           │    ❮Esc❯           Back                                                    │           
+           │    ❮Enter❯         Open group                                              │           
+           │    ❮j / ↓❯         Move down                                               │           
+           │    ❮k / ↑❯         Move up                                                 │           
+           │    ❮g❯             Top / Bottom                                            │           
+           │    ❮G❯             Top / Bottom                                            │           
+           │    ❮c❯             Jump to playing track                                   │           
+           │    ❮L❯             Toggle like / Favorites                                 │           
+           │                                                                            │           
+           │    ── Playlists Tab ─────────────────────────                              │           
+           │    ❮Enter❯         Open playlist                                           │           
+           │    ❮N❯             New playlist                                            │           
+           │    ❮F2❯            Rename playlist                                         │           
+           │    ❮d❯             Delete playlist                                         │           
+           │    ❮Esc❯           Back to playlist list                                   │           
+           │    ❮a❯             Add or remove track                                     │           
+           │    ❮x❯             Remove track                                            │           
+           │    ❮J❯             Move track down / up                                    │           
+           │    ❮K❯             Move track down / up                                    │           
+           │    ❮Enter❯         Confirm                                                 │           
+           │    ❮Enter❯         Create playlist and add the track                       │           
+           │                                                                            │           
+           │    ── Media Keys ────────────────────────────                              │           
+           │    ❮F7❯            Play / Pause  (media key mapping)                       │           
+           │    ❮F8❯            Stop  (media key mapping)                               │           
+           │    ❮F9❯            Next track  (media key mapping)                         │           
+           │    ❮F6❯            Prev / Next  (media key mapping)                        │           
+           │    ❮F11❯           Vol down / up  (media key mapping)                      │           
+           │    ❮F12❯           Vol down / up  (media key mapping)                      │           
+           │                                                                            │           
+           │                                                                            │           
+           │    ❮↑/↓❯ Scroll  ❮Esc❯ cancel                                              │           
+           │    Close this panel                                                        │           
            │                                                                            │           
            ╰────────────────────────────────────────────────────────────────────────────╯           
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
+                                                                                                    
                                                                                                     

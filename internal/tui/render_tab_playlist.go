@@ -69,7 +69,8 @@ func (a *App) renderPlaylistListLevel(innerW, innerH int) string {
 			prompt = T("playlist_rename_prompt")
 		}
 		sb.WriteString(styleSearchPrompt.Render(prompt+": ") + a.nameInput.View() + "\n")
-		inputLines = 1
+		sb.WriteString(a.renderFooterChips(scopeInputName) + "\n")
+		inputLines = 2
 	}
 
 	maxRows := innerH - headerLines - inputLines
@@ -163,13 +164,14 @@ func (a *App) renderPlaylistAddPanel(innerW, innerH int) string {
 	sb.WriteString(styleSearchPrompt.Render(iconSearch()+" ") + a.addInput.View() + "\n")
 	sb.WriteString(styleDivider.Render(strings.Repeat("─", innerW)) + "\n")
 
-	const fixedRows = 4
+	const fixedRows = 5
 	maxRows := innerH - fixedRows
 	if maxRows < 0 {
 		maxRows = 0
 	}
 
 	a.renderAddTrackResults(&sb, innerW, maxRows)
+	sb.WriteString(a.renderFooterChips(scopeInputAddTracks) + "\n")
 
 	content := strings.TrimRight(sb.String(), "\n")
 	return stylePanelBorder.Width(innerW).Height(innerH).Render(content)

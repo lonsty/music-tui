@@ -15,10 +15,13 @@ func (a *App) renderSharedTrackList(ctx TrackListContext, innerW, innerH int) st
 	var sb strings.Builder
 
 	// ── Header ───────────────────────────────────────────────────────────────
-	if ctx.ShowSearchBar && a.activeOvl == overlaySearch {
-		// Search mode: replace the title line with the search input.
+	searchActive := ctx.ShowSearchBar && a.activeOvl == overlaySearch
+	if searchActive {
+		// Search mode: replace the title line with the search input and the
+		// registry-generated input footer.
 		prompt := styleSearchPrompt.Render(iconSearch() + " ")
 		sb.WriteString(prompt + a.searchInput.View() + "\n")
+		sb.WriteString(a.renderFooterChips(scopeInputSearch) + "\n")
 	} else {
 		title := ctx.HeaderTitle()
 
@@ -37,7 +40,8 @@ func (a *App) renderSharedTrackList(ctx TrackListContext, innerW, innerH int) st
 		var filterChip string
 		if ctx.ShowSearchBar && a.activeOvl != overlaySearch {
 			if q := strings.TrimSpace(a.searchInput.Value()); q != "" {
-				filterChip = styleSearchPrompt.Render("  " + fmt.Sprintf(T("search_filter_active"), q))
+				filterChip = styleSearchPrompt.Render("  " + fmt.Sprintf(T("search_filter_active"), q)) +
+				" " + a.renderChip(actionClearFilter)
 			}
 		}
 
@@ -69,7 +73,10 @@ func (a *App) renderSharedTrackList(ctx TrackListContext, innerW, innerH int) st
 	}
 	sb.WriteString(styleDivider.Render(strings.Repeat("─", innerW)) + "\n")
 
-	const headerLines = 2
+	headerLines := 2
+	if searchActive {
+		headerLines = 3
+	}
 	maxRows := innerH - headerLines
 	if maxRows < 0 {
 		maxRows = 0
@@ -86,7 +93,19 @@ func (a *App) renderSharedTrackList(ctx TrackListContext, innerW, innerH int) st
 		}
 		emptyText := T(emptyKey)
 		if q := strings.TrimSpace(a.searchInput.Value()); q != "" && ctx.ShowSearchBar {
-			emptyText = fmt.Sprintf(T("no_search_results"), q) + "\n" + T("search_clear_hint")
+			emptyText = fmt.Sprintf(T("no_search_results"), q) + "\n" + T("search_clear_hint") +
+				" " + a.renderChip(actionClearFilter)
+		}
+		if len(ctx.EmptyHints) > 0 {
+			var chips []string
+			for _, action := range ctx.EmptyHints {
+				if bd, ok := registry.bindingFor(action); ok {
+					chips = append(chips, "❮"+bd.ShortKey+"❯ "+T(bd.LabelKey))
+				}
+			}
+			if len(chips) > 0 {
+				emptyText += "\n" + strings.Join(chips, "  ")
+			}
 		}
 		empty := styleOverlayMuted.Render(emptyText)
 		centered := lipgloss.Place(innerW, maxRows, lipgloss.Center, lipgloss.Center, empty)

@@ -73,7 +73,7 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			a.statusMsgExpiry = time.Now().Add(statusMsgDuration)
 		} else if a.libScanFromReload {
 			// Only show "Loaded N tracks" when the scan was explicitly
-			// triggered by Ctrl+R, not on every startup.
+			// triggered by the reload action, not on every startup.
 			a.statusMsg = fmt.Sprintf(T("loaded_tracks"), len(a.tracks))
 			a.statusMsgExpiry = time.Now().Add(statusMsgDuration)
 			a.libScanFromReload = false

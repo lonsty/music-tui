@@ -12,77 +12,36 @@ import (
 
 // ── Playlist tab keys ─────────────────────────────────────────────────────────
 
-// handlePlaylistKey handles keypresses when the Playlist tab is active.
+// handlePlaylistKey is the test-facing entry point for the Playlist tab.
 func (a *App) handlePlaylistKey(msg tea.KeyMsg) tea.Cmd {
-	// Global quit still works.
-	if msg.String() == "q" {
-		return a.quitOrConfirm()
-	}
-
-	// When name input is active, only Esc/Enter are control keys.
-	if a.inputMode != playlistInputNone {
-		switch msg.String() {
-		case "esc":
-			a.inputMode = playlistInputNone
-			a.nameInput.SetValue("")
-			a.nameInput.Blur()
-		case "enter":
-			name := strings.TrimSpace(a.nameInput.Value())
-			prevMode := a.inputMode
-			a.inputMode = playlistInputNone
-			a.nameInput.SetValue("")
-			a.nameInput.Blur()
-			if name == "" {
-				return nil
-			}
-			if prevMode == playlistInputCreate {
-				return a.cmdCreatePlaylist(name)
-			}
-			// rename
-			if pl := a.currentPlaylist(); pl.ID != "" {
-				return a.cmdRenamePlaylist(pl.ID, name)
-			}
-		default:
-			var cmd tea.Cmd
-			a.nameInput, cmd = a.nameInput.Update(msg)
-			return cmd
-		}
-		return nil
-	}
-
-	// Add-tracks mode: forward to dedicated handler.
-	if a.addingTracks {
-		return a.handleAddTracksKey(msg)
-	}
-
-	if a.depth == playlistDepthTracks {
-		return a.handlePlaylistTracksKey(msg)
-	}
-	return a.handlePlaylistListKey(msg)
+	return a.runAction(a.activeScopes(), msg, a.dispatchAction)
 }
 
-// handlePlaylistListKey handles keys at the playlist-list depth.
 func (a *App) handlePlaylistListKey(msg tea.KeyMsg) tea.Cmd {
-	switch msg.String() {
-	case "j", "down":
+	return a.runAction([]Scope{scopePlaylistList, scopeGlobal}, msg, a.handlePlaylistListAction)
+}
+
+func (a *App) handlePlaylistListAction(action ActionID, msg tea.KeyMsg) tea.Cmd {
+	switch action {
+	case actionNavDown:
 		if a.listCursor < len(a.playlists)-1 {
 			a.listCursor++
 			a.syncPlaylistRowMarquee()
 		}
-	case "k", "up":
+	case actionNavUp:
 		if a.listCursor > 0 {
 			a.listCursor--
 			a.syncPlaylistRowMarquee()
 		}
-	case "g":
+	case actionNavTop:
 		a.listCursor = 0
 		a.syncPlaylistRowMarquee()
-	case "G":
+	case actionNavBottom:
 		if len(a.playlists) > 0 {
 			a.listCursor = len(a.playlists) - 1
 			a.syncPlaylistRowMarquee()
 		}
-	case "enter":
+	case actionOpenPlaylist:
 		if len(a.playlists) == 0 {
 			return nil
 		}
@@ -91,15 +50,13 @@ func (a *App) handlePlaylistListKey(msg tea.KeyMsg) tea.Cmd {
 		a.pendingTrackAnchor = true
 		pl := a.currentPlaylist()
 		return a.cmdLoadPlaylistTracks(pl.ID)
-	case "n":
-		// New playlist.
+	case actionPlaylistNew:
 		a.inputMode = playlistInputCreate
 		a.nameInput.SetValue("")
 		a.nameInput.Placeholder = T("playlist_new_prompt")
 		a.nameInput.Focus()
 		return textinput.Blink
-	case "r":
-		// Rename selected playlist (not Favorites).
+	case actionPlaylistRename:
 		if pl := a.currentPlaylist(); pl.ID != "" && pl.ID != store.FavoritesPlaylistID {
 			a.inputMode = playlistInputRename
 			a.nameInput.SetValue(pl.Name)
@@ -107,61 +64,78 @@ func (a *App) handlePlaylistListKey(msg tea.KeyMsg) tea.Cmd {
 			a.nameInput.Focus()
 			return textinput.Blink
 		}
-	case "d":
-		// Delete selected playlist (not Favorites) — open confirm overlay.
+	case actionPlaylistDelete:
 		if pl := a.currentPlaylist(); pl.ID != "" && pl.ID != store.FavoritesPlaylistID {
 			a.activeOvl = overlayDeletePlaylist
 			a.ovlScrollRow = 0
 		}
-	case "tab":
-		a.activeTab = (a.activeTab + 1) % tabCount
-		if a.activeTab == tabLocal {
-			a.restoreLocalFilter()
-		}
-	case "?":
-		a.activeOvl = overlayHelp
-		a.ovlScrollRow = 0
-	// Pass through playback and panel keys.
-	case " ":
+	case actionPause:
 		return a.cmdTogglePause()
-	case "f":
-		a.currentView = viewFullscreen
-	case "l":
-		// Toggle the right panel between player mode and lyrics mode.
-		if a.showMiniPlayer() {
-			if a.rightMode == rightPanelLyrics {
-				a.rightMode = rightPanelPlayer
-			} else {
-				a.rightMode = rightPanelLyrics
-			}
-		}
-	case `\`:
-		a.rightCollapsed = !a.rightCollapsed
-	case "L":
-		if a.currentTrack != nil {
-			return a.cmdToggleFavorite(*a.currentTrack)
-		}
-	case ",":
-		a.openSettings()
 	}
 	return nil
 }
 
-// handlePlaylistTracksKey handles keys at the playlist-tracks depth.
-// It delegates entirely to the shared track-list engine with the playlist
-// context, so the Playlist track level inherits every Local-tab feature.
+// handlePlaylistTracksKey is the test-facing entry point for playlist tracks.
 func (a *App) handlePlaylistTracksKey(msg tea.KeyMsg) tea.Cmd {
-	return a.handleSharedTrackListKey(a.playlistTrackCtx(), msg)
+	return a.runAction([]Scope{scopePlaylistTracks, scopeTracklist, scopeGlobal}, msg,
+		func(action ActionID, msg tea.KeyMsg) tea.Cmd {
+			return a.handleSharedTrackListAction(a.playlistTrackCtx(), action, msg)
+		})
 }
 
-// handleAddTracksKey handles keys in the inline add-tracks search panel.
+// handleInputAction routes actions resolved in text-input scopes.
+func (a *App) handleInputAction(action ActionID, msg tea.KeyMsg, top Scope) tea.Cmd {
+	switch top {
+	case scopeInputName:
+		return a.handleNameInputAction(action, msg)
+	case scopeInputAddTracks:
+		return a.handleAddTracksAction(action, msg)
+	case scopeInputSearch:
+		return a.handleSearchAction(action, msg)
+	case scopeOverlayAddCreate:
+		return a.handleAddCreateAction(action, msg)
+	case scopeOverlaySettingsEdit:
+		return a.handleSettingsAction(action, msg, top)
+	}
+	return a.forwardToInput(msg, []Scope{top})
+}
+
+func (a *App) handleNameInputAction(action ActionID, msg tea.KeyMsg) tea.Cmd {
+	switch action {
+	case actionCommitName:
+		name := strings.TrimSpace(a.nameInput.Value())
+		prevMode := a.inputMode
+		a.inputMode = playlistInputNone
+		a.nameInput.SetValue("")
+		a.nameInput.Blur()
+		if name == "" {
+			return nil
+		}
+		if prevMode == playlistInputCreate {
+			return a.cmdCreatePlaylist(name)
+		}
+		if pl := a.currentPlaylist(); pl.ID != "" {
+			return a.cmdRenamePlaylist(pl.ID, name)
+		}
+	case actionCancel:
+		a.inputMode = playlistInputNone
+		a.nameInput.SetValue("")
+		a.nameInput.Blur()
+	}
+	return nil
+}
+
+// handleAddTracksKey is the test-facing entry point for the add-tracks panel.
 func (a *App) handleAddTracksKey(msg tea.KeyMsg) tea.Cmd {
-	switch msg.String() {
-	case "esc":
+	return a.runAction([]Scope{scopeInputAddTracks, scopeGlobal}, msg, a.handleAddTracksAction)
+}
+
+func (a *App) handleAddTracksAction(action ActionID, msg tea.KeyMsg) tea.Cmd {
+	switch action {
+	case actionCancel:
 		a.addingTracks = false
 		a.addInput.Blur()
 		a.addInput.SetValue("")
-		// Compute net add/remove counts from the delta map.
 		var addN, remN int
 		for _, v := range a.addDelta {
 			if v > 0 {
@@ -175,16 +149,14 @@ func (a *App) handleAddTracksKey(msg tea.KeyMsg) tea.Cmd {
 			a.statusMsgExpiry = time.Now().Add(statusMsgDuration)
 		}
 		a.addDelta = nil
-	case "enter":
-		// Toggle: if already in playlist → remove; otherwise → add.
+		return nil
+	case actionAddTracksToggle:
 		if a.addCursor < 0 || a.addCursor >= len(a.addResults) {
 			return nil
 		}
 		idx := a.addResults[a.addCursor]
 		t := a.tracks[idx]
 		pl := a.currentPlaylist()
-		// Check if track is already in the playlist, accounting for
-		// delta changes made during this add-tracks session.
 		inPlaylist := false
 		for _, pt := range a.plTracks {
 			if pt.ID == t.ID {
@@ -197,10 +169,6 @@ func (a *App) handleAddTracksKey(msg tea.KeyMsg) tea.Cmd {
 		} else if a.addDelta[t.ID] < 0 {
 			inPlaylist = false
 		}
-		// Don't close the panel — allow continuous editing.
-		// Toggle semantics: if this track was already toggled in this
-		// session, cancel the previous operation (set delta back to 0).
-		// Otherwise, toggle between add (+1) and remove (-1).
 		if a.addDelta[t.ID] > 0 {
 			a.addDelta[t.ID] = 0
 			return a.cmdRemoveTrackFromPlaylist(pl.ID, t.ID)
@@ -215,56 +183,39 @@ func (a *App) handleAddTracksKey(msg tea.KeyMsg) tea.Cmd {
 		}
 		a.addDelta[t.ID] = +1
 		return a.cmdAddTrackToPlaylist(pl.ID, t.ID)
-	case "j", "down":
+	case actionNavDown:
 		if a.addCursor < len(a.addResults)-1 {
 			a.addCursor++
 		}
-	case "k", "up":
+		return nil
+	case actionNavUp:
 		if a.addCursor > 0 {
 			a.addCursor--
 		}
-	default:
-		var cmd tea.Cmd
-		a.addInput, cmd = a.addInput.Update(msg)
-		a.applyAddFilter()
-		a.addCursor = 0
-		return cmd
+		return nil
 	}
-	return nil
+	return a.forwardToInput(msg, []Scope{scopeInputAddTracks})
 }
 
-// handleAddToPlaylistKey handles keys in the overlayAddToPlaylist overlay.
+// handleAddToPlaylistKey is the test-facing entry point for the picker overlay.
 func (a *App) handleAddToPlaylistKey(msg tea.KeyMsg) tea.Cmd {
+	scopes := []Scope{scopeOverlayAddList, scopeGlobal}
 	if a.overlayCreating {
-		switch msg.String() {
-		case "esc":
-			a.overlayCreating = false
-			a.nameInput.Blur()
-			a.nameInput.SetValue("")
-			return nil
-		case "enter":
-			name := strings.TrimSpace(a.nameInput.Value())
-			if name == "" {
-				return nil
-			}
-			trackID := a.ovlNewTrackID
-			a.overlayCreating = false
-			a.ovlNewTrackID = ""
-			a.nameInput.Blur()
-			a.nameInput.SetValue("")
-			a.closeOverlay()
-			return a.cmdCreatePlaylistAndAdd(name, trackID)
-		default:
-			var cmd tea.Cmd
-			a.nameInput, cmd = a.nameInput.Update(msg)
-			return cmd
-		}
+		scopes = []Scope{scopeOverlayAddCreate, scopeGlobal}
 	}
+	return a.runAction(scopes, msg, func(action ActionID, msg tea.KeyMsg) tea.Cmd {
+		return a.handleAddToPlaylistAction(action, msg, scopes[0])
+	})
+}
 
-	switch msg.String() {
-	case "esc":
+func (a *App) handleAddToPlaylistAction(action ActionID, msg tea.KeyMsg, top Scope) tea.Cmd {
+	if top == scopeOverlayAddCreate {
+		return a.handleAddCreateAction(action, msg)
+	}
+	switch action {
+	case actionCancel:
 		a.closeOverlay()
-	case "n":
+	case actionPlaylistNew:
 		ct := a.cursorTrack()
 		if ct == nil {
 			return nil
@@ -275,17 +226,17 @@ func (a *App) handleAddToPlaylistKey(msg tea.KeyMsg) tea.Cmd {
 		a.nameInput.SetValue("")
 		a.nameInput.Focus()
 		return textinput.Blink
-	case "j", "down":
+	case actionNavDown:
 		if a.ovlPlCursor < len(a.ovlPlaylists)-1 {
 			a.ovlPlCursor++
 			a.keepOvlCursorVisible()
 		}
-	case "k", "up":
+	case actionNavUp:
 		if a.ovlPlCursor > 0 {
 			a.ovlPlCursor--
 			a.keepOvlCursorVisible()
 		}
-	case "enter":
+	case actionConfirm:
 		if a.ovlPlCursor < 0 || a.ovlPlCursor >= len(a.ovlPlaylists) {
 			a.closeOverlay()
 			return nil
@@ -303,19 +254,44 @@ func (a *App) handleAddToPlaylistKey(msg tea.KeyMsg) tea.Cmd {
 	return nil
 }
 
-// handleDeletePlaylistKey handles key presses inside the delete-confirm overlay.
-// Enter confirms the deletion; any other key (Esc, …) cancels.
+func (a *App) handleAddCreateAction(action ActionID, msg tea.KeyMsg) tea.Cmd {
+	switch action {
+	case actionCancel:
+		a.overlayCreating = false
+		a.nameInput.Blur()
+		a.nameInput.SetValue("")
+		return nil
+	case actionCreateAndAdd:
+		name := strings.TrimSpace(a.nameInput.Value())
+		if name == "" {
+			return nil
+		}
+		trackID := a.ovlNewTrackID
+		a.overlayCreating = false
+		a.ovlNewTrackID = ""
+		a.nameInput.Blur()
+		a.nameInput.SetValue("")
+		a.closeOverlay()
+		return a.cmdCreatePlaylistAndAdd(name, trackID)
+	}
+	return a.forwardToInput(msg, []Scope{scopeOverlayAddCreate})
+}
+
+// handleDeletePlaylistKey is the test-facing entry point for the confirm overlay.
 func (a *App) handleDeletePlaylistKey(msg tea.KeyMsg) tea.Cmd {
-	switch msg.String() {
-	case "enter":
+	return a.runAction([]Scope{scopeConfirm, scopeGlobal}, msg, a.handleDeletePlaylistAction)
+}
+
+func (a *App) handleDeletePlaylistAction(action ActionID, msg tea.KeyMsg) tea.Cmd {
+	switch action {
+	case actionDeleteConfirm:
 		a.activeOvl = overlayNone
 		pl := a.currentPlaylist()
 		if pl.ID != "" && pl.ID != store.FavoritesPlaylistID {
 			return a.cmdDeletePlaylist(pl.ID)
 		}
-		return nil
-	default:
+	case actionCancel:
 		a.activeOvl = overlayNone
-		return nil
 	}
+	return nil
 }

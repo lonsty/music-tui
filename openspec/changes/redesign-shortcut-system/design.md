@@ -69,12 +69,12 @@
 | 播放 | `playback.mode` | `m` | global、fullscreen |
 | 播放 | `playback.chip` | `b` | global、fullscreen |
 | 播放 | `playback.lofi_down` / `lofi_up` | `r` / `R` | global、fullscreen |
-| 播放 | `lyrics.offset_earlier` / `offset_later` | `[` / `]`，`,` / `.` | fullscreen（同步歌词） |
+| 播放 | `lyrics.offset_earlier` / `offset_later` | `[` / `]`，`,` / `.` | fullscreen 与 tracklist（同步歌词）；`,` / `.` 仅在 fullscreen 生效 |
 | 当前对象 | `library.search` | `/` | local.tracks |
 | 当前对象 | `library.clear_filter` | `Esc` | 过滤态 |
 | 当前对象 | `library.add_to_playlist` | `a` | local.tracks |
 | 当前对象 | `library.track_info` | `i` | local.tracks |
-| 当前对象 | `library.like` | `L` | 全部曲目层与 playlist.list，目标为选中曲目 |
+| 当前对象 | `library.like` | `L` | tracklist 与 group，目标为选中曲目；playlist.list 不绑定 |
 | 当前对象 | `queue.append` | `e` | tracklist |
 | 当前对象 | `queue.insert_next` | `E` | tracklist |
 | 当前对象 | `queue.remove` | `x` | playlist.tracks、overlay.queue |
@@ -99,7 +99,7 @@
 | 系统 | `global.media_prev` / `media_next` / `media_play` / `media_stop` / `media_vol_down` / `media_vol_up` | `F6` / `F9` / `F7` / `F8` / `F11` / `F12` | 非文本输入 scope |
 | 系统 | `global.force_quit` | `Ctrl+C` | 全部 scope |
 
-`,` 在主视图打开设置，在 fullscreen 作为歌词偏移等效键；同一物理键在不同 scope 绑定不同 ActionID，由栈隔离，不视为冲突。`v`、`Q`、`z` 完全不绑定。`r` 只做 Lo-Fi 降档，`n` 全局只做下一曲。
+`,` 在主视图打开设置，在 fullscreen 作为歌词偏移等效键；同一物理键在不同 scope 绑定不同 ActionID，由栈隔离，不视为冲突。`v`、`Q`、`z` 完全不绑定。`r` 只做 Lo-Fi 降档，`n` 全局只做下一曲。`Ctrl+C` 是唯一保留的 legacy 控制组合：应用在 raw mode 下自行处理中断，注册表校验清单将它排除。
 
 替代方案：Helix 式前缀层（`Space` leader）。否决——音乐播放器主流是单键，且两次击键增加高频操作成本。替代方案：保留 `v` 循环并只补 `1/2/3`。否决——用户已确认不留 alias。
 

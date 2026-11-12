@@ -12,8 +12,8 @@ import (
 
 // playlistTrackCtx returns the TrackListContext for the Playlist tab's track
 // level (depth == playlistDepthTracks).  It re-uses the shared track-list
-// engine so that all Local features (m/b/r/R/+/-/<>/?/i/L/n/p/space/…) work
-// identically inside a playlist without any extra code.
+// engine so that every shared registry action works identically inside
+// a playlist without any extra code.
 func (a *App) playlistTrackCtx() TrackListContext {
 	return TrackListContext{
 		// ── Data ─────────────────────────────────────────────────────────
@@ -56,9 +56,9 @@ func (a *App) playlistTrackCtx() TrackListContext {
 			pl := a.currentPlaylist()
 			return a.cmdPlayPlaylist(pl.ID, pos)
 		},
-		OnExtraKeys: func(a *App, msg tea.KeyMsg) (bool, tea.Cmd) {
-			switch msg.String() {
-			case "x":
+		OnExtraKeys: func(a *App, action ActionID, msg tea.KeyMsg) (bool, tea.Cmd) {
+			switch action {
+			case actionPlaylistRemove:
 				// Remove cursor track from the playlist and arm undo.
 				tracks := a.plTracks
 				if a.trackCursor >= 0 && a.trackCursor < len(tracks) {
@@ -76,7 +76,7 @@ func (a *App) playlistTrackCtx() TrackListContext {
 					return true, a.cmdRemoveTrackFromPlaylist(pl.ID, t.ID)
 				}
 				return true, nil
-			case "u":
+			case actionPlaylistUndo:
 				undo := a.undoRemove
 				if undo == nil || time.Now().After(undo.expiresAt) {
 					a.undoRemove = nil
@@ -88,9 +88,9 @@ func (a *App) playlistTrackCtx() TrackListContext {
 				a.statusMsg = fmt.Sprintf(T("undo_restored"), undo.title)
 				a.statusMsgExpiry = time.Now().Add(statusMsgDuration)
 				return true, a.cmdInsertTrackAt(undo.playlistID, undo.trackID, undo.position)
-			case "J", "K":
+			case actionPlaylistMoveDown, actionPlaylistMoveUp:
 				delta := 1
-				if msg.String() == "K" {
+				if action == actionPlaylistMoveUp {
 					delta = -1
 				}
 				tracks := a.plTracks
@@ -103,7 +103,7 @@ func (a *App) playlistTrackCtx() TrackListContext {
 				a.trackCursor = next
 				a.syncPlaylistTrackMarquee()
 				return true, a.cmdMoveTrack(pl.ID, t.ID, delta)
-			case "a":
+			case actionPlaylistAddTrack:
 				// Open inline add-tracks search panel.
 				a.addingTracks = true
 				a.addDelta = make(map[string]int)
@@ -136,6 +136,7 @@ func (a *App) playlistTrackCtx() TrackListContext {
 			return nil
 		},
 
-		EmptyMsg: "playlist_tracks_empty",
+		EmptyMsg:   "playlist_tracks_empty",
+		EmptyHints: []ActionID{actionPlaylistAddTrack},
 	}
 }
