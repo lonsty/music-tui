@@ -6,7 +6,6 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 
-	"github.com/lonsty/music-tui/internal/audio"
 )
 
 // handleSharedTrackListKey is the test-facing entry point. It resolves the key
@@ -162,23 +161,4 @@ func syncMarquee(a *App, ctx TrackListContext) {
 		return
 	}
 	a.syncRowMarquee()
-}
-
-// statusHint is kept for renderers that only need a key/label pair.
-type statusHint struct {
-	key   string
-	label string
-}
-
-// buildTrackListHints returns the registry-generated T1 chips for a track list.
-func buildTrackListHints(a *App, ctx TrackListContext, displayState audio.State) []keyHint {
-	_ = ctx
-	_ = displayState
-	scopes := a.activeScopes()
-	for _, s := range scopes {
-		if _, ok := shortSlots[s]; ok {
-			return a.shortHints(s)
-		}
-	}
-	return nil
 }

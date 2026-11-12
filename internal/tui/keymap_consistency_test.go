@@ -238,17 +238,15 @@ func TestDispatchGroupActionsResolve(t *testing.T) {
 		library.Track{ID: "t2", Title: "two", Album: "A"},
 	)
 	scopes := scopesForPage(a, scopeGroup)
-	cases := map[string]ActionID{
-		"a": actionAddToPlaylist,
-		"i": actionTrackInfo,
-		"e": actionQueueAppend,
-		"E": actionQueueInsert,
-	}
-	for key, want := range cases {
-		got, ok := registry.Resolve(scopes, runeMsg(key), a)
-		if !ok || got != want {
-			t.Errorf("group key %q resolved to %q, want %s", key, got, want)
+	// Flat track-list actions must not leak into grouped views: they would
+	// operate on the hidden cursorPos instead of the selected group.
+	for _, key := range []string{"a", "i", "e", "E"} {
+		if got, ok := registry.Resolve(scopes, runeMsg(key), a); ok {
+			t.Errorf("group key %q leaked flat action %s", key, got)
 		}
+	}
+	if got, ok := registry.Resolve(scopes, runeMsg("L"), a); !ok || got != actionLike {
+		t.Errorf("group like action resolved to %q, want library.like", got)
 	}
 }
 
@@ -359,12 +357,21 @@ func TestEmptyHintsFromRegistry(t *testing.T) {
 
 func TestEnabledHints(t *testing.T) {
 	a := testApp()
-	if _, ok := hintFor(a, actionPlaylistUndo, 0, false); ok {
-		t.Fatal("undo hint visible without an armed undo")
-	}
-	a.undoRemove = &undoRemove{expiresAt: time.Now().Add(time.Second)}
-	if _, ok := hintFor(a, actionPlaylistUndo, 0, false); !ok {
-		t.Fatal("undo hint hidden while undo is armed")
+	a.activeTab = tabPlaylist
+	a.depth = playlistDepthTracks
+	// Undo stays bound even when expired: the handler reports "undo expired"
+	// instead of silently dropping the key.
+	for _, expired := range []bool{false, true} {
+		expires := time.Now().Add(time.Second)
+		if expired {
+			expires = time.Now().Add(-time.Second)
+		}
+		a.undoRemove = &undoRemove{expiresAt: expires}
+		scopes := []Scope{scopePlaylistTracks, scopeTracklist, scopeGlobal}
+		got, ok := registry.Resolve(scopes, runeMsg("u"), a)
+		if !ok || got != actionPlaylistUndo {
+			t.Fatalf("expired=%v undo resolved to %q", expired, got)
+		}
 	}
 }
 

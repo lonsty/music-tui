@@ -41,11 +41,13 @@
 
 固定顺序：`input > confirm > overlay > fullscreen > settings > group > tracklist > global`。按键自栈顶向下解析，首个绑定该键的 scope 消费它。`global` 只在未被捕获时兜底。
 
-- 文本输入 scope（`search.inline`、`addtracks.inline`、`playlist.rename`、`overlay.add.create`、`overlay.settings.edit`）只把可打印字符交给输入框。例外：`overlay.settings.edit` 显式绑定 `global.reload`，保存目录后重扫，保留现网行为。
+- 文本输入 scope（`input.search`、`input.addtracks`、`input.name`、`overlay.add.create`、`overlay.settings.edit`）只把可打印字符交给输入框。例外：`overlay.settings.edit` 显式绑定 `global.reload`，保存目录后重扫，保留现网行为。
 - 浮层为模态，只认自身绑定加 `Esc`、`?`、`global.reload` 与媒体 F 键；不继承 `playback.next` 等全局播放键。
 - `overlay` 排在 `fullscreen` 之前，且渲染链同步，修掉全屏帮助浮层陷阱。
 
 替代方案：保留现有 if 链，只补几个分支。否决——输入劫持与浮层陷阱都源于优先级链缺层，补分支会继续漂移。
+
+分组视图 SHALL 只把 `scopeGroup` 与 `scopeLocalGroups` 入栈，SHALL NOT 附带 `scopeLocalTracks` / `scopeTracklist`：否则 `a` / `i` / `e` / `E` / PageUp / PageDown 会解析到平铺列表的隐藏 `cursorPos`。`library.like` 仍绑定在 `scopeGroup`，由 `likeTarget()` 取选中分组的曲目。帮助浮层打开时 SHALL 用 `overlayBeforeHelp` 记住底层浮层，关闭后恢复。
 
 ### D4. 最终键表
 
@@ -77,7 +79,7 @@
 | 当前对象 | `library.like` | `L` | tracklist 与 group，目标为选中曲目；playlist.list 不绑定 |
 | 当前对象 | `queue.append` | `e` | tracklist |
 | 当前对象 | `queue.insert_next` | `E` | tracklist |
-| 当前对象 | `queue.remove` | `x` | playlist.tracks、overlay.queue |
+| 当前对象 | `queue.remove` | `x` | overlay.queue |
 | 当前对象 | `queue.clear` | `C` | overlay.queue |
 | 当前对象 | `playlist.add_track` | `a` | playlist.tracks |
 | 当前对象 | `playlist.remove_track` | `x` | playlist.tracks |
@@ -107,8 +109,10 @@
 
 - T1 状态栏：最多 6 chip，固定槽位 `?` → 主操作 → 导航 → 播放 → 上下文动作 → 退出。窄终端按 `上下文动作 → 播放 → 导航` 顺序丢弃；`?`、主操作、退出标记 pinned，永不丢弃。宽度用现有 `strWidth` 按中英实测，目标 80 列放下 6 chip。
 - T2 浮层 footer：2-4 chip，顺序为 `主操作/确认 → 上下文动作（按分组序） → Esc 取消/关闭`。滚动浮层附 `↑/↓` 文字提示，不占 chip。浮层打开时状态栏不出 chip。
-- T3 帮助浮层：五区固定顺序 `当前上下文 → 全局 → 曲库 → 歌单 → 媒体键`；3/4 区去掉已在 1/2 出现的行。新增 i18n key `help_section_current`，中英各一。
+- T3 帮助浮层：五区固定顺序 `当前上下文 → 全局 → 曲目列表 → 歌单 → 媒体键`；3/4 区去掉已在 1/2 出现的行。`曲目列表` 区 collect `scopeTracklist`，与 T4 README 生成表的 scope 组合一致。新增 i18n key `help_section_current`，中英各一。
 - T4 README：`<!-- BEGIN GENERATED KEYS -->` / `<!-- END GENERATED KEYS -->` 标记块由 `go:generate` 回填，按 T3 组合 scope 生成表，顺序与 T3 一致。
+- T4 生成表 SHALL 按物理键去重，避免同一张表出现同键两种含义；设置面板拆为浏览态与编辑态两张表。
+- T1 状态栏 SHALL 按 pinned chip 实际宽度计算状态消息预算；宽度仍不足时从右侧丢弃 chip，SHALL NOT 让整行超出终端宽度。
 - 曲库搜索与歌单「添加曲目」两个内联输入面板的 T2 footer SHALL 都紧跟输入行下一行，位置一致；不放在结果区底部。
 - 空态多行文案 SHALL 逐行独立居中，不依赖 `lipgloss.Place` 对多行块按最宽行左对齐的行为。
 
@@ -129,21 +133,23 @@
 | `playlist.list` | `Enter` · `j/k` · `n/p` · `N` | `q` | — |
 | `playlist.tracks` | `Enter`/`Space` · `j/k` · `n/p` · `x` | `Esc` | — |
 | `fullscreen` | `Space` · `↑/↓` · `< >` · `[ ]` | `Esc` | — |
-| `search.inline` | 无 T1 | — | `Enter 播放 / Esc 清除` |
-| `addtracks.inline` | 无 T1 | — | `Enter 添加 / Esc 关闭` |
+| `input.search` | 无 T1 | — | `Enter 播放 / Esc 取消` |
+| `input.addtracks` | 无 T1 | — | `Enter 添加/移除 / Esc 取消` |
 | `overlay.queue` | 无 T1 | — | `x 移除 / C 清空 / Esc 关闭` |
-| `overlay.add.list` | 无 T1 | — | `Enter 加入 / N 新建 / Esc 取消` |
+| `overlay.add.list` | 无 T1 | — | `Enter 确认 / N 新建 / Esc 取消` |
 | `overlay.add.create` | 无 T1 | — | `Enter 保存 / Esc 取消` |
-| `overlay.delete` | 无 T1 | — | `Enter 确认 / Esc 取消` |
-| `playlist.rename` | 无 T1 | — | `Enter 保存 / Esc 取消` |
-| `overlay.settings.browse` | 无 T1 | — | `Enter 编辑 / Ctrl+R 重扫 / Esc 关闭` |
+| `confirm` | 无 T1 | — | `Enter 确认 / Esc 取消` |
+| `input.name` | 无 T1 | — | `Enter 保存 / Esc 取消` |
+| `overlay.settings.browse` | 无 T1 | — | `Enter 编辑 / Esc 取消` |
 | `overlay.settings.edit` | 无 T1 | — | `Enter 保存 / Esc 取消` |
-| `overlay.help` | 无 T1 | — | `↑/↓ 滚动 / Esc 或 ? 关闭` |
-| `overlay.info` | 无 T1 | — | `i 或 Esc 关闭 / ↑/↓ 滚动` |
+| `overlay.help` | 无 T1 | — | `↑/↓ 滚动 / ? 关闭 / Esc 取消` |
+| `overlay.info` | 无 T1 | — | `↑/↓ 滚动 / i 关闭 / Esc 取消` |
 
-`Enabled` 谓词控制三项：`playlist.undo` 只在撤销窗口内出现；`playback.right_panel` 只在 `showMiniPlayer()` 为真时出现；`queue.open` 始终出现。当前 `keys_tracklist_shared.go:445-447` 只在队列非空时追加 `Q` hint 但绑定始终可用，属于提示与可用性脱钩，须改为由 `Enabled` 决定。
+`Enabled` 谓词控制提示显隐：`playback.right_panel` 只在 `showMiniPlayer()` 为真时出现。`playlist.undo` 绑定始终可用，过期时由处理器给出「撤销已过期」提示；空队列 footer 只保留关闭 chip。当前 `keys_tracklist_shared.go:445-447` 只在队列非空时追加 `Q` hint 但绑定始终可用，属于提示与可用性脱钩，须改为由 `Enabled` 决定。
 
 折叠右栏后，曲目视图、分组视图（Albums / Artists）与歌单列表 SHALL 都在头部右侧显示同一份压缩播放状态；分组视图不得缺失。
+
+分组下钻到曲目列表后，头部 SHALL 显示来源分组名与返回提示，不只显示通用曲库标题。所有面板头部行 SHALL 经 `clipToWidth` 裁剪到 `innerW`，窄屏或长歌单名不得把分隔线挤到下一行。
 
 ### D8. 文案与键名归一
 
@@ -155,7 +161,7 @@ i18n 正文不再内嵌键名。`TrackListContext` 增加 `EmptyHints []ActionID
 
 ### D9. 规格与文档生成
 
-五份 delta spec 的场景用 ActionID 描述触发条件。新增 `keybinding-system` spec 的「最终键位映射」需求固定物理键。一致性测试断言：spec 中出现的每个 ActionID 都存在于注册表。README 生成块由 `go:generate` 回填；生成块之外的散文段（`:17-24`、`:164`、`:311`、`:356`、`:378`）人工按最终键表改写。`ARCHITECTURE.md:71` 从「新增浮层须同步两条链」改为「注册表自动生成渲染与提示，新增浮层只需声明 scope 与绑定」。`CONTRIBUTING.md:33` 补 `go generate ./...` 说明。
+五份 delta spec 的场景用 ActionID 描述触发条件。新增 `keybinding-system` spec 的「最终键位映射」需求固定物理键。一致性测试断言：spec 中出现的每个 ActionID 都存在于注册表。README 生成块由 `go:generate` 回填；生成块之外的散文段（功能特性表、媒体键映射段、8-bit 段、Lo-Fi 段）人工按最终键表改写，不引用行号以免生成后失效。`ARCHITECTURE.md` 的扩展检查清单改为「注册表自动生成渲染与提示，新增浮层只需声明 scope 与绑定」。`CONTRIBUTING.md` 的代码约定补 `go generate ./...` 说明。
 
 ### D10. 注释同步清单
 
@@ -168,7 +174,7 @@ T1 从 13 chip 降到 6 chip，帮助浮层分区变化，footer chip 变化。`
 ### D12. 测试与验证策略
 
 - 分发顺序测试：全屏 `?` 打开帮助并可关闭；浮层内 `q` 无动作；`4` 打开队列。
-- 输入透传测试：`q`、`j`、`k`、F 键在命名框与 add-tracks 搜索框可输入；`Ctrl+R` 在 `overlay.settings.edit` 仍触发保存并重扫。
+- 输入透传测试：`q`、`j`、`k`、F 键在命名框与 add-tracks 搜索框可输入；`Ctrl+R` 在 `overlay.settings.edit` 仍触发保存并重扫，且设置浮层保持打开。
 - 注册表测试：同 scope 无重复键、无禁用组合、中英描述齐全、spec ActionID 全部存在、README 生成块一致、渲染文件无硬编码键 chip。
 - 显示测试：六槽顺序与 pinned 丢弃、帮助浮层五区顺序、footer `Esc` 最后、两次渲染顺序一致。
 - 回归：`phase4_test.go:86-129` 的浮层新建断言改为 `N`；其余按键测试键位不变。

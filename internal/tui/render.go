@@ -494,6 +494,33 @@ func strWidth(s string) int {
 	return ansi.StringWidth(s)
 }
 
+// clipToWidth truncates a styled row to w visible columns without
+// breaking ANSI sequences, so headers never wrap the panel divider.
+func clipToWidth(s string, w int) string {
+	return lipgloss.NewStyle().MaxWidth(w).Render(s)
+}
+
+// centerEmptyLines centres each line independently, then vertically centres
+// the block. lipgloss.Place centres a multi-line block by its widest line,
+// which would left-align shorter lines.
+func centerEmptyLines(lines []string, innerW, maxRows int) string {
+	var rows []string
+	for _, ln := range lines {
+		styled := styleOverlayMuted.Render(ln)
+		w := strWidth(styled)
+		pad := (innerW - w) / 2
+		if pad < 0 {
+			pad = 0
+		}
+		right := innerW - w - pad
+		if right < 0 {
+			right = 0
+		}
+		rows = append(rows, strings.Repeat(" ", pad)+styled+strings.Repeat(" ", right))
+	}
+	return lipgloss.Place(innerW, maxRows, lipgloss.Center, lipgloss.Center, strings.Join(rows, "\n"))
+}
+
 // fgColor returns s wrapped in a 24-bit ANSI foreground colour sequence
 // WITHOUT a trailing reset, so the caller's outer lipgloss.Style.Render can
 // apply its own background and reset correctly.

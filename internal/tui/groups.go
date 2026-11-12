@@ -179,7 +179,7 @@ func (a *App) syncSearchLibraryView(active bool) {
 
 // handleGroupKey is the test-facing entry point for grouped library views.
 func (a *App) handleGroupKey(msg tea.KeyMsg) tea.Cmd {
-	scopes := []Scope{scopeGroup, scopeLocalGroups, scopeLocalTracks, scopeTracklist, scopeGlobal}
+	scopes := []Scope{scopeGroup, scopeLocalGroups, scopeGlobal}
 	return a.runAction(scopes, msg, a.handleGroupAction)
 }
 

@@ -28,7 +28,22 @@ func (a *App) localTrackListCtx() TrackListContext {
 
 		// ── Rendering ────────────────────────────────────────────────────
 		HeaderTitle: func() string {
-			return stylePanelTitle.Render(iconWithSpace(iconLibrary()) + T("library_title"))
+			label := T("library_title")
+			if a.drilldown != nil {
+				for i := range a.tracks {
+					if !a.drilldown.ids[a.tracks[i].ID] {
+						continue
+					}
+					if a.drilldown.kind == libraryViewAlbums {
+						label += " · " + a.tracks[i].Album
+					} else {
+						label += " · " + a.tracks[i].DisplayAlbumArtist()
+					}
+					break
+				}
+				label += " · ← " + T("hint_back")
+			}
+			return stylePanelTitle.Render(iconWithSpace(iconLibrary()) + label)
 		},
 		HeaderRight:   func() string { return "" },
 		UseMarquee:    true,

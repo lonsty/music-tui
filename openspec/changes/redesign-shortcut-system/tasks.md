@@ -31,11 +31,11 @@
 
 ## 4. 文档、文案与注释同步
 
-- [x] 4.1 改写 README 生成块之外的段落：`:17-24` 特性表、`:164` 浮层新建说明、`:311` 媒体键提示、`:356`、`:378`，全部按最终键表；验证：`grep -nE '`v`|`Q`|`z`|按 `n` 新建' README.md` 无旧键残留。
+- [x] 4.1 改写 README 生成块之外的段落：功能特性表、加入歌单浮层说明段、媒体键提示段、8-bit 段、Lo-Fi 段，全部按最终键表；验证：`grep -nE '`v`|`Q`|`z`|按 `n` 新建' README.md` 无旧键残留。
 - [x] 4.2 清理 i18n：键名不再内嵌正文；`8-bit` 改 `hint_chip` 并补中英；`Spc` 归一为 `Space`；删除矛盾的 `help_close`、启用 `help_close_key`、把 `action_reload_library` 接进帮助全局区；其余未用 key 按注册表接线或删除；验证：`CGO_ENABLED=1 go test ./internal/tui -run Translation` 通过且 EN/ZH key 集合相等。
 - [x] 4.3 `i18n_test.go` 增加断言：文案值不含 `❮`、`press <key>` 或 `按 <单键>` 模式；验证：新增用例构造含键名文案时测试失败。
 - [x] 4.4 逐条同步代码注释清单：`render_statusbar.go:27-40,112-113,133-134,159,177-178`、`keys_tracklist_shared.go:17-26,327,348,419,430`、`keys.go:23-24,99-119,141,150,173,191`、`keys_search.go:42-43,59`、`keys_fullscreen.go:111`、`model.go:58`、`tracklist_context.go:49,59-60,75`、`app.go:154`、`update.go:76`、`groups.go:180-181`、`render_tab_playlist.go:153`、`render_tracklist_shared.go:40,89` 及 `render_overlays.go` 键位注释；验证：源码扫描测试断言注释中不出现旧键序列与硬编码键名。
-- [x] 4.5 更新 `ARCHITECTURE.md:71` 为「注册表自动生成渲染与提示，新增浮层只需声明 scope 与绑定」，并在 `CONTRIBUTING.md:33` 补 `go generate ./...` 说明；验证：按文档步骤执行 `go generate ./...` 成功。
+- [x] 4.5 更新 `ARCHITECTURE.md:71` 为「注册表自动生成渲染与提示，新增浮层只需声明 scope 与绑定」，并在 `CONTRIBUTING.md` 代码约定补 `go generate ./...` 说明；验证：按文档步骤执行 `go generate ./...` 成功。
 - [x] 4.6 新增一致性测试：spec 中出现的每个 ActionID 都存在于注册表；渲染与提示文件无硬编码键 chip；README 生成块与注册表一致；验证：`CGO_ENABLED=1 go test ./internal/tui -run Consistency` 通过。
 
 ## 5. 集成验证
@@ -57,6 +57,21 @@
 - [x] 6.7 全屏 `↑/↓` chip 文案改为「浏览歌词」；验证：`TestStatusBarChipLabelsMatchActions` 通过。
 - [x] 6.8 `< >` 与 `[ ]` 使用不同 chip 标签；验证：`TestStatusBarChipLabelsMatchActions` 通过。
 - [x] 6.9 同步 design.md D4/D5/D6/D7 与 keybinding-system delta spec，新增 5 条行为需求；验证：`openspec validate redesign-shortcut-system --strict` 通过。
+
+## 7. 主动排查修复
+
+- [x] 7.1 修分组视图 scope 泄漏：`a`/`i`/`e`/`E`/PageUp/PageDown 不再作用于隐藏光标；验证：`TestGroupScopeHasNoTracklistLeak`、`TestDispatchGroupActionsResolve` 通过。
+- [x] 7.2 中文 `j/k` 与 `n/p` 文案分离；验证：`TestChineseNavAndPlaybackLabelsDiffer` 通过。
+- [x] 7.3 状态栏按 pinned 实际宽度预留并兜底裁剪，W=40/60/80/120 不溢出；验证：`TestStatusBarFitsWidthWithStatusMessage` 通过。
+- [x] 7.4 面板头部行统一 `clipToWidth`，窄屏与长歌单名不换行；验证：`TestHeaderDoesNotWrapAtNarrowWidth` 通过。
+- [x] 7.5 帮助浮层补 `tracklist` scope 键，README 生成表按物理键去重并拆设置两态；验证：`TestHelpIncludesTracklistBindings`、`TestReadmeGeneratedBlockNoDuplicateKeys` 通过。
+- [x] 7.6 浮层内 `?` 用 `overlayBeforeHelp` 保留底层浮层；验证：`TestOverlayHelpPreservesUnderlyingOverlay` 通过。
+- [x] 7.7 搜索无结果空态不再叠加无关 Settings chip；过期撤销仍给提示；验证：`TestSearchEmptyStateNoUnrelatedChip`、`TestUndoExpiredStillGivesFeedback` 通过。
+- [x] 7.8 添加曲目 toggle 文案中性、空队列 footer 只留关闭、设置浮层去重复 Ctrl+R 并补分隔线；验证：`TestAddTracksToggleLabelIsNeutral`、`TestEmptyQueueFooterOnlyClose` 通过。
+- [x] 7.9 修正 13 处注册表 LabelKey 错配、设置面板 section 标题重复、帮助/信息浮层备选关闭键；验证：`TestLabelKeysDescribeActions`、`TestSettingsSectionTitlesDiffer` 通过。
+- [x] 7.10 空态逐行居中推广到添加曲目 / 队列 / 歌单列表；分组下钻头部显示来源与返回；Stopped 状态 chip 与动作提示统一；验证：`keymap_labels_test.go` 全组通过。
+- [x] 7.11 同步 README（媒体键模态说明、`f:`、volume key、onset、7 档）、design.md、specs、tasks 过期行号；删除 `lastEnterID` 死字段与死代码；补 5 份 golden（中文、折叠、歌单曲目、信息浮层、空态）。
+- [x] 7.12 全门禁与扩展 pty 冒烟（W=100/60/40，含中文界面切换）通过。
 
 ## Workflow follow-up
 

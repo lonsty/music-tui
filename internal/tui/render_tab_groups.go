@@ -32,7 +32,7 @@ func (a *App) renderGroupList(innerW, innerH int) string {
 	}
 
 	var sb strings.Builder
-	sb.WriteString(header + "\n")
+	sb.WriteString(clipToWidth(header, innerW) + "\n")
 	sb.WriteString(styleDivider.Render(strings.Repeat("─", innerW)) + "\n")
 
 	const headerLines = 2

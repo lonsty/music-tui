@@ -351,15 +351,15 @@ func (a *App) renderSettingsOverlay() string {
 		case settingsRowOptsEx:
 			return optsEx
 		case settingsRowSectionLang:
-			return sectionLabel(T("settings_lang_label"))
+			return sectionLabel(T("settings_section_lang"))
 		case settingsRowLang:
 			return langLine
 		case settingsRowSectionFmt:
-			return sectionLabel(T("settings_fmt_label"))
+			return sectionLabel(T("settings_section_fmt"))
 		case settingsRowFmt:
 			return fmtLine
 		case settingsRowSectionIcon:
-			return sectionLabel(T("settings_icon_set_label"))
+			return sectionLabel(T("settings_section_icon"))
 		case settingsRowIcon:
 			return iconSetLine
 		default:
@@ -371,7 +371,7 @@ func (a *App) renderSettingsOverlay() string {
 		bodyRows = append(bodyRows, rowText(row))
 	}
 
-	hintRows := []string{"", footer}
+	hintRows := []string{topDiv, footer}
 
 	return a.renderScrollableOverlay(titleRows, bodyRows, hintRows, lineW)
 }
@@ -504,7 +504,7 @@ func (a *App) renderQueueOverlay() string {
 
 	var bodyRows []string
 	if len(a.ids) == 0 {
-		bodyRows = append(bodyRows, "  "+styleOverlayMuted.Render(T("queue_empty")))
+		bodyRows = append(bodyRows, centerEmptyLines([]string{T("queue_empty")}, innerW, 1))
 	} else {
 		for i, id := range a.ids {
 			t := a.findTrackByID(id)

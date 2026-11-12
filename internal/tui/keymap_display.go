@@ -28,7 +28,6 @@ type helpSection struct {
 // terminals drop slots 4, 3, 2 in that order.
 var shortSlots = map[Scope][]ActionID{
 	scopeLocalTracks:    {actionHelp, actionPlay, actionNavDown, actionNext, actionSearch, actionQuit},
-	scopeLocalGroups:    {actionHelp, actionDrillDown, actionNavDown, actionNext, actionViewAlbums, actionQuit},
 	scopeGroup:          {actionHelp, actionDrillDown, actionNavDown, actionNext, actionViewAlbums, actionQuit},
 	scopePlaylistList:   {actionHelp, actionOpenPlaylist, actionNavDown, actionNext, actionPlaylistNew, actionQuit},
 	scopePlaylistTracks: {actionHelp, actionPlay, actionNavDown, actionNext, actionPlaylistRemove, actionPlaylistBack},
@@ -44,15 +43,24 @@ var footerSlots = map[Scope][]ActionID{
 	scopeInputName:             {actionCommitName, actionCancel},
 	scopeInputAddTracks:        {actionAddTracksToggle, actionCancel},
 	scopeInputSearch:           {actionSearchPlay, actionSearchCancel},
-	scopeOverlaySettingsBrowse: {actionSettingsEdit, actionReload, actionSettingsClose},
+	scopeOverlaySettingsBrowse: {actionSettingsEdit, actionSettingsClose},
 	scopeOverlaySettingsEdit:   {actionSettingsCommit, actionSettingsCancel},
-	scopeOverlayHelp:           {actionOverlayScroll, actionCancel},
-	scopeOverlayInfo:           {actionOverlayScroll, actionCancel},
+	scopeOverlayHelp:           {actionOverlayScroll, actionHelpClose, actionCancel},
+	scopeOverlayInfo:           {actionOverlayScroll, actionInfoClose, actionCancel},
 	scopeFullscreen:            {},
 	scopeLocalTracks:           {},
 	scopePlaylistTracks:        {},
 	scopePlaylistList:          {},
 	scopeGroup:                 {},
+}
+
+// playbackDisplayState hides the transient Stopped frame during a track
+// change, so the status chip and the primary hint agree.
+func (a *App) playbackDisplayState() audio.State {
+	if a.framePlayback.state == audio.StateStopped && a.currentTrack != nil {
+		return audio.StatePlaying
+	}
+	return a.framePlayback.state
 }
 
 func hintFor(a *App, action ActionID, slot int, pinned bool) (keyHint, bool) {
@@ -65,7 +73,7 @@ func hintFor(a *App, action ActionID, slot int, pinned bool) (keyHint, bool) {
 	}
 	labelKey := bd.LabelKey
 	switch {
-	case action == actionPause && a.framePlayback.state == audio.StatePaused:
+	case action == actionPause && a.playbackDisplayState() == audio.StatePaused:
 		labelKey = "hint_resume"
 	case action == actionRightPanel && a.rightMode == rightPanelLyrics:
 		labelKey = "hint_player"
@@ -94,7 +102,7 @@ func (a *App) shortHints(s Scope) []keyHint {
 		// Primary slot follows playback state only where the slot is a play
 		// action; group and playlist-list slots keep their own primary action.
 		if i == 1 && (s == scopeLocalTracks || s == scopePlaylistTracks) {
-			if a.framePlayback.state == audio.StatePlaying || a.framePlayback.state == audio.StatePaused {
+			if a.playbackDisplayState() == audio.StatePlaying || a.playbackDisplayState() == audio.StatePaused {
 				action = actionPause
 			}
 		}
@@ -110,6 +118,9 @@ func (a *App) footerHints(s Scope) []keyHint {
 	actions, ok := footerSlots[s]
 	if !ok {
 		return nil
+	}
+	if s == scopeOverlayQueue && len(a.ids) == 0 {
+		actions = []ActionID{actionQueueClose}
 	}
 	var out []keyHint
 	for i, action := range actions {
@@ -175,7 +186,7 @@ func (a *App) helpSections(current Scope) []helpSection {
 	return []helpSection{
 		{T("help_section_current"), collect(current)},
 		{T("help_section_global"), collect(scopeGlobal)},
-		{T("help_section_local"), collect(scopeLocalTracks, scopeLocalGroups, scopeGroup)},
+		{T("help_section_local"), collect(scopeLocalTracks, scopeTracklist, scopeLocalGroups, scopeGroup)},
 		{T("help_section_playlist"), collect(scopePlaylistList, scopePlaylistTracks, scopeOverlayAddList, scopeOverlayAddCreate)},
 		{T("help_section_media"), media},
 	}
@@ -187,20 +198,10 @@ var mediaActions = map[ActionID]bool{
 	actionMediaPrev: true, actionMediaVolDown: true, actionMediaVolUp: true,
 }
 
-func mediaRows(rows []keyHint) []keyHint {
-	var out []keyHint
-	for _, r := range rows {
-		if mediaActions[r.action] {
-			out = append(out, r)
-		}
-	}
-	return out
-}
 
 // helpSectionsRendered applies media filtering and removes empty sections.
 func (a *App) helpSectionsRendered(current Scope) []helpSection {
 	sections := a.helpSections(current)
-	sections[4].rows = mediaRows(sections[4].rows)
 	var out []helpSection
 	for _, s := range sections {
 		if len(s.rows) > 0 {
@@ -220,22 +221,23 @@ func ReadmeKeyTables() string {
 	}{
 		{"全局 / Global", []Scope{scopeGlobal}},
 		{"普通模式 / Normal", []Scope{scopeLocalTracks, scopeTracklist}},
-		{"分组视图 / Groups", []Scope{scopeGroup, scopeLocalGroups, scopeLocalTracks, scopeTracklist}},
+		{"分组视图 / Groups", []Scope{scopeGroup, scopeLocalGroups}},
 		{"歌单列表 / Playlists", []Scope{scopePlaylistList}},
 		{"歌单曲目 / Playlist tracks", []Scope{scopePlaylistTracks, scopeTracklist}},
 		{"全屏 / Fullscreen", []Scope{scopeFullscreen}},
 		{"队列浮层 / Queue", []Scope{scopeOverlayQueue}},
-		{"设置面板 / Settings", []Scope{scopeOverlaySettingsBrowse, scopeOverlaySettingsEdit}},
+		{"设置浏览 / Settings browse", []Scope{scopeOverlaySettingsBrowse}},
+		{"设置编辑 / Settings edit", []Scope{scopeOverlaySettingsEdit}},
 	}
 	for _, s := range scopes {
 		sb.WriteString(fmt.Sprintf("### %s\n\n| 键 | 功能 |\n|----|------|\n", s.title))
-		seen := map[ActionID]bool{}
+		seen := map[string]bool{}
 		for _, scope := range s.scopes {
 			for _, bd := range registry.sortedBindings(scope, nil) {
-				if seen[bd.Action] {
+				if seen[bd.DisplayKey] {
 					continue
 				}
-				seen[bd.Action] = true
+				seen[bd.DisplayKey] = true
 				sb.WriteString(fmt.Sprintf("| `%s` | %s |\n", bd.DisplayKey, T(bd.DescKey)))
 			}
 		}

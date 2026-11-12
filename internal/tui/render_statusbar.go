@@ -50,14 +50,9 @@ func (a *App) renderStatusBar() string {
 		return styleStatusLine.Render("  " + iconError() + "  " + fmt.Sprintf(T("sync_error"), a.scanErr.Error()))
 	}
 
-	state := a.framePlayback.state
-
-	// During a track change the player briefly passes through StateStopped.
-	// Treat it as Playing so the chip does not flash.
-	displayState := state
-	if displayState == audio.StateStopped && a.currentTrack != nil {
-		displayState = audio.StatePlaying
-	}
+	// During a track change the player briefly passes through Stopped; the
+	// display state hides that flash and is shared with the hint template.
+	displayState := a.playbackDisplayState()
 
 	stateChipStr := styleStatusState.Render(stateLabel(displayState))
 
@@ -83,33 +78,50 @@ func (a *App) renderStatusBar() string {
 		queueChip = "  " + styleStatusState.Render(" "+fmt.Sprintf(T("queue_count"), len(a.ids))+" ")
 	}
 
-	// Dynamic statusMsg width: truncate so at least two hint chips remain.
+	// Hints are generated once; pinned chips define the width that must be
+	// reserved for the status message.
+	hints := a.shortHints(a.currentHintScope())
+	pinnedW := 0
+	for _, h := range hints {
+		if h.pinned {
+			pinnedW += hintWidth(h)
+		}
+	}
+
+	// Dynamic statusMsg width: truncate so the pinned chips always fit.
 	var msgChip string
 	if a.statusMsg != "" {
 		msgText := a.statusMsg
-		const minHintW = 24
 		basePrefix := " " + stateChipStr + retroChip + chipChip + queueChip + " "
-		maxMsgW := a.W - strWidth(basePrefix) - minHintW - 2
-		if maxMsgW < 8 {
-			maxMsgW = 8
+		maxMsgW := a.W - strWidth(basePrefix) - pinnedW - 2
+		if maxMsgW >= 4 {
+			if strWidth(msgText) > maxMsgW {
+				msgText = truncate(msgText, maxMsgW-1) + "…"
+			}
+			msgChip = " " + styleStatusState.Render(" "+msgText+" ")
 		}
-		if strWidth(msgText) > maxMsgW {
-			msgText = truncate(msgText, maxMsgW-1) + "…"
-		}
-		msgChip = " " + styleStatusState.Render(" "+msgText+" ")
 	}
 	prefix := " " + stateChipStr + retroChip + chipChip + queueChip + msgChip + "  "
 	prefixW := strWidth(prefix)
 
-	hints := a.shortHints(a.currentHintScope())
 	available := a.W - prefixW
 	if available < 0 {
 		available = 0
 	}
-	hints = dropShortHints(hints, hintWidth, available)
+	kept := dropShortHints(hints, hintWidth, available)
+	// Final guard: on very narrow terminals even pinned chips cannot fit.
+	// Drop from the right rather than letting the line overflow the frame.
+	total := 0
+	for _, h := range kept {
+		total += hintWidth(h)
+	}
+	for total > available && len(kept) > 0 {
+		total -= hintWidth(kept[len(kept)-1])
+		kept = kept[:len(kept)-1]
+	}
 
 	var sb strings.Builder
-	for _, h := range hints {
+	for _, h := range kept {
 		sb.WriteString(styleStatusKey.Render(" " + h.key + " ") +
 			styleStatusHintLabel.Render(" " + h.label + " "))
 	}

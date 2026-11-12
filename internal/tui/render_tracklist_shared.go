@@ -20,8 +20,8 @@ func (a *App) renderSharedTrackList(ctx TrackListContext, innerW, innerH int) st
 		// Search mode: replace the title line with the search input and the
 		// registry-generated input footer.
 		prompt := styleSearchPrompt.Render(iconSearch() + " ")
-		sb.WriteString(prompt + a.searchInput.View() + "\n")
-		sb.WriteString(a.renderFooterChips(scopeInputSearch) + "\n")
+		sb.WriteString(clipToWidth(prompt+a.searchInput.View(), innerW) + "\n")
+		sb.WriteString(clipToWidth(a.renderFooterChips(scopeInputSearch), innerW) + "\n")
 	} else {
 		title := ctx.HeaderTitle()
 
@@ -65,10 +65,10 @@ func (a *App) renderSharedTrackList(ctx TrackListContext, innerW, innerH int) st
 			if gap < 1 {
 				gap = 1
 			}
-			sb.WriteString(title + count + filterChip + rightAnnotation +
-				strings.Repeat(" ", gap) + playStatus + "\n")
+			sb.WriteString(clipToWidth(title+count+filterChip+rightAnnotation+
+				strings.Repeat(" ", gap)+playStatus, innerW) + "\n")
 		} else {
-			sb.WriteString(title + count + filterChip + rightAnnotation + "\n")
+			sb.WriteString(clipToWidth(title+count+filterChip+rightAnnotation, innerW) + "\n")
 		}
 	}
 	sb.WriteString(styleDivider.Render(strings.Repeat("─", innerW)) + "\n")
@@ -92,11 +92,13 @@ func (a *App) renderSharedTrackList(ctx TrackListContext, innerW, innerH int) st
 			emptyKey = "no_tracks_hint"
 		}
 		emptyText := T(emptyKey)
+		searchEmpty := false
 		if q := strings.TrimSpace(a.searchInput.Value()); q != "" && ctx.ShowSearchBar {
+			searchEmpty = true
 			emptyText = fmt.Sprintf(T("no_search_results"), q) + "\n" + T("search_clear_hint") +
 				" " + a.renderChip(actionClearFilter)
 		}
-		if len(ctx.EmptyHints) > 0 {
+		if !searchEmpty && len(ctx.EmptyHints) > 0 {
 			var chips []string
 			for _, action := range ctx.EmptyHints {
 				if bd, ok := registry.bindingFor(action); ok {
@@ -107,26 +109,7 @@ func (a *App) renderSharedTrackList(ctx TrackListContext, innerW, innerH int) st
 				emptyText += "\n" + strings.Join(chips, "  ")
 			}
 		}
-		// Centre every line individually. lipgloss.Place centres a multi-line
-		// block by its widest line, which left-aligns shorter lines.
-		var centeredRows []string
-		for _, ln := range strings.Split(emptyText, "\n") {
-			styled := styleOverlayMuted.Render(ln)
-			w := strWidth(styled)
-			pad := (innerW - w) / 2
-			if pad < 0 {
-				pad = 0
-			}
-			right := innerW - w - pad
-			if right < 0 {
-				right = 0
-			}
-			centeredRows = append(centeredRows,
-				strings.Repeat(" ", pad)+styled+strings.Repeat(" ", right))
-		}
-		empty := strings.Join(centeredRows, "\n")
-		centered := lipgloss.Place(innerW, maxRows, lipgloss.Center, lipgloss.Center, empty)
-		sb.WriteString(centered)
+		sb.WriteString(centerEmptyLines(strings.Split(emptyText, "\n"), innerW, maxRows))
 		content := strings.TrimRight(sb.String(), "\n")
 		return stylePanelBorder.Width(innerW).Height(innerH).Render(content)
 	}

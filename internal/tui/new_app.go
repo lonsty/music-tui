@@ -99,7 +99,7 @@ func NewApp(player *audio.Player, st *store.Store, musicDir string, tracks []lib
 	ti.CharLimit = 128
 
 	si := textinput.New()
-	si.Placeholder = "--sf2 nes --onset 0.5"
+	si.Placeholder = "--sf2 nes --onset 0.6"
 	si.CharLimit = 256
 	si.Width = 42
 

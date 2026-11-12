@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"sort"
 	"strings"
-	"time"
 
 	"github.com/charmbracelet/bubbles/help"
 	"github.com/charmbracelet/bubbles/key"
@@ -79,6 +78,8 @@ const (
 	actionSettingsScrollUp  ActionID = "overlay.scroll_up"
 	actionSettingsScrollDown ActionID = "overlay.scroll_down"
 	actionOverlayScroll      ActionID = "overlay.scroll"
+	actionHelpClose          ActionID = "overlay.help_close"
+	actionInfoClose          ActionID = "overlay.info_close"
 
 	actionNavDown    ActionID = "nav.down"
 	actionNavUp      ActionID = "nav.up"
@@ -178,9 +179,9 @@ var keyBindings = []Binding{
 	// ── Exit / cancel ────────────────────────────────────────────────────────
 	b(actionCancel, []string{"esc"}, "Esc", "Esc", "overlay_cancel", "action_cancel", groupExit, 100,
 		allScopes(scopeOverlayHelp, scopeOverlayInfo, scopeOverlayAddList, scopeConfirm, scopeGlobal)),
-	b(actionCancel, []string{"?"}, "?", "?", "hint_help", "action_close", groupExit, 97,
+	b(actionCancel, []string{"?"}, "?", "?", "action_close", "action_close", groupExit, 97,
 		allScopes(scopeOverlayHelp)),
-	b(actionCancel, []string{"i"}, "i", "i", "hint_help", "action_close", groupExit, 97,
+	b(actionCancel, []string{"i"}, "i", "i", "action_close", "action_close", groupExit, 97,
 		allScopes(scopeOverlayInfo)),
 	b(actionQuit, []string{"q"}, "q", "q", "hint_quit", "action_quit", groupExit, 95,
 		allScopes(scopeGlobal)),
@@ -190,7 +191,7 @@ var keyBindings = []Binding{
 		allScopes(scopePlaylistTracks)),
 	b(actionGroupBack, []string{"esc"}, "Esc", "Esc", "hint_back", "action_back", groupExit, 98,
 		allScopes(scopeGroup)),
-	b(actionClearFilter, []string{"esc"}, "Esc", "Esc", "hint_back", "action_clear_filter", groupExit, 99,
+	b(actionClearFilter, []string{"esc"}, "Esc", "Esc", "hint_clear", "action_clear_filter", groupExit, 99,
 		allScopes(scopeLocalTracks), func(a *App) bool { return strings.TrimSpace(a.searchInput.Value()) != "" }),
 	b(actionQueueClose, []string{"esc"}, "Esc", "Esc", "queue_close", "action_close", groupExit, 98,
 		allScopes(scopeOverlayQueue)),
@@ -214,7 +215,7 @@ var keyBindings = []Binding{
 		allScopes(scopePlaylistList)),
 	b(actionDrillDown, []string{"enter"}, "Enter", "Enter", "hint_open_group", "action_open_group", groupPrimary, 90,
 		allScopes(scopeGroup)),
-	b(actionSeekLine, []string{"enter"}, "Enter", "Enter", "hint_play", "action_seek_line", groupPrimary, 90,
+	b(actionSeekLine, []string{"enter"}, "Enter", "Enter", "hint_seek_line", "action_seek_line", groupPrimary, 90,
 		allScopes(scopeFullscreen)),
 	b(actionConfirm, []string{"enter"}, "Enter", "Enter", "overlay_confirm", "action_confirm", groupPrimary, 90,
 		allScopes(scopeOverlayAddList)),
@@ -224,7 +225,7 @@ var keyBindings = []Binding{
 		allScopes(scopeOverlayAddCreate)),
 	b(actionCommitName, []string{"enter"}, "Enter", "Enter", "settings_save", "action_save", groupPrimary, 90,
 		allScopes(scopeInputName)),
-	b(actionAddTracksToggle, []string{"enter"}, "Enter", "Enter", "overlay_add", "action_add_track", groupPrimary, 90,
+	b(actionAddTracksToggle, []string{"enter"}, "Enter", "Enter", "hint_add_remove", "action_add_track", groupPrimary, 90,
 		allScopes(scopeInputAddTracks)),
 	b(actionSearchPlay, []string{"enter"}, "Enter", "Enter", "hint_play", "action_play", groupPrimary, 90,
 		allScopes(scopeInputSearch)),
@@ -236,37 +237,43 @@ var keyBindings = []Binding{
 	// ── Navigation ──────────────────────────────────────────────────────────
 	b(actionNavDown, []string{"j", "down"}, "j / ↓", "j/k", "hint_nav", "action_move_down", groupNav, 80,
 		allScopes(scopeTracklist, scopeGroup, scopePlaylistList, scopeOverlayHelp, scopeOverlayInfo, scopeOverlayQueue, scopeOverlayAddList)),
-	b(actionNavUp, []string{"k", "up"}, "k / ↑", "↑/↓", "hint_prev", "action_move_up", groupNav, 79,
+	b(actionNavUp, []string{"k", "up"}, "k / ↑", "↑/↓", "hint_nav", "action_move_up", groupNav, 79,
 		allScopes(scopeTracklist, scopeGroup, scopePlaylistList, scopeOverlayHelp, scopeOverlayInfo, scopeOverlayQueue, scopeOverlayAddList)),
-	b(actionNavTop, []string{"g"}, "g", "g", "hint_page", "action_top", groupNav, 70,
+	b(actionNavTop, []string{"g"}, "g", "g", "action_top", "action_top", groupNav, 70,
 		allScopes(scopeTracklist, scopeGroup, scopePlaylistList, scopeOverlayQueue)),
-	b(actionNavBottom, []string{"G"}, "G", "G", "hint_page", "action_bottom", groupNav, 69,
+	b(actionNavBottom, []string{"G"}, "G", "G", "action_bottom", "action_bottom", groupNav, 69,
 		allScopes(scopeTracklist, scopeGroup, scopePlaylistList, scopeOverlayQueue)),
-	b(actionNavPageDown, []string{"pgdown", "ctrl+d"}, "PgDn / Ctrl+D", "PgDn", "hint_page", "action_page_down", groupNav, 68,
+	b(actionNavPageDown, []string{"pgdown", "ctrl+d"}, "PgDn / Ctrl+D", "PgDn", "action_page_down", "action_page_down", groupNav, 68,
 		allScopes(scopeTracklist)),
-	b(actionNavPageUp, []string{"pgup", "ctrl+u"}, "PgUp / Ctrl+U", "PgUp", "hint_page", "action_page_up", groupNav, 67,
+	b(actionNavPageUp, []string{"pgup", "ctrl+u"}, "PgUp / Ctrl+U", "PgUp", "action_page_up", "action_page_up", groupNav, 67,
 		allScopes(scopeTracklist)),
 	b(actionJumpPlaying, []string{"c"}, "c", "c", "hint_jump_playing", "action_jump_playing", groupNav, 66,
 		allScopes(scopeTracklist, scopeGroup)),
-	b(actionBrowseUp, []string{"up", "k"}, "↑ / k", "↑/↓", "hint_prev", "action_browse_up", groupNav, 78,
+	b(actionBrowseUp, []string{"up", "k"}, "↑ / k", "↑/↓", "hint_browse", "action_browse_up", groupNav, 78,
 		allScopes(scopeFullscreen)),
 	b(actionBrowseDown, []string{"down", "j"}, "↓ / j", "↑/↓", "hint_browse", "action_browse_down", groupNav, 77,
 		allScopes(scopeFullscreen)),
-	b(actionSettingsScrollUp, []string{"up", "k"}, "↑ / k", "↑/↓", "hint_prev", "action_scroll_up", groupNav, 78,
+	b(actionSettingsScrollUp, []string{"up", "k"}, "↑ / k", "↑/↓", "hint_scroll", "action_scroll_up", groupNav, 78,
 		allScopes(scopeOverlaySettingsBrowse)),
-	b(actionSettingsScrollDown, []string{"down", "j"}, "↓ / j", "↑/↓", "hint_next", "action_scroll_down", groupNav, 77,
+	b(actionSettingsScrollDown, []string{"down", "j"}, "↓ / j", "↑/↓", "hint_scroll", "action_scroll_down", groupNav, 77,
 		allScopes(scopeOverlaySettingsBrowse)),
 	// Display-only chip for help/info footers; scroll keys are already bound
 	// by actionNavUp/actionNavDown in those scopes.
 	b(actionOverlayScroll, []string{"up", "down"}, "↑ / ↓", "↑/↓", "hint_scroll", "action_scroll", groupNav, 76,
 		allScopes()),
+	// Display-only chips for help/info footers; the real keys already
+	// close those overlays via actionCancel bindings.
+	b(actionHelpClose, []string{"?"}, "?", "?", "action_close", "action_close", groupExit, 75,
+		allScopes()),
+	b(actionInfoClose, []string{"i"}, "i", "i", "action_close", "action_close", groupExit, 75,
+		allScopes()),
 	b(actionNavDown, []string{"down"}, "↓", "↓", "hint_nav", "action_move_down", groupNav, 76,
 		allScopes(scopeInputSearch)),
-	b(actionNavUp, []string{"up"}, "↑", "↑", "hint_prev", "action_move_up", groupNav, 75,
+	b(actionNavUp, []string{"up"}, "↑", "↑", "hint_nav", "action_move_up", groupNav, 75,
 		allScopes(scopeInputSearch)),
 	b(actionNavDown, []string{"down"}, "↓", "↓", "hint_nav", "action_move_down", groupNav, 76,
 		allScopes(scopeInputAddTracks)),
-	b(actionNavUp, []string{"up"}, "↑", "↑", "hint_prev", "action_move_up", groupNav, 75,
+	b(actionNavUp, []string{"up"}, "↑", "↑", "hint_nav", "action_move_up", groupNav, 75,
 		allScopes(scopeInputAddTracks)),
 
 	// ── Playback ────────────────────────────────────────────────────────────
@@ -298,9 +305,9 @@ var keyBindings = []Binding{
 		allScopes(scopeTracklist)),
 	b(actionOffsetLater, []string{"]"}, "]", "[ ]", "hint_offset", "action_offset_later", groupPlayback, 61,
 		allScopes(scopeTracklist)),
-	b(actionMediaPlay, []string{"f7"}, "F7", "F7", "hint_pause", "action_media_play", groupPlayback, 60,
+	b(actionMediaPlay, []string{"f7"}, "F7", "F7", "hint_play_pause", "action_media_play", groupPlayback, 60,
 		allScopes(scopeGlobal)),
-	b(actionMediaStop, []string{"f8"}, "F8", "F8", "hint_pause", "action_media_stop", groupPlayback, 59,
+	b(actionMediaStop, []string{"f8"}, "F8", "F8", "hint_stop", "action_media_stop", groupPlayback, 59,
 		allScopes(scopeGlobal)),
 	b(actionMediaNext, []string{"f9"}, "F9", "F9", "hint_next", "action_media_next", groupPlayback, 58,
 		allScopes(scopeGlobal)),
@@ -314,9 +321,9 @@ var keyBindings = []Binding{
 	// ── Object actions ──────────────────────────────────────────────────────
 	b(actionSearch, []string{"/"}, "/", "/", "hint_search", "action_search", groupObject, 54,
 		allScopes(scopeLocalTracks)),
-	b(actionAddToPlaylist, []string{"a"}, "a", "a", "hint_playlist_add_track", "action_add_to_playlist", groupObject, 53,
+	b(actionAddToPlaylist, []string{"a"}, "a", "a", "action_add_to_playlist", "action_add_to_playlist", groupObject, 53,
 		allScopes(scopeLocalTracks)),
-	b(actionTrackInfo, []string{"i"}, "i", "i", "hint_help", "action_track_info", groupObject, 52,
+	b(actionTrackInfo, []string{"i"}, "i", "i", "hint_info", "action_track_info", groupObject, 52,
 		allScopes(scopeLocalTracks, scopePlaylistTracks)),
 	b(actionLike, []string{"L"}, "L", "L", "hint_like_toggle", "action_like", groupObject, 51,
 		allScopes(scopeTracklist, scopeGroup)),
@@ -339,9 +346,7 @@ var keyBindings = []Binding{
 	b(actionPlaylistRemove, []string{"x"}, "x", "x", "hint_playlist_remove_track", "action_remove_track", groupObject, 42,
 		allScopes(scopePlaylistTracks)),
 	b(actionPlaylistUndo, []string{"u"}, "u", "u", "hint_undo", "action_undo", groupObject, 41,
-		allScopes(scopePlaylistTracks), func(a *App) bool {
-			return a.undoRemove != nil && time.Now().Before(a.undoRemove.expiresAt)
-		}),
+		allScopes(scopePlaylistTracks)),
 	b(actionPlaylistMoveDown, []string{"J"}, "J", "J/K", "hint_move_track", "action_move_track_down", groupObject, 40,
 		allScopes(scopePlaylistTracks)),
 	b(actionPlaylistMoveUp, []string{"K"}, "K", "J/K", "hint_move_track", "action_move_track_up", groupObject, 39,
@@ -365,7 +370,7 @@ var keyBindings = []Binding{
 	b(actionSwitchTab, []string{"tab"}, "Tab", "Tab", "hint_switch_tab", "action_switch_tab", groupView, 31,
 		allScopes(scopeGlobal)),
 	b(actionSettingsOpen, []string{","}, ",", ",", "hint_settings", "action_settings", groupView, 30,
-		allScopes(scopeLocalTracks, scopeLocalGroups, scopeGroup, scopePlaylistTracks, scopePlaylistList, scopeGlobal)),
+		allScopes(scopeLocalTracks, scopeLocalGroups, scopeGroup, scopePlaylistTracks, scopePlaylistList)),
 
 	// ── System ──────────────────────────────────────────────────────────────
 	b(actionHelp, []string{"?"}, "?", "?", "hint_help", "action_this_help", groupSystem, 29,
@@ -542,7 +547,7 @@ func (a *App) activeScopes() []Scope {
 
 	// 5. Group view.
 	if a.activeTab == tabLocal && a.view != libraryViewTracks && a.currentView == viewNormal && a.activeOvl == overlayNone {
-		scopes = append(scopes, scopeGroup, scopeLocalGroups, scopeLocalTracks, scopeTracklist)
+		scopes = append(scopes, scopeGroup, scopeLocalGroups)
 	}
 
 	// 6. Track-list scopes.

@@ -62,6 +62,9 @@ type App struct {
 	currentView     view
 	activeTab       tabID
 	activeOvl       overlay
+	// overlayBeforeHelp remembers the modal layer underneath the help overlay,
+	// so closing help returns to the queue / picker / settings panel.
+	overlayBeforeHelp overlay
 	ovlScrollRow    int            // scroll offset (in rows) for the active overlay
 	settingsEditing bool           // true = text input active in settings overlay (editing mode)
 	rightMode       rightPanelMode // player or lyrics content in the right panel
@@ -86,11 +89,6 @@ type App struct {
 	// scanCancel cancels the in-flight library scan, if any.  A scan is a
 	// single background job; starting a new one cancels the previous one.
 	scanCancel context.CancelFunc
-
-	// ── Enter-twice-to-fullscreen ────────────────────────────────────────────
-	// Tracks the ID of the track that was selected last time Enter was pressed.
-	// A second Enter on the same track opens the fullscreen player.
-	lastEnterID string
 
 	// ── Marquee scrollers ─────────────────────────────────────────────────────
 	// One Marquee per text field that may need to scroll.

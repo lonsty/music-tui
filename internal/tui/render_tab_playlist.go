@@ -56,7 +56,7 @@ func (a *App) renderPlaylistListLevel(innerW, innerH int) string {
 			header = title + strings.Repeat(" ", gap) + ps
 		}
 	}
-	sb.WriteString(header + "\n")
+	sb.WriteString(clipToWidth(header, innerW) + "\n")
 	sb.WriteString(styleDivider.Render(strings.Repeat("─", innerW)) + "\n")
 
 	const headerLines = 2
@@ -68,8 +68,8 @@ func (a *App) renderPlaylistListLevel(innerW, innerH int) string {
 		if a.inputMode == playlistInputRename {
 			prompt = T("playlist_rename_prompt")
 		}
-		sb.WriteString(styleSearchPrompt.Render(prompt+": ") + a.nameInput.View() + "\n")
-		sb.WriteString(a.renderFooterChips(scopeInputName) + "\n")
+		sb.WriteString(clipToWidth(styleSearchPrompt.Render(prompt+": ")+a.nameInput.View(), innerW) + "\n")
+		sb.WriteString(clipToWidth(a.renderFooterChips(scopeInputName), innerW) + "\n")
 		inputLines = 2
 	}
 
@@ -79,9 +79,11 @@ func (a *App) renderPlaylistListLevel(innerW, innerH int) string {
 	}
 
 	if len(a.playlists) == 0 {
-		empty := styleOverlayMuted.Render(T("playlist_empty"))
-		centered := lipgloss.Place(innerW, maxRows, lipgloss.Center, lipgloss.Center, empty)
-		sb.WriteString(centered)
+		lines := []string{T("playlist_empty")}
+		if bd, ok := registry.bindingFor(actionPlaylistNew); ok {
+			lines = append(lines, "❮"+bd.ShortKey+"❯ "+T(bd.LabelKey))
+		}
+		sb.WriteString(centerEmptyLines(lines, innerW, maxRows))
 	} else {
 		// Use the cached right-column width (computed once when playlists
 		// are loaded / modified) to avoid N DB queries per render frame.
@@ -157,13 +159,13 @@ func (a *App) renderPlaylistAddPanel(innerW, innerH int) string {
 		iconWithSpace(iconPlaylist()) + T("playlist_header") +
 			breadcrumbSep() + a.playlistDisplayName(pl))
 	backHint := styleTrackMeta.Render("  " + T("playlist_back_hint"))
-	sb.WriteString(title + backHint + "\n")
+	sb.WriteString(clipToWidth(title+backHint, innerW) + "\n")
 	sb.WriteString(styleDivider.Render(strings.Repeat("─", innerW)) + "\n")
 
 	// Search input row, registry footer, then divider. The footer sits
 	// directly below the input, matching the library search panel.
-	sb.WriteString(styleSearchPrompt.Render(iconSearch()+" ") + a.addInput.View() + "\n")
-	sb.WriteString(a.renderFooterChips(scopeInputAddTracks) + "\n")
+	sb.WriteString(clipToWidth(styleSearchPrompt.Render(iconSearch()+" ")+a.addInput.View(), innerW) + "\n")
+	sb.WriteString(clipToWidth(a.renderFooterChips(scopeInputAddTracks), innerW) + "\n")
 	sb.WriteString(styleDivider.Render(strings.Repeat("─", innerW)) + "\n")
 
 	const fixedRows = 5
@@ -182,7 +184,7 @@ func (a *App) renderPlaylistAddPanel(innerW, innerH int) string {
 func (a *App) renderAddTrackResults(sb *strings.Builder, innerW, maxRows int) {
 	results := a.addResults
 	if len(results) == 0 {
-		sb.WriteString(styleOverlayMuted.Render("  "+T("playlist_add_no_results")) + "\n")
+		sb.WriteString(centerEmptyLines([]string{T("playlist_add_no_results")}, innerW, maxRows))
 		return
 	}
 

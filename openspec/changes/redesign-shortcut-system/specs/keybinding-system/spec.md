@@ -208,3 +208,59 @@
 - **WHEN** 用户折叠右栏并停留在专辑视图
 - **THEN** 头部右侧显示播放状态
 - **AND** 与曲目视图使用同一 `buildCollapsedPlayStatus` 结果
+
+### Requirement: 分组视图不继承曲目层动作
+
+Albums / Artists 分组视图 SHALL NOT 把仅属于曲目列表的 ActionID 加入自己的 scope 栈；`a`、`i`、`e`、`E`、PageUp / PageDown SHALL NOT 在该视图解析到动作，避免作用于隐藏的平铺光标。
+
+#### Scenario: 分组视图按键无副作用
+
+- **WHEN** 用户在专辑视图按 `e`
+- **THEN** 队列内容不变
+- **AND** 该键不出现在当前上下文的键位提示中
+
+#### Scenario: 收藏仍作用于选中分组
+
+- **WHEN** 用户在专辑视图选中第二个专辑并触发 `library.like`
+- **THEN** 收藏状态作用于该专辑的曲目
+- **AND** 不作用于平铺列表中隐藏光标的曲目
+
+### Requirement: 浮层内帮助保留底层浮层
+
+在非帮助浮层内触发 `global.help` SHALL 打开帮助浮层并记住底层浮层；关闭帮助 SHALL 恢复底层浮层，SHALL NOT 直接回到主视图。
+
+#### Scenario: 加入歌单浮层内查看帮助
+
+- **WHEN** 用户在加入歌单浮层按 `?` 再按 Esc
+- **THEN** 回到加入歌单浮层
+- **AND** 浮层内容保持不变
+
+### Requirement: 状态栏不超出终端宽度
+
+状态栏 SHALL 按当前 pinned chip 的实际宽度预留状态消息空间；任何终端宽度下渲染结果 SHALL NOT 超过终端宽度。
+
+#### Scenario: 长状态消息
+
+- **WHEN** 终端宽度为 40 且出现长状态消息
+- **THEN** 状态消息被截断或省略
+- **AND** 状态栏可见宽度不超过 40 列
+
+### Requirement: 帮助浮层展示共享列表键
+
+帮助浮层 SHALL 展示仅绑定在 `tracklist` scope 的键（PageUp / PageDown、`e` / `E`、歌词偏移 `[` / `]`），与 README 生成表保持一致。
+
+#### Scenario: 曲目列表帮助
+
+- **WHEN** 用户在曲目列表打开帮助浮层
+- **THEN** 能看到 `e` 与 `E` 两行
+- **AND** 能看到 PageDown / PageUp 行
+
+### Requirement: 分组下钻显示来源与返回提示
+
+从 Albums / Artists 下钻到曲目列表时，列表头部 SHALL 显示来源分组名与返回提示，SHALL NOT 只显示通用曲库标题。
+
+#### Scenario: 专辑下钻
+
+- **WHEN** 用户在 Albums 视图选中专辑并进入曲目
+- **THEN** 头部显示该专辑名
+- **AND** 头部显示返回提示

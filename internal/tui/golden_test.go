@@ -153,6 +153,29 @@ func TestGoldenRender(t *testing.T) {
 				{ID: "p2", Name: "Late Night"},
 			}
 		}},
+		{"zh-normal", func(a *App) {
+			SetLang(LangZH)
+		}},
+		{"collapsed", func(a *App) {
+			a.rightCollapsed = true
+		}},
+		{"playlist-tracks", func(a *App) {
+			a.activeTab = tabPlaylist
+			a.depth = playlistDepthTracks
+			a.playlists = []store.Playlist{{ID: "p", Name: "Late Night"}}
+			a.plTracks = goldenTracks()[:3]
+			a.trackCursor = 0
+		}},
+		{"info", func(a *App) {
+			a.activeOvl = overlayInfo
+		}},
+		{"empty-playlist", func(a *App) {
+			a.activeTab = tabPlaylist
+			a.depth = playlistDepthTracks
+			a.playlists = []store.Playlist{{ID: "p", Name: "Late Night"}}
+			a.plTracks = nil
+			a.trackCursor = 0
+		}},
 	}
 
 	dir := filepath.Join("testdata", "golden")

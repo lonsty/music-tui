@@ -76,6 +76,12 @@ func (a *App) closeSettings() {
 }
 
 func (a *App) closeOverlay() {
+	if a.activeOvl == overlayHelp && a.overlayBeforeHelp != overlayNone {
+		a.activeOvl = a.overlayBeforeHelp
+		a.overlayBeforeHelp = overlayNone
+		a.ovlScrollRow = 0
+		return
+	}
 	a.activeOvl = overlayNone
 	a.ovlScrollRow = 0
 }
@@ -157,6 +163,9 @@ func (a *App) globalAction(action ActionID, msg tea.KeyMsg) (tea.Cmd, bool) {
 	case actionQuit:
 		return a.quitOrConfirm(), true
 	case actionHelp:
+		if a.activeOvl != overlayNone && a.activeOvl != overlayHelp {
+			a.overlayBeforeHelp = a.activeOvl
+		}
 		a.activeOvl = overlayHelp
 		a.ovlScrollRow = 0
 		return nil, true
