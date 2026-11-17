@@ -68,7 +68,7 @@ internal/tui ──► internal/audio
 
 - **新增音频格式**：同时更新 `library/formats.go` 白名单与 `audio/source.go` 解码器注册。
 - **新增 Tab**：`tabID` 只能追加，不能重排；持久化的 `last_active_tab` 依赖数值稳定。
-- **新增浮层**：更新 `overlay` 枚举、按键分发、渲染分发，并复用 `overlayInnerW` / `renderScrollableOverlay`。
+- **新增浮层**：在 `keymap.go` 注册表中为该 scope 声明绑定；按键分发、渲染分发、状态栏 / footer / 帮助浮层 / README 表格均由注册表生成，无需手工同步多条优先级链。
 - **新增设置项**：加 `store.Key*`、双语 i18n、`NewApp` 恢复逻辑和设置面板布局计划。
 - **新增用户文案**：必须同时写入 `i18n.go` 的中英文表，禁止在渲染/状态代码里写字面量。
 - **新增后台任务**：返回 `tea.Msg`，不要在 goroutine 里改 `App` 字段。

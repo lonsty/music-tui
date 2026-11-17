@@ -2,30 +2,25 @@ package tui
 
 import tea "github.com/charmbracelet/bubbletea"
 
-// ── Help overlay ──────────────────────────────────────────────────────────────
+// ── Help / info overlays ──────────────────────────────────────────────────────
 
 func (a *App) handleHelpKey(msg tea.KeyMsg) tea.Cmd {
-	switch msg.String() {
-	case "?", "esc":
-		a.closeOverlay()
-	case "up", "k":
-		a.scrollOverlay(-1)
-	case "down", "j":
-		a.scrollOverlay(1)
-	}
-	return nil
+	return a.runAction([]Scope{scopeOverlayHelp, scopeGlobal}, msg, a.handleOverlayScrollAction)
 }
 
-// ── Info overlay ──────────────────────────────────────────────────────────────
-
 func (a *App) handleInfoKey(msg tea.KeyMsg) tea.Cmd {
-	switch msg.String() {
-	case "i", "esc":
+	return a.runAction([]Scope{scopeOverlayInfo, scopeGlobal}, msg, a.handleOverlayScrollAction)
+}
+
+// handleOverlayScrollAction handles scrollable overlays (help, track info).
+func (a *App) handleOverlayScrollAction(action ActionID, msg tea.KeyMsg) tea.Cmd {
+	switch action {
+	case actionCancel:
 		a.closeOverlay()
-	case "up", "k":
-		a.scrollOverlay(-1)
-	case "down", "j":
+	case actionNavDown, actionSettingsScrollDown:
 		a.scrollOverlay(1)
+	case actionNavUp, actionSettingsScrollUp:
+		a.scrollOverlay(-1)
 	}
 	return nil
 }

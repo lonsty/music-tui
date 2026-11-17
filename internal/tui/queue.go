@@ -84,37 +84,42 @@ func (a *App) clampQueueCursor() {
 	}
 }
 
-// handleQueueKey handles the queue overlay.
+// handleQueueKey is the test-facing entry point for the queue overlay.
 func (a *App) handleQueueKey(msg tea.KeyMsg) tea.Cmd {
-	switch msg.String() {
-	case "esc", "Q":
+	return a.runAction([]Scope{scopeOverlayQueue, scopeGlobal}, msg, a.handleQueueAction)
+}
+
+// handleQueueAction handles queue-overlay actions.
+func (a *App) handleQueueAction(action ActionID, msg tea.KeyMsg) tea.Cmd {
+	switch action {
+	case actionQueueClose, actionCancel:
 		a.closeOverlay()
-	case "j", "down":
+	case actionNavDown:
 		if a.cursor < len(a.ids)-1 {
 			a.cursor++
 			a.keepQueueCursorVisible()
 		}
-	case "k", "up":
+	case actionNavUp:
 		if a.cursor > 0 {
 			a.cursor--
 			a.keepQueueCursorVisible()
 		}
-	case "g":
+	case actionNavTop:
 		a.cursor = 0
 		a.keepQueueCursorVisible()
-	case "G":
+	case actionNavBottom:
 		if len(a.ids) > 0 {
 			a.cursor = len(a.ids) - 1
 			a.keepQueueCursorVisible()
 		}
-	case "x", "delete":
+	case actionQueueRemove:
 		if len(a.ids) > 0 {
 			a.clampQueueCursor()
 			a.ids = append(a.ids[:a.cursor], a.ids[a.cursor+1:]...)
 			a.clampQueueCursor()
 			a.keepQueueCursorVisible()
 		}
-	case "C":
+	case actionQueueClear:
 		a.ids = nil
 		a.cursor = 0
 		a.ovlScrollRow = 0

@@ -181,7 +181,7 @@ var (
 				Bold(true).
 				Foreground(lipgloss.Color(mauve))
 
-	// styleOverlayKey renders keyboard shortcut chips as ❮key❯ using Unicode
+	// styleOverlayKey renders registry-generated shortcut chips with Unicode
 	// angle quotation marks (U+276E / U+276F).  No background fill is used to
 	// avoid the rectangular colour-block artefacts that appear on some terminals
 	// when a lipgloss style with Background + Width is rendered inside a box
@@ -232,12 +232,9 @@ func (a *App) snapshotPlayback() playbackFrame {
 func (a *App) render() string {
 	a.framePlayback = a.snapshotPlayback()
 
-	// Fullscreen player replaces everything except status bar.
-	if a.currentView == viewFullscreen {
-		return a.renderFullscreen()
-	}
-
-	// Overlays are rendered on top of the normal layout.
+	// Overlays are rendered above every view, including fullscreen. The key
+	// dispatcher uses the same order, so an overlay opened in fullscreen can
+	// always be closed with the cancel action.
 	switch a.activeOvl {
 	case overlayHelp:
 		return a.renderHelpOverlay()
@@ -251,6 +248,11 @@ func (a *App) render() string {
 		return a.renderDeletePlaylistOverlay()
 	case overlayQueue:
 		return a.renderQueueOverlay()
+	}
+
+	// Fullscreen player replaces everything except status bar.
+	if a.currentView == viewFullscreen {
+		return a.renderFullscreen()
 	}
 
 	tab := a.renderTabBar()
@@ -490,6 +492,33 @@ func absInt(n int) int {
 // using the same wcwidth table that lipgloss uses internally.
 func strWidth(s string) int {
 	return ansi.StringWidth(s)
+}
+
+// clipToWidth truncates a styled row to w visible columns without
+// breaking ANSI sequences, so headers never wrap the panel divider.
+func clipToWidth(s string, w int) string {
+	return lipgloss.NewStyle().MaxWidth(w).Render(s)
+}
+
+// centerEmptyLines centres each line independently, then vertically centres
+// the block. lipgloss.Place centres a multi-line block by its widest line,
+// which would left-align shorter lines.
+func centerEmptyLines(lines []string, innerW, maxRows int) string {
+	var rows []string
+	for _, ln := range lines {
+		styled := styleOverlayMuted.Render(ln)
+		w := strWidth(styled)
+		pad := (innerW - w) / 2
+		if pad < 0 {
+			pad = 0
+		}
+		right := innerW - w - pad
+		if right < 0 {
+			right = 0
+		}
+		rows = append(rows, strings.Repeat(" ", pad)+styled+strings.Repeat(" ", right))
+	}
+	return lipgloss.Place(innerW, maxRows, lipgloss.Center, lipgloss.Center, strings.Join(rows, "\n"))
 }
 
 // fgColor returns s wrapped in a 24-bit ANSI foreground colour sequence

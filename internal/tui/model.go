@@ -55,7 +55,7 @@ type groupRef struct {
 
 // settingsField identifies the active input field in the settings overlay.
 // The numeric values are used as the settingsActive index; the order determines
-// the Tab-cycling sequence.
+// the settings field navigation order.
 type settingsField int
 
 const (

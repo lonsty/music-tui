@@ -58,14 +58,17 @@ type App struct {
 	lyricsVP viewport.Model
 
 	// ── UI state ─────────────────────────────────────────────────────────────
-	W, H            int
-	currentView     view
-	activeTab       tabID
-	activeOvl       overlay
-	ovlScrollRow    int            // scroll offset (in rows) for the active overlay
-	settingsEditing bool           // true = text input active in settings overlay (editing mode)
-	rightMode       rightPanelMode // player or lyrics content in the right panel
-	rightCollapsed  bool           // true = right panel hidden, track list takes full width
+	W, H        int
+	currentView view
+	activeTab   tabID
+	activeOvl   overlay
+	// overlayBeforeHelp remembers the modal layer underneath the help overlay,
+	// so closing help returns to the queue / picker / settings panel.
+	overlayBeforeHelp overlay
+	ovlScrollRow      int            // scroll offset (in rows) for the active overlay
+	settingsEditing   bool           // true = text input active in settings overlay (editing mode)
+	rightMode         rightPanelMode // player or lyrics content in the right panel
+	rightCollapsed    bool           // true = right panel hidden, track list takes full width
 
 	// ── Status / feedback ────────────────────────────────────────────────────
 	statusMsg         string
@@ -86,11 +89,6 @@ type App struct {
 	// scanCancel cancels the in-flight library scan, if any.  A scan is a
 	// single background job; starting a new one cancels the previous one.
 	scanCancel context.CancelFunc
-
-	// ── Enter-twice-to-fullscreen ────────────────────────────────────────────
-	// Tracks the ID of the track that was selected last time Enter was pressed.
-	// A second Enter on the same track opens the fullscreen player.
-	lastEnterID string
 
 	// ── Marquee scrollers ─────────────────────────────────────────────────────
 	// One Marquee per text field that may need to scroll.
@@ -151,7 +149,7 @@ func (a *App) saveSession() {
 
 	// Only write last_position_ms when the player is alive; skip the write
 	// when pos==0 and the player is stopped (would overwrite a valid position
-	// saved moments earlier by the q-key handler).
+	// saved moments earlier by the quit handler).
 	posMs := pos.Milliseconds()
 	collapsedVal := store.ValRightExpanded
 	if a.rightCollapsed {

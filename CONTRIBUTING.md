@@ -31,6 +31,7 @@ go test -race $(go list ./... | grep -v internal/audio)
 - 渲染路径不得查询数据库；计数与元数据在处理消息时预加载。
 - 修改 `filteredIdxs` 必须同步重建 `posByID`（以及新增的 ID 索引）。
 - 所有用户可见文案必须同时写入 `internal/tui/i18n.go` 的中英文表；`TestTranslationKeysCoverage` 会检查缺失与空翻译。
+- 物理键只在 `internal/tui/keymap.go` 注册表定义；改键后运行 `go generate ./...` 回填 `README.md` 的生成块，并重生成 `internal/tui/testdata/golden/*.golden`。
 - 后台 `tea.Cmd` 不直接写 `App` 状态；结果通过消息回到 `Update`。
 - 新增 Tab 只能追加 `tabID`，不能重排持久化数值。
 - 新增音频格式需同时更新 `library/formats.go` 与 `audio/source.go`。

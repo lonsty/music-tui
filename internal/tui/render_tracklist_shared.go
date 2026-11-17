@@ -15,10 +15,13 @@ func (a *App) renderSharedTrackList(ctx TrackListContext, innerW, innerH int) st
 	var sb strings.Builder
 
 	// ── Header ───────────────────────────────────────────────────────────────
-	if ctx.ShowSearchBar && a.activeOvl == overlaySearch {
-		// Search mode: replace the title line with the search input.
+	searchActive := ctx.ShowSearchBar && a.activeOvl == overlaySearch
+	if searchActive {
+		// Search mode: replace the title line with the search input and the
+		// registry-generated input footer.
 		prompt := styleSearchPrompt.Render(iconSearch() + " ")
-		sb.WriteString(prompt + a.searchInput.View() + "\n")
+		sb.WriteString(clipToWidth(prompt+a.searchInput.View(), innerW) + "\n")
+		sb.WriteString(clipToWidth(a.renderFooterChips(scopeInputSearch), innerW) + "\n")
 	} else {
 		title := ctx.HeaderTitle()
 
@@ -37,7 +40,8 @@ func (a *App) renderSharedTrackList(ctx TrackListContext, innerW, innerH int) st
 		var filterChip string
 		if ctx.ShowSearchBar && a.activeOvl != overlaySearch {
 			if q := strings.TrimSpace(a.searchInput.Value()); q != "" {
-				filterChip = styleSearchPrompt.Render("  " + fmt.Sprintf(T("search_filter_active"), q))
+				filterChip = styleSearchPrompt.Render("  "+fmt.Sprintf(T("search_filter_active"), q)) +
+					" " + a.renderChip(actionClearFilter)
 			}
 		}
 
@@ -61,15 +65,18 @@ func (a *App) renderSharedTrackList(ctx TrackListContext, innerW, innerH int) st
 			if gap < 1 {
 				gap = 1
 			}
-			sb.WriteString(title + count + filterChip + rightAnnotation +
-				strings.Repeat(" ", gap) + playStatus + "\n")
+			sb.WriteString(clipToWidth(title+count+filterChip+rightAnnotation+
+				strings.Repeat(" ", gap)+playStatus, innerW) + "\n")
 		} else {
-			sb.WriteString(title + count + filterChip + rightAnnotation + "\n")
+			sb.WriteString(clipToWidth(title+count+filterChip+rightAnnotation, innerW) + "\n")
 		}
 	}
 	sb.WriteString(styleDivider.Render(strings.Repeat("─", innerW)) + "\n")
 
-	const headerLines = 2
+	headerLines := 2
+	if searchActive {
+		headerLines = 3
+	}
 	maxRows := innerH - headerLines
 	if maxRows < 0 {
 		maxRows = 0
@@ -85,12 +92,24 @@ func (a *App) renderSharedTrackList(ctx TrackListContext, innerW, innerH int) st
 			emptyKey = "no_tracks_hint"
 		}
 		emptyText := T(emptyKey)
+		searchEmpty := false
 		if q := strings.TrimSpace(a.searchInput.Value()); q != "" && ctx.ShowSearchBar {
-			emptyText = fmt.Sprintf(T("no_search_results"), q) + "\n" + T("search_clear_hint")
+			searchEmpty = true
+			emptyText = fmt.Sprintf(T("no_search_results"), q) + "\n" + T("search_clear_hint") +
+				" " + a.renderChip(actionClearFilter)
 		}
-		empty := styleOverlayMuted.Render(emptyText)
-		centered := lipgloss.Place(innerW, maxRows, lipgloss.Center, lipgloss.Center, empty)
-		sb.WriteString(centered)
+		if !searchEmpty && len(ctx.EmptyHints) > 0 {
+			var chips []string
+			for _, action := range ctx.EmptyHints {
+				if bd, ok := registry.bindingFor(action); ok {
+					chips = append(chips, "❮"+bd.ShortKey+"❯ "+T(bd.LabelKey))
+				}
+			}
+			if len(chips) > 0 {
+				emptyText += "\n" + strings.Join(chips, "  ")
+			}
+		}
+		sb.WriteString(centerEmptyLines(strings.Split(emptyText, "\n"), innerW, maxRows))
 		content := strings.TrimRight(sb.String(), "\n")
 		return stylePanelBorder.Width(innerW).Height(innerH).Render(content)
 	}

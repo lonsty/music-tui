@@ -47,9 +47,12 @@ func TestTranslationKeysCoverage(t *testing.T) {
 			if arg == "key string" {
 				continue
 			}
-			if arg != "emptyKey" {
-				t.Errorf("%s: dynamic T() argument %q is not statically verifiable", name, m[1])
+			// Registry-driven lookups are validated separately against both
+			// language tables by TestRegistryTranslations.
+			if arg == "emptyKey" || arg == "bd.DescKey" || arg == "bd.LabelKey" || arg == "labelKey" {
+				continue
 			}
+			t.Errorf("%s: dynamic T() argument %q is not statically verifiable", name, m[1])
 		}
 	}
 
@@ -81,5 +84,46 @@ func TestHelpOverlayHasNoRawKeys(t *testing.T) {
 	out := a.renderHelpOverlay()
 	if strings.Contains(out, "action_") {
 		t.Fatalf("help overlay leaks raw i18n keys:\n%s", out)
+	}
+}
+
+// TestRegistryTranslations covers the dynamic lookups in keymap.go: every
+// registry label and description must exist in both languages.
+func TestRegistryTranslations(t *testing.T) {
+	for _, bd := range registry.bindings {
+		for _, key := range []string{bd.LabelKey, bd.DescKey} {
+			if key == "" {
+				continue
+			}
+			for _, lang := range []Lang{LangEN, LangZH} {
+				if strings.TrimSpace(translations[lang][key]) == "" {
+					t.Errorf("action %s: missing %v translation for %q", bd.Action, lang, key)
+				}
+			}
+		}
+	}
+	for key := range translations[LangEN] {
+		if _, ok := translations[LangZH][key]; !ok {
+			t.Errorf("missing ZH translation for %q", key)
+		}
+	}
+	for key := range translations[LangZH] {
+		if _, ok := translations[LangEN][key]; !ok {
+			t.Errorf("missing EN translation for %q", key)
+		}
+	}
+}
+
+var keyNameInText = regexp.MustCompile(`❮|(?i)press [a-z0-9+\[\]/]{1,12}|按 [a-z0-9+\[\]/]{1,12}`)
+
+// TestTranslationValuesHaveNoKeyNames keeps physical keys out of prose. All
+// key chips come from the registry instead.
+func TestTranslationValuesHaveNoKeyNames(t *testing.T) {
+	for _, lang := range []Lang{LangEN, LangZH} {
+		for key, val := range translations[lang] {
+			if keyNameInText.MatchString(val) {
+				t.Errorf("%v translation %q embeds a key name: %q", lang, key, val)
+			}
+		}
 	}
 }

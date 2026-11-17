@@ -12,55 +12,43 @@ import (
 
 // ── Settings overlay ──────────────────────────────────────────────────────────
 
+// handleSettingsKey is the test-facing entry point for the settings overlay.
 func (a *App) handleSettingsKey(msg tea.KeyMsg) tea.Cmd {
-	// ── Editing mode: text input is active ────────────────────────────────
-	// In editing mode only control keys are handled; all other keystrokes are
-	// forwarded to the active text input.  Esc exits editing without closing.
+	scopes := []Scope{scopeOverlaySettingsBrowse, scopeGlobal}
 	if a.settingsEditing {
-		switch msg.String() {
-		case "esc":
-			// Exit editing mode, return to browse mode.
+		scopes = []Scope{scopeOverlaySettingsEdit, scopeGlobal}
+	}
+	return a.runAction(scopes, msg, func(action ActionID, msg tea.KeyMsg) tea.Cmd {
+		return a.handleSettingsAction(action, msg, scopes[0])
+	})
+}
+
+func (a *App) handleSettingsAction(action ActionID, msg tea.KeyMsg, top Scope) tea.Cmd {
+	if top == scopeOverlaySettingsEdit {
+		switch action {
+		case actionSettingsCancel:
 			a.settingsEditing = false
 			a.musicDirInput.Blur()
 			a.settingsInput.Blur()
 			return nil
-		case "enter":
-			// Commit the edited value and exit editing mode.
+		case actionSettingsCommit:
 			return a.settingsCommitField()
-		case "ctrl+r":
-			return a.settingsReloadLibrary()
-		default:
-			// Forward to the active text input.
-			var cmd tea.Cmd
-			switch a.settingsActive {
-			case settingsFieldMusicDir:
-				a.musicDirInput, cmd = a.musicDirInput.Update(msg)
-			case settingsFieldChipOpts:
-				a.settingsInput, cmd = a.settingsInput.Update(msg)
-			}
-			return cmd
 		}
+		return a.forwardToInput(msg, []Scope{top})
 	}
 
-	// ── Browse mode: navigate fields with ↑/↓, activate with Enter ────────
-	switch msg.String() {
-	case "esc":
+	switch action {
+	case actionSettingsClose, actionCancel:
 		a.closeSettings()
 		return nil
-
-	case "up", "k":
+	case actionSettingsScrollUp:
 		a.settingsMovePrev()
 		return nil
-
-	case "down", "j":
+	case actionSettingsScrollDown:
 		a.settingsMoveNext()
 		return nil
-
-	case "enter":
+	case actionSettingsEdit:
 		return a.settingsActivateField()
-
-	case "ctrl+r":
-		return a.settingsReloadLibrary()
 	}
 	return nil
 }
@@ -80,8 +68,7 @@ func (a *App) settingsMovePrev() {
 	a.ovlScrollRow = rows[a.settingsActive]
 }
 
-// settingsActivateField handles Enter in browse mode.
-// For text fields it enters editing mode; for toggle fields it cycles the value.
+// settingsActivateField handles the edit action in browse mode.
 func (a *App) settingsActivateField() tea.Cmd {
 	switch a.settingsActive {
 	case settingsFieldMusicDir:
