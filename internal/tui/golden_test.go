@@ -208,7 +208,7 @@ func TestGoldenRender(t *testing.T) {
 			if got != string(want) {
 				t.Fatalf("render mismatch for %s\n--- want ---\n%q\n--- got ---\n%q", tc.name, want, got)
 			}
-			})
+		})
 	}
 
 	// The help snapshot must cover the full generated table, not only the

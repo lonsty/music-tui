@@ -122,8 +122,8 @@ func (a *App) renderStatusBar() string {
 
 	var sb strings.Builder
 	for _, h := range kept {
-		sb.WriteString(styleStatusKey.Render(" " + h.key + " ") +
-			styleStatusHintLabel.Render(" " + h.label + " "))
+		sb.WriteString(styleStatusKey.Render(" "+h.key+" ") +
+			styleStatusHintLabel.Render(" "+h.label+" "))
 	}
 
 	line := prefix + sb.String()

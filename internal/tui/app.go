@@ -58,17 +58,17 @@ type App struct {
 	lyricsVP viewport.Model
 
 	// ── UI state ─────────────────────────────────────────────────────────────
-	W, H            int
-	currentView     view
-	activeTab       tabID
-	activeOvl       overlay
+	W, H        int
+	currentView view
+	activeTab   tabID
+	activeOvl   overlay
 	// overlayBeforeHelp remembers the modal layer underneath the help overlay,
 	// so closing help returns to the queue / picker / settings panel.
 	overlayBeforeHelp overlay
-	ovlScrollRow    int            // scroll offset (in rows) for the active overlay
-	settingsEditing bool           // true = text input active in settings overlay (editing mode)
-	rightMode       rightPanelMode // player or lyrics content in the right panel
-	rightCollapsed  bool           // true = right panel hidden, track list takes full width
+	ovlScrollRow      int            // scroll offset (in rows) for the active overlay
+	settingsEditing   bool           // true = text input active in settings overlay (editing mode)
+	rightMode         rightPanelMode // player or lyrics content in the right panel
+	rightCollapsed    bool           // true = right panel hidden, track list takes full width
 
 	// ── Status / feedback ────────────────────────────────────────────────────
 	statusMsg         string

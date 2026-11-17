@@ -32,64 +32,64 @@ const (
 )
 
 const (
-	scopeGlobal                  Scope = "global"
-	scopeTracklist               Scope = "tracklist"
-	scopeGroup                   Scope = "group"
-	scopeLocalTracks             Scope = "local.tracks"
-	scopeLocalGroups             Scope = "local.groups"
-	scopePlaylistList            Scope = "playlist.list"
-	scopePlaylistTracks          Scope = "playlist.tracks"
-	scopeFullscreen              Scope = "fullscreen"
-	scopeConfirm                 Scope = "confirm"
-	scopeOverlayHelp             Scope = "overlay.help"
-	scopeOverlayInfo             Scope = "overlay.info"
-	scopeOverlayQueue            Scope = "overlay.queue"
-	scopeOverlayAddList          Scope = "overlay.add.list"
-	scopeOverlayAddCreate        Scope = "overlay.add.create"
-	scopeOverlaySettingsBrowse   Scope = "overlay.settings.browse"
-	scopeOverlaySettingsEdit     Scope = "overlay.settings.edit"
-	scopeInputSearch             Scope = "input.search"
-	scopeInputAddTracks          Scope = "input.addtracks"
-	scopeInputName               Scope = "input.name"
+	scopeGlobal                Scope = "global"
+	scopeTracklist             Scope = "tracklist"
+	scopeGroup                 Scope = "group"
+	scopeLocalTracks           Scope = "local.tracks"
+	scopeLocalGroups           Scope = "local.groups"
+	scopePlaylistList          Scope = "playlist.list"
+	scopePlaylistTracks        Scope = "playlist.tracks"
+	scopeFullscreen            Scope = "fullscreen"
+	scopeConfirm               Scope = "confirm"
+	scopeOverlayHelp           Scope = "overlay.help"
+	scopeOverlayInfo           Scope = "overlay.info"
+	scopeOverlayQueue          Scope = "overlay.queue"
+	scopeOverlayAddList        Scope = "overlay.add.list"
+	scopeOverlayAddCreate      Scope = "overlay.add.create"
+	scopeOverlaySettingsBrowse Scope = "overlay.settings.browse"
+	scopeOverlaySettingsEdit   Scope = "overlay.settings.edit"
+	scopeInputSearch           Scope = "input.search"
+	scopeInputAddTracks        Scope = "input.addtracks"
+	scopeInputName             Scope = "input.name"
 )
 
 // Action IDs. Grouped by KeyGroup for readability only; the registry order
 // determines nothing except stable sorting when all else ties.
 const (
-	actionCancel            ActionID = "overlay.cancel"
-	actionQuit              ActionID = "global.quit"
-	actionForceQuit         ActionID = "global.force_quit"
-	actionPlay              ActionID = "playback.play"
-	actionPause             ActionID = "playback.pause"
-	actionOpenPlaylist      ActionID = "playlist.open"
-	actionSeekLine          ActionID = "lyrics.seek_line"
-	actionConfirm           ActionID = "overlay.confirm"
-	actionSave              ActionID = "overlay.save"
-	actionDeleteConfirm     ActionID = "playlist.delete_confirm"
-	actionCreateAndAdd      ActionID = "playlist.create_add"
-	actionCommitName        ActionID = "playlist.commit_name"
-	actionAddTracksToggle   ActionID = "playlist.add_tracks_toggle"
-	actionSearchPlay        ActionID = "library.search_play"
-	actionSearchCancel      ActionID = "library.search_cancel"
-	actionSettingsEdit      ActionID = "settings.edit"
-	actionSettingsCommit    ActionID = "settings.commit"
-	actionSettingsCancel    ActionID = "settings.cancel"
-	actionSettingsClose     ActionID = "settings.close"
-	actionSettingsScrollUp  ActionID = "overlay.scroll_up"
+	actionCancel             ActionID = "overlay.cancel"
+	actionQuit               ActionID = "global.quit"
+	actionForceQuit          ActionID = "global.force_quit"
+	actionPlay               ActionID = "playback.play"
+	actionPause              ActionID = "playback.pause"
+	actionOpenPlaylist       ActionID = "playlist.open"
+	actionSeekLine           ActionID = "lyrics.seek_line"
+	actionConfirm            ActionID = "overlay.confirm"
+	actionSave               ActionID = "overlay.save"
+	actionDeleteConfirm      ActionID = "playlist.delete_confirm"
+	actionCreateAndAdd       ActionID = "playlist.create_add"
+	actionCommitName         ActionID = "playlist.commit_name"
+	actionAddTracksToggle    ActionID = "playlist.add_tracks_toggle"
+	actionSearchPlay         ActionID = "library.search_play"
+	actionSearchCancel       ActionID = "library.search_cancel"
+	actionSettingsEdit       ActionID = "settings.edit"
+	actionSettingsCommit     ActionID = "settings.commit"
+	actionSettingsCancel     ActionID = "settings.cancel"
+	actionSettingsClose      ActionID = "settings.close"
+	actionSettingsScrollUp   ActionID = "overlay.scroll_up"
 	actionSettingsScrollDown ActionID = "overlay.scroll_down"
 	actionOverlayScroll      ActionID = "overlay.scroll"
 	actionHelpClose          ActionID = "overlay.help_close"
 	actionInfoClose          ActionID = "overlay.info_close"
 
-	actionNavDown    ActionID = "nav.down"
-	actionNavUp      ActionID = "nav.up"
-	actionNavTop     ActionID = "nav.top"
-	actionNavBottom  ActionID = "nav.bottom"
+	actionNavDown     ActionID = "nav.down"
+	actionNavUp       ActionID = "nav.up"
+	actionNavTop      ActionID = "nav.top"
+	actionNavBottom   ActionID = "nav.bottom"
 	actionNavPageDown ActionID = "nav.page_down"
-	actionNavPageUp  ActionID = "nav.page_up"
+	actionNavPageUp   ActionID = "nav.page_up"
 	actionJumpPlaying ActionID = "nav.jump_playing"
-	actionBrowseUp   ActionID = "lyrics.browse_up"
-	actionBrowseDown ActionID = "lyrics.browse_down"
+	actionBrowseUp    ActionID = "lyrics.browse_up"
+	actionBrowseDown  ActionID = "lyrics.browse_down"
 
 	actionNext          ActionID = "playback.next"
 	actionPrev          ActionID = "playback.prev"
@@ -110,39 +110,39 @@ const (
 	actionMediaVolDown  ActionID = "global.media_vol_down"
 	actionMediaVolUp    ActionID = "global.media_vol_up"
 
-	actionSearch        ActionID = "library.search"
-	actionClearFilter   ActionID = "library.clear_filter"
-	actionAddToPlaylist ActionID = "library.add_to_playlist"
-	actionTrackInfo     ActionID = "library.track_info"
-	actionLike          ActionID = "library.like"
-	actionQueueAppend   ActionID = "queue.append"
-	actionQueueInsert   ActionID = "queue.insert_next"
-	actionQueueRemove   ActionID = "queue.remove"
-	actionQueueClear    ActionID = "queue.clear"
-	actionQueueClose    ActionID = "queue.close"
-	actionPlaylistNew   ActionID = "playlist.new"
-	actionPlaylistRename ActionID = "playlist.rename"
-	actionPlaylistDelete ActionID = "playlist.delete"
+	actionSearch           ActionID = "library.search"
+	actionClearFilter      ActionID = "library.clear_filter"
+	actionAddToPlaylist    ActionID = "library.add_to_playlist"
+	actionTrackInfo        ActionID = "library.track_info"
+	actionLike             ActionID = "library.like"
+	actionQueueAppend      ActionID = "queue.append"
+	actionQueueInsert      ActionID = "queue.insert_next"
+	actionQueueRemove      ActionID = "queue.remove"
+	actionQueueClear       ActionID = "queue.clear"
+	actionQueueClose       ActionID = "queue.close"
+	actionPlaylistNew      ActionID = "playlist.new"
+	actionPlaylistRename   ActionID = "playlist.rename"
+	actionPlaylistDelete   ActionID = "playlist.delete"
 	actionPlaylistAddTrack ActionID = "playlist.add_track"
-	actionPlaylistRemove  ActionID = "playlist.remove_track"
-	actionPlaylistUndo    ActionID = "playlist.undo"
+	actionPlaylistRemove   ActionID = "playlist.remove_track"
+	actionPlaylistUndo     ActionID = "playlist.undo"
 	actionPlaylistMoveDown ActionID = "playlist.move_down"
 	actionPlaylistMoveUp   ActionID = "playlist.move_up"
 	actionPlaylistBack     ActionID = "playlist.back"
 
-	actionViewTracks  ActionID = "library.view_tracks"
-	actionViewAlbums  ActionID = "library.view_albums"
-	actionViewArtists ActionID = "library.view_artists"
-	actionDrillDown   ActionID = "library.drill_down"
-	actionGroupBack   ActionID = "library.back"
-	actionQueueOpen   ActionID = "queue.open"
-	actionFullscreen  ActionID = "playback.fullscreen"
-	actionRightPanel  ActionID = "playback.right_panel"
-	actionCollapse    ActionID = "playback.collapse_panel"
-	actionSwitchTab   ActionID = "global.switch_tab"
+	actionViewTracks   ActionID = "library.view_tracks"
+	actionViewAlbums   ActionID = "library.view_albums"
+	actionViewArtists  ActionID = "library.view_artists"
+	actionDrillDown    ActionID = "library.drill_down"
+	actionGroupBack    ActionID = "library.back"
+	actionQueueOpen    ActionID = "queue.open"
+	actionFullscreen   ActionID = "playback.fullscreen"
+	actionRightPanel   ActionID = "playback.right_panel"
+	actionCollapse     ActionID = "playback.collapse_panel"
+	actionSwitchTab    ActionID = "global.switch_tab"
 	actionSettingsOpen ActionID = "settings.open"
-	actionHelp        ActionID = "global.help"
-	actionReload      ActionID = "global.reload"
+	actionHelp         ActionID = "global.help"
+	actionReload       ActionID = "global.reload"
 )
 
 // Binding is one registry row. Keys are the physical key strings understood by
@@ -383,15 +383,15 @@ var keyBindings = []Binding{
 // reliably. Ctrl+C is intentionally present because the app owns SIGINT in
 // raw mode; it is handled before all other scopes.
 var forbiddenKeys = map[string]string{
-	"alt+":      "Alt is ESC-prefixed and collides with CSI",
-	"ctrl+i":    "indistinguishable from tab",
-	"ctrl+m":    "indistinguishable from enter",
-	"ctrl+[":    "indistinguishable from esc",
-	"ctrl+@":    "indistinguishable from ctrl+space",
+	"alt+":       "Alt is ESC-prefixed and collides with CSI",
+	"ctrl+i":     "indistinguishable from tab",
+	"ctrl+m":     "indistinguishable from enter",
+	"ctrl+[":     "indistinguishable from esc",
+	"ctrl+@":     "indistinguishable from ctrl+space",
 	"ctrl+space": "produces NUL",
-	"ctrl+s":    "terminal flow control",
-	"ctrl+q":    "terminal flow control",
-	"ctrl+z":    "terminal suspend",
+	"ctrl+s":     "terminal flow control",
+	"ctrl+q":     "terminal flow control",
+	"ctrl+z":     "terminal suspend",
 }
 
 type keyRegistry struct {

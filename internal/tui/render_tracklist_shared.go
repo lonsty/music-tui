@@ -40,8 +40,8 @@ func (a *App) renderSharedTrackList(ctx TrackListContext, innerW, innerH int) st
 		var filterChip string
 		if ctx.ShowSearchBar && a.activeOvl != overlaySearch {
 			if q := strings.TrimSpace(a.searchInput.Value()); q != "" {
-				filterChip = styleSearchPrompt.Render("  " + fmt.Sprintf(T("search_filter_active"), q)) +
-				" " + a.renderChip(actionClearFilter)
+				filterChip = styleSearchPrompt.Render("  "+fmt.Sprintf(T("search_filter_active"), q)) +
+					" " + a.renderChip(actionClearFilter)
 			}
 		}
 

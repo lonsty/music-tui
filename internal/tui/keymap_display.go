@@ -198,7 +198,6 @@ var mediaActions = map[ActionID]bool{
 	actionMediaPrev: true, actionMediaVolDown: true, actionMediaVolUp: true,
 }
 
-
 // helpSectionsRendered applies media filtering and removes empty sections.
 func (a *App) helpSectionsRendered(current Scope) []helpSection {
 	sections := a.helpSections(current)

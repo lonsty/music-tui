@@ -5,7 +5,6 @@ import (
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
-
 )
 
 // handleSharedTrackListKey is the test-facing entry point. It resolves the key
